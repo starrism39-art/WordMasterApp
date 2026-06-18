@@ -1,0 +1,121 @@
+<!-- pages/data-backup/data-backup.wxml -->
+<view class="container">
+  <!-- 标题 -->
+  <view class="header">
+    <text class="title">数据备份与恢复</text>
+  </view>
+
+  <!-- 版本信息卡片 -->
+  <view class="card">
+    <view class="card-title">当前版本信息</view>
+    <view class="info-item">
+      <text class="label">程序版本:</text>
+      <text class="value">{{currentVersion}}</text>
+    </view>
+    <view class="info-item" wx:if="{{backupInfo}}">
+      <text class="label">备份时间:</text>
+      <text class="value">{{backupInfo.timestamp}}</text>
+    </view>
+    <view class="info-item" wx:if="{{backupInfo}}">
+      <text class="label">备份项数:</text>
+      <text class="value">{{backupInfo.dataCount}}</text>
+    </view>
+  </view>
+
+  <!-- 可恢复备份摘要 -->
+  <view class="card">
+    <view class="card-title">可恢复备份摘要</view>
+    <view class="info-item">
+      <text class="label">备份数量:</text>
+      <text class="value">{{recoverySummary.backupCount}}</text>
+    </view>
+    <view class="info-item">
+      <text class="label">可恢复项数:</text>
+      <text class="value">{{recoverySummary.recoverableItems}}</text>
+    </view>
+    <view class="info-item" wx:if="{{recoverySummary.latestVersion}}">
+      <text class="label">最新版本:</text>
+      <text class="value">{{recoverySummary.latestVersion}}</text>
+    </view>
+    <view class="info-item" wx:if="{{recoverySummary.latestTimestamp}}">
+      <text class="label">最新备份时间:</text>
+      <text class="value">{{recoverySummary.latestTimestamp}}</text>
+    </view>
+    <button class="btn btn-secondary" bindtap="refreshBackups">重新扫描备份</button>
+  </view>
+
+  <!-- 可恢复备份列表 -->
+  <view class="card">
+    <view class="card-title">可恢复备份列表</view>
+    <view class="backup-list" wx:if="{{availableBackups.length > 0}}">
+      <view class="backup-item" wx:for="{{availableBackups}}" wx:key="backupKey">
+        <view class="backup-item-head">
+          <text class="backup-version">v{{item.version}}</text>
+          <text class="backup-count">{{item.dataCount}}项</text>
+        </view>
+        <text class="backup-meta">{{item.timestamp}}</text>
+        <text class="backup-meta">包含：{{item.availableKeys.join('、')}}</text>
+      </view>
+    </view>
+    <view class="empty-log" wx:else>
+      <text>当前未发现可恢复备份</text>
+    </view>
+  </view>
+
+  <!-- 数据统计卡片 -->
+  <view class="card">
+    <view class="card-title">数据统计</view>
+    <view class="info-item">
+      <text class="label">学生数:</text>
+      <text class="value">{{dataStats.students}}</text>
+    </view>
+    <view class="info-item">
+      <text class="label">学习记录:</text>
+      <text class="value">{{dataStats.learningRecords}}</text>
+    </view>
+    <view class="info-item">
+      <text class="label">掌握单词:</text>
+      <text class="value">{{dataStats.wordMastery}}</text>
+    </view>
+  </view>
+
+  <!-- 操作按钮 -->
+  <view class="card">
+    <view class="card-title">数据操作</view>
+    <button class="btn btn-primary" bindtap="manualBackup">手动备份当前数据</button>
+    <button class="btn btn-success" bindtap="importFromFile">从聊天文件导入备份</button>
+    <button class="btn btn-info" bindtap="refreshBackups">扫描可恢复备份</button>
+    <button class="btn btn-info" bindtap="exportData">导出数据为 JSON</button>
+    <button class="btn btn-warning" bindtap="clearLogs">清空操作日志</button>
+  </view>
+
+  <!-- 操作日志 -->
+  <view class="card">
+    <view class="card-title">操作日志</view>
+    <view class="logs-container">
+      <view class="log-item" wx:for="{{logs}}" wx:key="index">
+        <text class="log-text">{{item}}</text>
+      </view>
+      <view class="empty-log" wx:if="{{logs.length === 0}}">
+        <text>暂无日志</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 导出数据模态框 -->
+  <view class="modal" wx:if="{{showExportModal}}">
+    <view class="modal-content">
+      <view class="modal-header">
+        <text class="modal-title">导出的数据</text>
+        <text class="close-btn" bindtap="closeExportModal">✕</text>
+      </view>
+      <view class="modal-body">
+        <text class="data-preview">{{exportData}}</text>
+      </view>
+      <view class="modal-footer">
+        <button class="btn btn-small btn-primary" bindtap="copyExportData">复制到剪贴板</button>
+        <button class="btn btn-small btn-secondary" bindtap="closeExportModal">关闭</button>
+      </view>
+    </view>
+  </view>
+</view>

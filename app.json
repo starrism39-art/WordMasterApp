@@ -1,0 +1,61 @@
+{
+  "pages": [
+    "pages/splash/splash",
+    "pages/login/login",
+    "pages/index/index",
+    "pages/learning/learning",
+    "pages/students/students",
+    "pages/review/review",
+    "pages/debug-update-stats/index"
+  ],
+  "window": {
+    "backgroundTextStyle": "light",
+    "navigationBarBackgroundColor": "#4A90E2",
+    "navigationBarTitleText": "啃词",
+    "navigationBarTextStyle": "white"
+  },
+  "tabBar": {
+    "custom": true,
+    "color": "#999999",
+    "selectedColor": "#4A90E2",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/index/index",
+        "text": "首页"
+      },
+      {
+        "pagePath": "pages/students/students",
+        "text": "我的"
+      }
+    ]
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json",
+  "cloudfunctionRoot": "cloudfunctions/",
+  "lazyCodeLoading": "requiredComponents",
+  "subpackages": [
+    {
+      "root": "subpages",
+      "pages": [
+        "wordbook/wordbook",
+        "stats/stats",
+        "records/records",
+        "add-student/add-student",
+        "student-list/student-list",
+        "review-merged/review-merged",
+        "word-view/word-view",
+        "grid-review/grid-review",
+        "data-backup/data-backup",
+        "data-repair/data-repair"
+      ],
+      "independent": false
+    },
+    {
+      "root": "subpackages/word-data",
+      "pages": ["index"],
+      "independent": false
+    }
+  ]
+}

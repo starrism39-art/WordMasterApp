@@ -1,0 +1,51 @@
+<!-- pages/add-student/add-student.wxml -->
+<view class="container">
+  <view class="header">
+    <view class="section-title">{{editMode ? '编辑学生' : '添加学生'}}</view>
+  </view>
+  
+  <view class="form-container card">
+    <!-- 学生姓名 -->
+    <view class="form-item">
+      <text class="form-label">学生姓名 <text class="required">*</text></text>
+      <input 
+        class="form-input" 
+        type="text" 
+        placeholder="请输入学生姓名" 
+        value="{{name}}" 
+        bindinput="inputName"
+      />
+    </view>
+    
+    <!-- 年级选择 -->
+    <view class="form-item">
+      <text class="form-label">年级</text>
+      <picker bindchange="changeGrade" value="{{gradeOptions.indexOf(grade)}}" range="{{gradeOptions}}">
+        <view class="picker">
+          {{grade || '请选择年级'}}
+          <text class="picker-arrow">▼</text>
+        </view>
+      </picker>
+    </view>
+    
+    <!-- 加入日期 -->
+    <view class="form-item">
+      <text class="form-label">加入日期</text>
+      <view class="date-picker" bindtap="openDatePicker">
+        {{joinDate}}
+        <text class="picker-arrow">▼</text>
+      </view>
+    </view>
+    
+    <!-- 日期选择器 -->
+    <picker mode="date" value="{{joinDate}}" bindchange="bindDateChange" start="2020-01-01" end="2030-12-31" wx:if="{{showDatePicker}}">
+      <view class="date-picker-overlay" bindtap="closeDatePicker"></view>
+    </picker>
+  </view>
+  
+  <!-- 操作按钮 -->
+  <view class="button-group">
+    <button class="reset-btn" bindtap="resetForm">重置</button>
+    <button class="submit-btn" bindtap="saveStudent">{{editMode ? '保存修改' : '添加学生'}}</button>
+  </view>
+</view>

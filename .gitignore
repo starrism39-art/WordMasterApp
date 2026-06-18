@@ -1,0 +1,37 @@
+# --- Editor / IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- AI Editor Config Templates (auto-generated) ---
+.codex/
+.codebuddy/
+.trae/
+.rules/
+.agents/
+
+# --- Environment ---
+.env.local
+.env
+
+# --- Dependencies ---
+node_modules/
+cloudfunctions/*/node_modules/
+
+# --- WeChat Mini Program ---
+project.private.config.json
+user.env
+
+# --- CloudBase Local State ---
+.cloudbase/
+cloudbaserc.local.json
+
+# --- Local Storage (runtime data, not source) ---
+storage/
+
+# --- Temp / Build Artifacts ---
+*.log
+*.pyc
+*.tgz
+*.zip

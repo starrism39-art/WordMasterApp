@@ -1,0 +1,163 @@
+/* pages/stats/stats.wxss */
+.container {
+  padding: 24rpx;
+  padding-bottom: 140rpx;
+  background: #f5f5f5;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+
+/* 统计概览卡片 */
+.stats-overview-card {
+  background: #ffffff;
+  border-radius: 16rpx;
+  padding: 40rpx 32rpx;
+  margin-bottom: 24rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.06);
+}
+
+.stats-overview-item {
+  flex: 1;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.stats-overview-value {
+  font-size: 48rpx;
+  font-weight: bold;
+  color: #333333;
+  margin-bottom: 12rpx;
+}
+
+.stats-overview-label {
+  font-size: 28rpx;
+  color: #666666;
+}
+
+.stats-overview-divider {
+  width: 2rpx;
+  height: 80rpx;
+  background: #e8e8e8;
+  margin: 0 20rpx;
+}
+
+/* 词书进度卡片 */
+.wordbook-progress-card {
+  background: #ffffff;
+  border-radius: 16rpx;
+  padding: 32rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.06);
+}
+
+.wordbook-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24rpx;
+}
+
+.wordbook-name {
+  font-size: 32rpx;
+  font-weight: 500;
+  color: #333333;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wordbook-more {
+  font-size: 40rpx;
+  color: #999999;
+  margin-left: 16rpx;
+}
+
+.progress-bar-container {
+  margin-bottom: 20rpx;
+}
+
+.progress-bar-bg {
+  height: 12rpx;
+  background: #e8e8e8;
+  border-radius: 6rpx;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #ff9500 0%, #ffaa33 100%);
+  border-radius: 6rpx;
+  transition: width 0.5s ease;
+}
+
+.progress-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.progress-text {
+  font-size: 28rpx;
+  color: #666666;
+}
+
+.progress-percent {
+  font-size: 32rpx;
+  font-weight: bold;
+  color: #4caf50;
+}
+
+/* 加载状态 */
+.loading-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 100rpx 0;
+  font-size: 28rpx;
+  color: #999999;
+}
+
+/* 错误状态 */
+.error-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 100rpx 24rpx;
+  font-size: 28rpx;
+  color: #ff4d4f;
+  text-align: center;
+}
+
+/* 空状态 */
+.empty-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 120rpx 48rpx;
+  text-align: center;
+}
+
+.empty-icon {
+  font-size: 80rpx;
+  margin-bottom: 24rpx;
+}
+
+.empty-text {
+  font-size: 32rpx;
+  color: #333333;
+  margin-bottom: 16rpx;
+  font-weight: 500;
+}
+
+.empty-subtext {
+  font-size: 26rpx;
+  color: #999999;
+}

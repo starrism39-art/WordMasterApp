@@ -1,0 +1,146 @@
+.container {
+  min-height: 100vh;
+  background: #f3f6fb;
+  padding: 24rpx;
+  box-sizing: border-box;
+}
+
+.header {
+  padding: 10rpx 6rpx 24rpx;
+}
+
+.title {
+  display: block;
+  font-size: 36rpx;
+  font-weight: 700;
+  color: #1d2a3a;
+}
+
+.subtitle {
+  display: block;
+  margin-top: 10rpx;
+  font-size: 24rpx;
+  color: #5c6f84;
+}
+
+.card {
+  background: #ffffff;
+  border-radius: 18rpx;
+  padding: 24rpx;
+  margin-bottom: 20rpx;
+  box-shadow: 0 6rpx 16rpx rgba(30, 45, 72, 0.08);
+}
+
+.card-title {
+  font-size: 28rpx;
+  color: #23364d;
+  font-weight: 700;
+  margin-bottom: 16rpx;
+}
+
+.guide-card {
+  border-left: 8rpx solid #2f6fe4;
+}
+
+.guide-line {
+  font-size: 24rpx;
+  color: #47627c;
+  line-height: 1.7;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1rpx solid #eef3f8;
+  padding: 12rpx 0;
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+.label {
+  color: #647b94;
+  font-size: 24rpx;
+}
+
+.value {
+  color: #1e314a;
+  font-size: 26rpx;
+  font-weight: 600;
+}
+
+.value.warn {
+  color: #c78200;
+}
+
+.value.small {
+  max-width: 58%;
+  text-align: right;
+  word-break: break-all;
+  font-size: 22rpx;
+}
+
+.btn {
+  width: 100%;
+  margin-top: 14rpx;
+  border-radius: 12rpx;
+  font-size: 26rpx;
+  height: 78rpx;
+  line-height: 78rpx;
+  border: none;
+}
+
+.btn-primary {
+  background: #2f6fe4;
+  color: #fff;
+}
+
+.btn-info {
+  background: #1386d8;
+  color: #fff;
+}
+
+.btn-success {
+  background: #18a95d;
+  color: #fff;
+}
+
+.btn-danger {
+  background: #d84a45;
+  color: #fff;
+}
+
+.btn-ghost {
+  background: #f0f4f8;
+  color: #365067;
+}
+
+.logs {
+  margin-top: 12rpx;
+  max-height: 320rpx;
+  overflow-y: auto;
+  background: #f7fafd;
+  border-radius: 12rpx;
+  padding: 10rpx;
+}
+
+.log-item {
+  font-size: 22rpx;
+  color: #5a6f86;
+  padding: 8rpx 6rpx;
+  border-bottom: 1rpx solid #e8eef5;
+  word-break: break-all;
+}
+
+.log-item:last-child {
+  border-bottom: none;
+}
+
+.empty {
+  text-align: center;
+  color: #94a8bc;
+  font-size: 22rpx;
+  padding: 20rpx;
+}

@@ -1,0 +1,203 @@
+<!-- pages/index/index.wxml -->
+<view class="container">
+  <view class="page-wrapper">
+    <view class="page-decor page-decor--one"></view>
+    <view class="page-decor page-decor--two"></view>
+
+    <view wx:if="{{loading}}" class="loading-overlay">
+      <loading></loading>
+      <text class="loading-text">加载中...</text>
+    </view>
+
+    <view class="modal-mask" wx:if="{{showWordbookModal}}" catchtap="closeWordbookModal"></view>
+    <view class="wordbook-modal" wx:if="{{showWordbookModal}}">
+      <view class="modal-header">
+        <text class="modal-title">{{currentStudent && currentStudent.grade ? currentStudent.grade + '词书' : '词书选择'}}</text>
+        <view class="close-btn" catchtap="closeWordbookModal">✕</view>
+      </view>
+      <view class="modal-content">
+        <view wx:if="{{gradeWordbooks.length > 0}}" class="wordbook-list">
+          <view wx:for="{{gradeWordbooks}}" wx:key="id" wx:for-item="book" class="wordbook-item" catchtap="selectWordbook" data-id="{{book.id}}">
+            <text class="wordbook-title">{{book.title || book.name || '未命名词书'}}</text>
+            <text class="wordbook-grade">{{book.grade || ''}}</text>
+            <text class="wordbook-count">{{book.totalWords ? book.totalWords + '词' : '0词'}}</text>
+          </view>
+        </view>
+        <view wx:else class="wordbook-empty">
+          <text class="wordbook-empty-text">暂无相关词书</text>
+        </view>
+      </view>
+    </view>
+
+    <view wx:if="{{!currentStudent}}" class="empty-state-container">
+      <view class="empty-state glass-card">
+        <view class="empty-icon">👥</view>
+        <view class="empty-title">暂无学生数据</view>
+        <view class="empty-description">请先选择学生，开始单词学习之旅</view>
+        <button class="add-student-btn" type="primary" bindtap="navigateToStudentSelect">选择学生</button>
+      </view>
+    </view>
+
+    <view wx:elif="{{currentStudent}}" class="page-content">
+      <view class="hero-block">
+        <view class="hero-copy">
+          <view class="hero-greeting">你好，{{currentStudent && currentStudent.name ? currentStudent.name : '同学'}}</view>
+          <view class="hero-title">今天也慢慢往前走一点</view>
+        </view>
+      </view>
+
+      <view class="student-info card hero-card">
+        <view class="student-info-main">
+          <view class="avatar-container">
+            <image class="avatar image-avatar" src="{{currentStudent && currentStudent.avatar ? currentStudent.avatar : '/images/student_avatar_new.jpg'}}" mode="aspectFill"></image>
+            <view class="sync-dot {{syncState}}" wx:if="{{syncState !== 'ok'}}" catchtap="onSyncStatusTap">
+              <text wx:if="{{syncState === 'pending'}}" class="sync-dot-num">{{syncPendingCount}}</text>
+              <text wx:else class="sync-dot-excl">!</text>
+            </view>
+          </view>
+          <view class="student-details">
+            <view class="student-name">{{currentStudent && currentStudent.name ? currentStudent.name : '请选择学生'}}</view>
+            <view class="student-class">{{currentStudent && currentStudent.grade ? currentStudent.grade : ''}}</view>
+            <view class="student-wordbooks">{{learningWordbooks || '未选择词书'}}</view>
+          </view>
+        </view>
+        <view class="switch-buttons">
+          <button class="switch-wordbook-btn" bindtap="showGradeWordbooks" hover-class="switch-wordbook-btn-hover">切换词书</button>
+          <button class="switch-student-btn" catchtap="navigateToStudentSelect">切换学生</button>
+        </view>
+      </view>
+
+      <view class="stats-section">
+        <view class="section-header">
+          <view class="section-title">核心统计</view>
+          <view class="section-more" bindtap="goToStats">
+            <text class="text-primary">详细统计 ›</text>
+          </view>
+        </view>
+        <view class="stats-card glass-card">
+          <view class="stats-grid">
+            <view class="stat-item">
+              <view class="stat-number">{{learningStats.learnedWords}}</view>
+              <view class="stat-label">已学</view>
+            </view>
+            <view class="stat-item">
+              <view class="stat-number">{{totalUnmasteredWords}}</view>
+              <view class="stat-label">未掌握</view>
+            </view>
+            <view class="stat-item">
+              <view class="stat-number">{{learningStats.weekStreak}}</view>
+              <view class="stat-label">打卡天数</view>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <view class="primary-action glass-card">
+        <view class="primary-action-copy">
+          <view class="primary-action-title">开始学习</view>
+          <view class="primary-action-desc">从最近进度接着往下走</view>
+        </view>
+        <button class="btn-primary" bindtap="goToLearning" hover-class="btn-primary--tap">开始学习</button>
+      </view>
+
+      <view class="quick-actions card">
+        <view class="section-title small-title">快捷入口</view>
+        <view class="quick-grid">
+          <button class="quick-btn quick-btn-soft" bindtap="goToReview" hover-class="quick-btn-hover">
+            <view class="quick-btn-inner">
+              <view class="quick-icon quick-icon-review"></view>
+              <view class="quick-text">
+                <view class="quick-title">抗遗忘复习</view>
+                <view class="quick-desc">按计划复习</view>
+              </view>
+            </view>
+          </button>
+          <button class="quick-btn quick-btn-soft" bindtap="goToStats" hover-class="quick-btn-hover">
+            <view class="quick-btn-inner">
+              <view class="quick-icon quick-icon-stats"></view>
+              <view class="quick-text">
+                <view class="quick-title">学习统计</view>
+                <view class="quick-desc">进度与趋势</view>
+              </view>
+            </view>
+          </button>
+          <button class="quick-btn quick-btn-soft" bindtap="goToWordbooks" hover-class="quick-btn-hover">
+            <view class="quick-btn-inner">
+              <view class="quick-icon quick-icon-books"></view>
+              <view class="quick-text">
+                <view class="quick-title">词书管理</view>
+                <view class="quick-desc">选择与切换</view>
+              </view>
+            </view>
+          </button>
+          <button class="quick-btn quick-btn-soft" bindtap="goToStudents" hover-class="quick-btn-hover">
+            <view class="quick-btn-inner">
+              <view class="quick-icon quick-icon-students"></view>
+              <view class="quick-text">
+                <view class="quick-title">学生管理</view>
+                <view class="quick-desc">学生与数据</view>
+              </view>
+            </view>
+          </button>
+          <button class="quick-btn quick-btn-secondary" bindtap="refreshPage" hover-class="quick-btn-hover">
+            <view class="quick-btn-inner">
+              <view class="quick-icon quick-icon-refresh"></view>
+              <view class="quick-text">
+                <view class="quick-title">刷新数据</view>
+                <view class="quick-desc">更新统计</view>
+              </view>
+            </view>
+          </button>
+        </view>
+      </view>
+
+      <view class="records-section">
+        <view class="section-header">
+          <view class="section-title">最近学习记录</view>
+          <view class="section-more" bindtap="goToRecords">
+            <text class="text-primary">查看全部 ›</text>
+          </view>
+        </view>
+        <view class="records-list">
+          <view wx:if="{{recentRecords.length === 0}}" class="empty-state card">
+            <text class="empty-text">暂无学习记录</text>
+          </view>
+          <view wx:else>
+            <view class="records-grid">
+              <view wx:for="{{recentRecords}}" wx:key="id" class="record-card">
+                <view class="record-card-content">
+                  <view class="record-card-header">
+                    <view class="record-card-title">{{item.wordbookName}}</view>
+                  </view>
+                  <view class="record-card-body">
+                    <view class="record-card-stats">
+                      <text class="record-card-words">{{item.wordCount}} 词</text>
+                    </view>
+                    <view class="record-card-footer">
+                      <text class="record-card-date">{{item.formattedDate}}</text>
+                    </view>
+                  </view>
+                </view>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+      <!-- 隐私政策弹窗 -->
+  <view class="privacy-mask" wx:if="{{showPrivacyModal}}" catchtap="noop">
+    <view class="privacy-dialog" catchtap="noop">
+      <view class="privacy-icon">&#x1F512;</view>
+      <view class="privacy-title">隐私政策</view>
+      <view class="privacy-body">
+        <text class="privacy-text">我们高度重视您的隐私保护。在您使用本应用前，请阅读并了解我们的隐私政策，包括我们如何收集、使用和保护您的个人信息。</text>
+      </view>
+      <view class="privacy-link-row" catchtap="onViewPrivacyPolicy">查看完整《隐私政策》</view>
+      <button class="privacy-confirm-btn" bindtap="onPrivacyConfirm">知道了</button>
+    </view>
+  </view>
+
+<view class="page-bottom-spacer"></view>
+  </view>
+</view>

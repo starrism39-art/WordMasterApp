@@ -1,0 +1,8 @@
+<view class="splash-container {{isFading ? 'is-fading' : ''}}">
+  <view class="brand-block">
+    <image class="splash-logo" src="/images/app_logo_new.jpg" mode="widthFix"></image>
+    <text class="brand-name">啃词</text>
+  </view>
+
+  <text class="brand-slogan">让单词“啃”起来更轻松</text>
+</view>

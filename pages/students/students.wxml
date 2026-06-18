@@ -1,0 +1,85 @@
+<view class="container">
+  <!-- 账号信息区域 -->
+  <view class="account-info">
+    <!-- 头像显示区域 -->
+    <view class="avatar-container">
+      <image class="avatar" src="{{currentUser && currentUser.avatar ? currentUser.avatar : '/images/avatar_default.png'}}" mode="aspectFill"></image>
+      <view class="avatar-upload-btn" bindtap="uploadAvatar">
+        <text>更换头像</text>
+      </view>
+    </view>
+    
+    <!-- 账号信息内容 -->
+    <view class="account-details">
+      <view class="account-name">{{currentUser && currentUser.name ? currentUser.name : '默认用户'}}</view>
+      <view class="account-role">教师账号</view>
+    </view>
+  </view>
+  
+
+  
+  <!-- 功能菜单区域 -->
+  <view class="feature-menu card">
+    <view class="section-title">
+      <text>功能菜单</text>
+    </view>
+    
+    <view class="menu-grid">
+      <!-- 学生管理 -->
+      <view class="menu-item" bindtap="navigateToStudentList">
+        <view class="menu-label">学生管理</view>
+      </view>
+      
+      <!-- 添加学生 -->
+      <view class="menu-item" bindtap="navigateToAddStudent">
+        <view class="menu-label">添加学生</view>
+      </view>
+      
+      <!-- 数据管理 -->
+      <view class="menu-item" bindtap="showDataManagement">
+        <view class="menu-label">数据管理</view>
+      </view>
+      
+      <!-- 存储监控 -->
+      <view class="menu-item" bindtap="checkStorageUsage">
+        <view class="menu-label">存储监控</view>
+      </view>
+      
+      <!-- 备份数据 -->
+      <view class="menu-item" bindtap="backupData">
+        <view class="menu-label">备份数据</view>
+      </view>
+      
+      <!-- 恢复数据 -->
+      <view class="menu-item" bindtap="restoreData">
+        <view class="menu-label">恢复数据</view>
+      </view>
+
+      <!-- 手动修正统计 -->
+      <view class="menu-item" bindtap="goToManualStats">
+        <view class="menu-label">手动修正统计</view>
+      </view>
+    </view>
+  </view>
+  
+  <!-- 系统信息区域 -->
+  <view class="system-info card">
+    <view class="section-title">
+      <text>系统信息</text>
+    </view>
+    
+    <view class="system-content">      
+      <view class="system-item">
+        <view class="system-label">存储使用</view>
+        <view class="system-value">{{storageUsage || '未知'}}</view>
+      </view>
+    </view>
+  </view>
+  
+  <!-- 退出登录按钮 -->
+  <view class="logout-container">
+    <button class="logout-btn" type="warn" size="default" bindtap="logout" loading="{{isLoggingOut}}">
+      {{isLoggingOut ? '退出中...' : '退出登录'}}
+    </button>
+  </view>
+</view>

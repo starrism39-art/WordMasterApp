@@ -1,0 +1,505 @@
+page {
+  background: linear-gradient(180deg, #FFFDF8 0%, #FFFFFF 100%);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.login-root {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.brand-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 60rpx;
+}
+
+.brand-logo {
+  width: 200rpx;
+  height: 200rpx;
+  margin-bottom: 20rpx;
+  mix-blend-mode: multiply;
+}
+
+.brand-name {
+  font-size: 48rpx;
+  font-weight: bold;
+  color: #4B4F57;
+  margin-bottom: 10rpx;
+}
+
+.brand-slogan {
+  font-size: 24rpx;
+  color: #7D8491;
+}
+
+.login-card {
+  width: 85%;
+  background: #FFFFFF;
+  border-radius: 24rpx;
+  box-shadow: 0 10rpx 32rpx rgba(69, 72, 81, 0.08), 0 2rpx 8rpx rgba(69, 72, 81, 0.04);
+  padding: 60rpx 40rpx;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.btn-primary {
+  width: 100% !important;
+  height: 88rpx;
+  background: linear-gradient(135deg, #58CC87 0%, #07C160 100%);
+  color: #FFFFFF;
+  font-size: 32rpx;
+  font-weight: bold;
+  border-radius: 44rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8rpx 22rpx rgba(7, 193, 96, 0.22);
+  transition: transform 0.2s;
+}
+
+.btn-primary--tap {
+  transform: scale(0.98);
+}
+
+.btn-outline {
+  width: 100% !important;
+  height: 88rpx;
+  background: transparent;
+  color: #07C160;
+  font-size: 32rpx;
+  font-weight: bold;
+  border-radius: 44rpx;
+  border: 2rpx solid #07C160;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-outline--tap {
+  transform: scale(0.98);
+  background: rgba(7, 193, 96, 0.06);
+}
+
+.divider-row {
+  display: flex;
+  align-items: center;
+  margin: 28rpx 0;
+  gap: 16rpx;
+}
+
+.divider-line {
+  flex: 1;
+  height: 1rpx;
+  background: #E5E7EB;
+}
+
+.divider-text {
+  font-size: 22rpx;
+  color: #9CA3AF;
+}
+
+.legal-note {
+  margin-top: 40rpx;
+  font-size: 22rpx;
+  color: #5F6672;
+}
+
+.legal-link {
+  color: #42524A;
+}
+
+.checkbox {
+  width: 28rpx;
+  height: 28rpx;
+  border: 2rpx solid #A8AFB9;
+  border-radius: 6rpx;
+  position: relative;
+  background: #FFFFFF;
+  box-sizing: border-box;
+}
+
+.checkbox--checked {
+  border-color: #07C160;
+  background: #07C160;
+}
+
+.checkbox--checked::after {
+  content: '';
+  position: absolute;
+  left: 7rpx;
+  top: 3rpx;
+  width: 8rpx;
+  height: 14rpx;
+  border: 2rpx solid #FFFFFF;
+  border-top: 0;
+  border-left: 0;
+  transform: rotate(45deg);
+}
+
+.agreement-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(17, 20, 24, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+}
+
+.agreement-dialog {
+  width: 86%;
+  background: #FFFFFF;
+  border-radius: 24rpx;
+  padding: 40rpx 32rpx 32rpx;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.agreement-title {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #2C3E50;
+}
+
+.agreement-desc {
+  margin-top: 12rpx;
+  font-size: 22rpx;
+  color: #6B7280;
+}
+
+.agreement-row {
+  margin-top: 28rpx;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.agreement-text {
+  font-size: 22rpx;
+  color: #5F6672;
+}
+
+.agreement-actions {
+  margin-top: 36rpx;
+  display: flex;
+  gap: 16rpx;
+}
+
+.btn-ghost {
+  flex: 1;
+  height: 80rpx;
+  border-radius: 40rpx;
+  background: #F4F6F8;
+  color: #4B4F57;
+  font-size: 28rpx;
+}
+
+.btn-primary--modal {
+  flex: 1;
+  height: 80rpx;
+  border-radius: 40rpx;
+  font-size: 28rpx;
+}
+/* ============================================================
+   啃词·教师端  学术极简登录页
+   配色：学术蓝 #007AFF / 深炭 #2C3E50 / 背景 #F6F8FA→#FFF
+   ============================================================ */
+
+page {
+  box-sizing: border-box;
+  background: linear-gradient(160deg, #F6F8FA 0%, #FFFFFF 100%);
+  min-height: 100vh;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ---- 背景装饰球 ---- */
+.bg-orb {
+  position: fixed;
+  border-radius: 50%;
+  opacity: 0.12;
+  pointer-events: none;
+  z-index: 0;
+}
+.bg-orb--tl {
+  width: 360rpx;
+  height: 360rpx;
+  top: -100rpx;
+  left: -120rpx;
+  background: radial-gradient(circle, #007AFF, transparent);
+  animation: orbFloat 8s ease-in-out infinite;
+}
+.bg-orb--br {
+  width: 280rpx;
+  height: 280rpx;
+  bottom: -80rpx;
+  right: -100rpx;
+  background: radial-gradient(circle, #4A90E2, transparent);
+  animation: orbFloat 10s ease-in-out infinite reverse;
+}
+
+@keyframes orbFloat {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(16rpx, -20rpx); }
+}
+
+/* ---- 根容器 ---- */
+.login-root {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60rpx 36rpx;
+}
+
+/* ---- 主体卡片 ---- */
+.login-card {
+  width: 100%;
+  max-width: 640rpx;
+  background: #FFFFFF;
+  border-radius: 32rpx;
+  box-shadow: 0 12rpx 48rpx rgba(0, 0, 0, 0.06),
+              0 2rpx 8rpx rgba(0, 122, 255, 0.05);
+  padding: 80rpx 48rpx 56rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* ---- 品牌区 ---- */
+.brand-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 48rpx;
+}
+
+.brand-icon {
+  width: 140rpx;
+  height: 140rpx;
+  border-radius: 32rpx;
+  background: linear-gradient(135deg, #E8F0FE, #D4E6FF);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 28rpx;
+  box-shadow: 0 4rpx 16rpx rgba(0, 122, 255, 0.1);
+}
+
+.brand-emoji {
+  font-size: 72rpx;
+  line-height: 1;
+}
+
+.brand-name {
+  font-size: 44rpx;
+  font-weight: 700;
+  color: #2C3E50;
+  letter-spacing: 2rpx;
+  margin-bottom: 16rpx;
+}
+
+.brand-slogan {
+  font-size: 24rpx;
+  color: #A0AEC0;
+  letter-spacing: 2rpx;
+  text-align: center;
+  line-height: 1.6;
+}
+
+/* ---- 分隔 ---- */
+.card-divider {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-bottom: 56rpx;
+}
+
+.divider-dot {
+  width: 10rpx;
+  height: 10rpx;
+  border-radius: 50%;
+  background: #DCE5F0;
+}
+
+/* ---- 按钮区 ---- */
+.action-area {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.btn-primary {
+  width: 80%;
+  height: 100rpx;
+  background: linear-gradient(135deg, #007AFF, #4A90E2);
+  border-radius: 50rpx;
+  padding: 0;
+  margin: 0;
+  border: none;
+  font-size: 0;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8rpx 28rpx rgba(0, 122, 255, 0.28);
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+.btn-primary--tap {
+  transform: scale(0.98);
+  box-shadow: 0 4rpx 14rpx rgba(0, 122, 255, 0.35);
+}
+
+.btn-primary-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16rpx;
+}
+
+/* 微信图标占位（CSS 简版微信气泡） */
+.btn-icon-wechat {
+  width: 40rpx;
+  height: 40rpx;
+  background: rgba(255, 255, 255, 0.22);
+  border-radius: 12rpx;
+  position: relative;
+}
+.btn-icon-wechat::after {
+  content: '';
+  position: absolute;
+  width: 18rpx;
+  height: 18rpx;
+  background: #FFFFFF;
+  border-radius: 50%;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.btn-label {
+  font-size: 32rpx;
+  color: #FFFFFF;
+  font-weight: 600;
+  letter-spacing: 1rpx;
+}
+
+/* ---- 隐私协议 ---- */
+.legal-note {
+  margin-top: 32rpx;
+  font-size: 22rpx;
+  color: #B0BEC5;
+  text-align: center;
+  line-height: 1.8;
+}
+
+.legal-link {
+  color: #007AFF;
+}
+
+/* ---- 底部 ---- */
+.footer-copy {
+  margin-top: 48rpx;
+  font-size: 22rpx;
+  color: #B0BEC5;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* ---- 微信 button 内置 loading 适配 ---- */
+button[loading] .btn-primary-inner {
+  opacity: 0.5;
+}
+
+/* 学术极简登录页样式 */
+
+/* 页面背景 */
+page {
+  background: linear-gradient(180deg, #FFFDF8 0%, #FFFFFF 100%);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 顶部留白 */
+.top-space {
+  height: 120rpx;
+}
+
+/* 品牌区 */
+.brand-area {
+  text-align: center;
+  margin-bottom: 40rpx;
+}
+.brand-logo {
+  width: 200rpx;
+  height: 200rpx;
+  margin-bottom: 20rpx;
+  mix-blend-mode: multiply;
+}
+.brand-name {
+  font-size: 48rpx;
+  font-weight: bold;
+  color: #4B4F57;
+}
+.brand-slogan {
+  font-size: 24rpx;
+  color: #7D8491;
+}
+
+/* 核心卡片 */
+.login-card {
+  width: 85%;
+  background: #FFFFFF;
+  border-radius: 24rpx;
+  box-shadow: 0 10rpx 32rpx rgba(69, 72, 81, 0.08), 0 2rpx 8rpx rgba(69, 72, 81, 0.04);
+  padding: 40rpx;
+  text-align: center;
+}
+
+/* 登录按钮 */
+.btn-primary {
+  width: 85%;
+  height: 88rpx;
+  background: linear-gradient(135deg, #58CC87 0%, #07C160 100%);
+  color: #FFFFFF;
+  font-size: 32rpx;
+  font-weight: bold;
+  border-radius: 44rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8rpx 22rpx rgba(7, 193, 96, 0.22);
+  transition: transform 0.2s;
+}
+.btn-primary--tap {
+  transform: scale(0.98);
+}
+
+/* 底部协议 */
+.legal-note {
+  margin-top: 20rpx;
+  font-size: 22rpx;
+  color: #5F6672;
+}
+.legal-link {
+  color: #42524A;
+}

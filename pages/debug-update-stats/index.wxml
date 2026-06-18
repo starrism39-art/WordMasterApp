@@ -1,0 +1,49 @@
+<view class="container">
+	<view class="card header-card">
+		<view class="title">手动修正统计</view>
+		<view class="meta">学生：{{currentStudent.name || currentStudent.id || '未知学生'}}</view>
+		<view class="meta" wx:if="{{mode === 'wordbook'}}">
+			词书：{{currentWordbook.title || currentWordbook.name || currentWordbook.id || '未知词书'}}
+		</view>
+		<view class="tag" wx:if="{{hasManualOverride}}">已手动修正</view>
+	</view>
+
+	<view class="card">
+		<view class="section-title">当前计算值</view>
+		<view class="stat-row">
+			<text class="label">已学</text>
+			<text class="value">{{currentStats.masteredCount}}</text>
+		</view>
+		<view class="stat-row">
+			<text class="label">未掌握</text>
+			<text class="value">{{currentStats.notMasteredCount}}</text>
+		</view>
+		<view class="stat-row" wx:if="{{mode === 'core'}}">
+			<text class="label">打卡天数</text>
+			<text class="value">{{currentStats.checkinDays}}</text>
+		</view>
+	</view>
+
+	<view class="card">
+		<view class="section-title">手动修正</view>
+		<view class="form-row">
+			<text class="label">已学</text>
+			<input class="input" type="number" data-field="masteredCount" value="{{editStats.masteredCount}}" bindinput="handleInput" />
+		</view>
+		<view class="form-row">
+			<text class="label">未掌握</text>
+			<input class="input" type="number" data-field="notMasteredCount" value="{{editStats.notMasteredCount}}" bindinput="handleInput" />
+		</view>
+		<view class="form-row" wx:if="{{mode === 'core'}}">
+			<text class="label">打卡天数</text>
+			<input class="input" type="number" data-field="checkinDays" value="{{editStats.checkinDays}}" bindinput="handleInput" />
+		</view>
+	</view>
+
+	<view class="tip">保存后会以当前计算值为基准自动累加。</view>
+
+	<view class="actions">
+		<button class="btn-primary" type="primary" loading="{{isSaving}}" bindtap="saveOverride">保存修正</button>
+		<button class="btn-ghost" type="default" bindtap="resetOverride">恢复自动</button>
+	</view>
+</view>

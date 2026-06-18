@@ -1,0 +1,213 @@
+/* pages/student-list/student-list.wxss */
+.container {
+  padding: 24rpx;
+  padding-bottom: 160rpx;
+  background: #f3f4f6;
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+
+.header {
+  margin-bottom: 20rpx;
+  text-align: center;
+}
+
+.title {
+  display: block;
+  font-size: 40rpx;
+  font-weight: 700;
+  color: #111827;
+}
+
+.subtitle {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #9ca3af;
+}
+
+.search-bar {
+  margin-bottom: 20rpx;
+  background: #ffffff;
+  border: 1rpx solid #e5e7eb;
+  border-radius: 18rpx;
+  min-height: 80rpx;
+  padding: 0 18rpx;
+  display: flex;
+  align-items: center;
+}
+
+.search-bar input {
+  flex: 1;
+  background: transparent;
+  border-radius: 0;
+  padding: 12rpx 8rpx;
+  font-size: 28rpx;
+  color: #374151;
+}
+
+.clear-search {
+  font-size: 24rpx;
+  color: #2563eb;
+  background: #eff6ff;
+  border: 1rpx solid #dbeafe;
+  border-radius: 999rpx;
+  padding: 6rpx 16rpx;
+}
+
+.student-list {
+  padding: 4rpx 0;
+}
+
+.student-item-wrapper {
+  width: 100% !important;
+  margin-bottom: 24rpx !important;
+  border-radius: 16rpx !important;
+  overflow: hidden !important;
+  background-color: #ffffff !important;
+}
+
+.slide-area {
+  width: 100% !important;
+  height: 160rpx !important;
+}
+
+.slide-view {
+  width: calc(100% + 240rpx) !important;
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: row !important;
+}
+
+.card-content {
+  flex: 1 !important;
+  height: 100% !important;
+  padding: 0 40rpx !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  background-color: #ffffff !important;
+}
+
+.action-buttons {
+  width: 240rpx !important;
+  height: 100% !important;
+  display: flex !important;
+  flex-shrink: 0 !important;
+}
+
+.action-btn {
+  flex: 1 !important;
+  height: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: #ffffff !important;
+  font-size: 28rpx !important;
+  font-weight: bold !important;
+}
+
+.edit-btn {
+  background-color: #10b981 !important;
+}
+
+.delete-btn {
+  background-color: #ef4444 !important;
+}
+
+.name-row {
+  display: flex !important;
+  align-items: center !important;
+  margin-bottom: 8rpx !important;
+}
+
+.student-name {
+  font-size: 34rpx !important;
+  font-weight: bold !important;
+  color: #333333 !important;
+}
+
+.current-tag {
+  background-color: #ffbb96 !important;
+  color: #ffffff !important;
+  font-size: 20rpx !important;
+  padding: 4rpx 12rpx !important;
+  border-radius: 8rpx !important;
+  margin-left: 16rpx !important;
+}
+
+.student-grade {
+  font-size: 26rpx !important;
+  color: #999999 !important;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 110rpx 0;
+}
+
+.empty-title {
+  display: block;
+  color: #9ca3af;
+  font-size: 30rpx;
+  font-weight: 600;
+}
+
+.empty-desc {
+  display: block;
+  margin-top: 10rpx;
+  color: #c0c4cc;
+  font-size: 24rpx;
+}
+
+.floating-add-button {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 56rpx;
+  display: flex;
+  justify-content: center;
+  z-index: 999;
+  pointer-events: none;
+}
+
+.fab-button {
+  background: #ffffff;
+  color: #16a34a;
+  border-radius: 999rpx;
+  width: 320rpx;
+  height: 88rpx;
+  font-size: 32rpx;
+  line-height: 88rpx;
+  font-weight: 700;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  box-shadow: 0 10rpx 20rpx rgba(22, 163, 74, 0.16);
+  border: 2rpx solid #4ade80;
+  pointer-events: auto;
+}
+
+.fab-button:active {
+  transform: scale(0.96);
+}
+
+/* 选择模式轻量布局 */
+.container.select-mode {
+  padding-top: 16rpx;
+  padding-bottom: 36rpx;
+}
+
+.select-mode .header {
+  margin-bottom: 16rpx;
+}
+
+.select-mode .title {
+  font-size: 36rpx;
+}
+
+.select-mode .search-bar {
+  margin-bottom: 12rpx;
+  min-height: 72rpx;
+}

@@ -1,0 +1,2335 @@
+/* pages/learning/learning.wxss */
+.container {
+  padding: 40rpx;
+  padding-bottom: 140rpx;
+  background-color: #f5f5f5;
+  min-height: 100vh;
+}
+
+/* 页面标题 */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 40rpx;
+}
+
+.header-title {
+  font-size: 48rpx;
+  font-weight: bold;
+  color: #333;
+  text-align: center;
+  flex: 1;
+}
+
+/* 预览内容容器 */
+.preview-content {
+  background: #fff;
+  border-radius: 20rpx;
+  padding: 30rpx;
+  box-shadow: 0 2rpx 10rpx rgba(0, 0, 0, 0.1);
+}
+
+/* 批次和进度信息样式 */
+.batch-progress-info {
+  background: #f8f8f8;
+  padding: 20rpx;
+  border-radius: 10rpx;
+  margin-bottom: 20rpx;
+}
+
+.batch-info {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10rpx;
+  font-size: 28rpx;
+  color: #666;
+}
+
+.mastery-progress {
+  text-align: right;
+  font-size: 28rpx;
+  color: #07c160;
+  font-weight: 500;
+}
+
+/* 底部操作区域优化 */
+.bottom-action {
+  padding: 20rpx 0;
+  margin-top: auto;
+}
+
+/* 实时统计信息样式 */
+.realtime-stats {
+  margin: 20rpx 0;
+  padding: 20rpx;
+  background-color: #f8f8f8;
+  border-radius: 12rpx;
+  border: 1rpx solid #eee;
+}
+
+.stats-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10rpx;
+  align-items: center;
+}
+
+.stats-text {
+  font-size: 28rpx;
+  color: #333;
+  font-weight: 500;
+}
+
+.progress-bar {
+  height: 10rpx;
+  background-color: #eee;
+  border-radius: 5rpx;
+  margin: 15rpx 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4CAF50 0%, #8BC34A 100%);
+  transition: width 0.3s ease;
+  box-shadow: 0 2rpx 4rpx rgba(0,0,0,0.1);
+}
+
+/* 分页控制样式 */
+.pagination-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 30rpx 0;
+  padding: 20rpx;
+  background-color: #fff;
+  border-radius: 15rpx;
+  box-shadow: 0 2rpx 10rpx rgba(0, 0, 0, 0.1);
+}
+
+.pagination-info {
+  font-size: 28rpx;
+  color: #666;
+  margin-bottom: 20rpx;
+  text-align: center;
+}
+
+.load-more-button {
+  background-color: #3879d9;
+  color: white;
+  border-radius: 40rpx;
+  padding: 20rpx 40rpx;
+  font-size: 32rpx;
+  min-width: 200rpx;
+  border: none;
+}
+
+.load-more-button:active {
+  background-color: #2d68c8;
+}
+
+.loading-more {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20rpx;
+  color: #666;
+  font-size: 28rpx;
+}
+
+/* 加载状态样式 */
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 60vh;
+  text-align: center;
+}
+
+.loading-spinner {
+  width: 60rpx;
+  height: 60rpx;
+  border: 6rpx solid #f3f3f3;
+  border-top: 6rpx solid #3879d9;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 20rpx;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.loading-text {
+  color: #666;
+  font-size: 28rpx;
+}
+
+/* 错误状态样式 */
+.error-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 60vh;
+  text-align: center;
+  padding: 40rpx;
+}
+
+.error-text {
+  color: #e64340;
+  font-size: 32rpx;
+  margin-bottom: 30rpx;
+  line-height: 1.5;
+}
+
+.retry-button {
+  background-color: #3879d9;
+  color: white;
+  border-radius: 44rpx;
+  font-size: 28rpx;
+  padding: 0 60rpx;
+}
+
+/* 空数据状态样式 */
+.empty-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 60vh;
+  text-align: center;
+  color: #999;
+}
+
+.empty-text {
+  font-size: 36rpx;
+  margin-bottom: 20rpx;
+  color: #666;
+}
+
+.empty-subtext {
+  font-size: 28rpx;
+  color: #999;
+}
+
+/* 学习完成页面样式 */
+.completed-page {
+  padding: 60rpx 30rpx;
+  min-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+}
+
+.completed-header {
+  text-align: center;
+  margin-bottom: 60rpx;
+}
+
+.completed-title {
+  font-size: 48rpx;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 20rpx;
+}
+
+.completed-subtitle {
+  font-size: 32rpx;
+  color: #666;
+}
+
+.completed-stats {
+  background-color: white;
+  border-radius: 20rpx;
+  padding: 40rpx;
+  margin-bottom: 60rpx;
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.1);
+  min-width: 80%;
+  text-align: center;
+}
+
+.stat-item {
+  display: block;
+  font-size: 32rpx;
+  color: #333;
+  margin-bottom: 20rpx;
+  font-weight: 500;
+}
+
+.completed-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+  width: 100%;
+  max-width: 500rpx;
+}
+
+.back-home-button,
+.start-new-button {
+  padding: 25rpx;
+  border-radius: 15rpx;
+  font-size: 32rpx;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  border: none;
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.1);
+}
+
+.back-home-button {
+  background-color: #f5f5f5;
+  color: #666;
+  border: 1rpx solid #e0e0e0;
+}
+
+.back-home-button:active {
+  background-color: #e8e8e8;
+  transform: translateY(2rpx);
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.08);
+}
+
+.start-new-button {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  box-shadow: 0 6rpx 16rpx rgba(102, 126, 234, 0.4);
+}
+
+.start-new-button:active {
+  transform: translateY(2rpx);
+  box-shadow: 0 4rpx 12rpx rgba(102, 126, 234, 0.3);
+}
+
+/* 入口页面样式 */
+.entry-page {
+  display: flex;
+  flex-direction: column;
+  gap: 40rpx;
+}
+
+.student-info-card,
+.wordbook-info-card {
+  background-color: #fff;
+  border-radius: 16rpx;
+  padding: 40rpx;
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.1);
+}
+
+.student-info,
+.wordbook-info {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  flex-wrap: wrap;
+}
+
+.student-label,
+.wordbook-label {
+  font-size: 32rpx;
+  color: #666;
+}
+
+.student-name,
+.wordbook-title {
+  font-size: 36rpx;
+  font-weight: 500;
+  color: #333;
+  flex: 1;
+}
+
+.choose-button {
+  background-color: #07c160;
+  color: white;
+  border-radius: 60rpx;
+  font-size: 28rpx;
+  padding: 15rpx 30rpx;
+  white-space: nowrap;
+}
+
+/* 同类型词书 */
+.same-type-wordbooks {
+  background-color: #fff;
+  border-radius: 16rpx;
+  padding: 30rpx;
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.1);
+}
+
+.section-title {
+  font-size: 32rpx;
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 20rpx;
+}
+
+.wordbook-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20rpx;
+}
+
+.wordbook-switch-button {
+  background-color: #f5f5f5;
+  color: #666;
+  border-radius: 60rpx;
+  font-size: 28rpx;
+  padding: 15rpx 30rpx;
+  flex-shrink: 0;
+}
+
+.wordbook-switch-button:active {
+  background-color: #e6e6e6;
+}
+
+/* 开始学习按钮 */
+.start-learning-button {
+  background-color: #07c160;
+  color: white;
+  border-radius: 80rpx;
+  font-size: 36rpx;
+  padding: 25rpx 0;
+  margin-top: 40rpx;
+  font-weight: 500;
+}
+
+.start-learning-button:active {
+  background-color: #06b255;
+}
+
+/* 单词列表通用样式 - 摊开显示 */
+.words-list {
+  background-color: transparent;
+  border-radius: 0;
+  padding: 0;
+  margin-bottom: 20rpx;
+  box-shadow: none;
+  max-height: none;
+  overflow-y: auto;
+  border: none;
+}
+
+/* 单词操作按钮 */
+.word-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 20rpx;
+  padding: 0 15rpx;
+  width: 100%;
+}
+
+.action-button {
+  width: 100rpx;
+  height: 100rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40rpx;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.1);
+  background-color: white;
+  border: 2rpx solid #eee;
+}
+
+.correct-button {
+  color: #07c160;
+  border-color: #07c160;
+  background-color: rgba(7, 193, 96, 0.1);
+}
+
+.wrong-button {
+  color: #ff4d4f;
+  border-color: #ff4d4f;
+  background-color: rgba(255, 77, 79, 0.1);
+}
+
+.correct-button.active {
+  background-color: #07c160;
+  color: white;
+  transform: scale(1.1);
+  box-shadow: 0 4rpx 12rpx rgba(7, 193, 96, 0.3);
+  border-color: #07c160;
+}
+
+.wrong-button.active {
+  background-color: #ff4d4f;
+  color: white;
+  transform: scale(1.1);
+  box-shadow: 0 4rpx 12rpx rgba(255, 77, 79, 0.3);
+  border-color: #ff4d4f;
+}
+
+.action-button:active {
+  transform: scale(0.95);
+  opacity: 0.9;
+  transition: all 0.1s ease;
+}
+
+/* 按钮点击波纹效果 */
+.action-button::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.6);
+  transform: translate(-50%, -50%);
+  transition: width 0.5s, height 0.5s, opacity 0.5s;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.action-button:active::after {
+  width: 200rpx;
+  height: 200rpx;
+  opacity: 1;
+}
+
+/* 预习状态显示 */
+.preview-status {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  padding: 20rpx 0;
+  margin-bottom: 20rpx;
+  border-top: 1rpx solid #eee;
+  border-bottom: 1rpx solid #eee;
+  background-color: white;
+}
+
+.status-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.status-label {
+  font-size: 28rpx;
+  color: #666;
+  margin-bottom: 5rpx;
+}
+
+.status-count {
+  font-size: 32rpx;
+  font-weight: bold;
+  color: #333;
+}
+
+.mastered-count {
+  color: #07c160;
+}
+
+.not-mastered-count {
+  color: #ff4d4f;
+}
+
+.total-count {
+  color: #3879d9;
+}
+/* 新词学习页面样式 */
+.new-learning-page {
+  padding: 20rpx;
+  min-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 160rpx); /* 减去顶部和底部元素的高度 */
+}
+
+/* 新词学习页面的单词列表 - 铺满剩余空间 */
+.new-learning-page .words-list {
+  max-height: none;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 30rpx;
+  min-height: 600rpx;
+}
+
+/* 预习和检测单词项 - 摊开显示，每个单词独立矩形框 */
+.word-item-preview {
+  padding: 25rpx;
+  margin-bottom: 15rpx;
+  background-color: #fff;
+  border-radius: 16rpx;
+  border: 3rpx solid #e0e0e0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  transition: all 0.2s ease;
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.08);
+  min-height: auto;
+}
+
+/* 预习页面样式 - 支持自适应布局 */
+.preview-page {
+  padding: 20rpx;
+  min-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 160rpx); /* 减去顶部和底部元素的高度 */
+}
+
+/* 预习页面的预览内容 - 铺满剩余空间 */
+.preview-page .preview-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 预习页面的单词列表 - 自适应高度 */
+.preview-page .words-list {
+  max-height: none;
+  flex: 1;
+  overflow-y: auto;
+  margin-bottom: 30rpx;
+}
+
+
+
+.word-item-preview:active {
+  transform: scale(0.98);
+}
+
+.word-content {
+  flex: 1;
+  /* 确保内容区域有足够的空间显示单词 */
+  min-width: 0;
+  margin-bottom: 10rpx; /* 为底部按钮预留空间 */
+}
+
+.word-text {
+  /* 基本字体大小设置，适当增大 */
+  font-size: 56rpx;
+  /* 增加视口相关的字体大小适配，适当增大 */
+  font-size: calc(3.5vw + 24rpx);
+  font-weight: 700;
+  color: #333;
+  margin-bottom: 20rpx; /* 保持与音标/释义的间距 */
+  display: block;
+  line-height: 1.4;
+  /* 允许长单词换行显示 */
+  white-space: normal;
+  word-break: break-word;
+}
+
+.word-phonetic {
+  font-size: 28rpx;
+  color: #666;
+  margin-bottom: 15rpx;
+  display: block;
+}
+
+.word-translation {
+  font-size: 38rpx;
+  color: #444;
+  line-height: 1.5;
+}
+
+
+
+/* 底部操作区域 */
+.bottom-action {
+  margin-top: 40rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}
+
+/* 顶部批次信息容器 */
+.top-batch-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20rpx;
+}
+
+.batch-meta {
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+}
+
+/* 批次编号显示 */
+.batch-number {
+  font-weight: bold;
+}
+
+.batch-number-text {
+  font-size: 32rpx;
+  color: #333;
+  font-weight: 600;
+}
+
+.phonetic-mode-switch {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  background: #f5f7fb;
+  border: 1rpx solid #dbe3ef;
+  border-radius: 28rpx;
+  padding: 6rpx 8rpx 6rpx 14rpx;
+}
+
+.phonetic-mode-label {
+  font-size: 24rpx;
+  color: #4a5568;
+}
+
+.phonetic-mode-options {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.phonetic-mode-option {
+  min-width: 50rpx;
+  height: 44rpx;
+  line-height: 44rpx;
+  text-align: center;
+  font-size: 24rpx;
+  color: #5b667a;
+  border-radius: 22rpx;
+  padding: 0 10rpx;
+  background: transparent;
+}
+
+.phonetic-mode-option.active {
+  color: #fff;
+  background: #2f6df6;
+  box-shadow: 0 2rpx 8rpx rgba(47, 109, 246, 0.3);
+}
+
+/* 批次导航按钮容器 - 小尺寸 */
+.batch-nav-buttons.small {
+  display: flex;
+  gap: 15rpx;
+}
+
+/* 批次导航按钮 - 微型样式 */
+.batch-nav-buttons.small .prev-batch-button.tiny,
+.batch-nav-buttons.small .next-batch-button.tiny {
+  width: 60rpx;
+  height: 60rpx;
+  border-radius: 30rpx;
+  font-size: 28rpx;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  box-shadow: 0 3rpx 10rpx rgba(102, 126, 234, 0.4);
+  font-weight: bold;
+}
+
+.batch-nav-buttons.small .prev-batch-button.tiny:disabled,
+.batch-nav-buttons.small .next-batch-button.tiny:disabled {
+  background: linear-gradient(135deg, #cccccc 0%, #999999 100%);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.batch-nav-buttons.small .prev-batch-button.tiny:active,
+.batch-nav-buttons.small .next-batch-button.tiny:active {
+  transform: scale(0.9);
+  box-shadow: 0 2rpx 6rpx rgba(102, 126, 234, 0.3);
+}
+
+.next-batch-button {
+  background-color: #3879d9;
+  color: white;
+  border-radius: 80rpx;
+  font-size: 36rpx;
+  padding: 25rpx 0;
+  font-weight: 500;
+  width: 100%;
+}
+
+.next-batch-button:active {
+  background-color: #2e68b6;
+}
+
+.start-new-learning-button,
+.complete-group-button,
+.complete-test-button {
+  background-color: #07c160;
+  color: white;
+  border-radius: 80rpx;
+  font-size: 36rpx;
+  padding: 25rpx 0;
+  font-weight: 500;
+  width: 100%;
+}
+
+.start-new-learning-button:active,
+.complete-group-button:active,
+.complete-test-button:active {
+  background-color: #06b255;
+}
+
+/* 新词学习页面 */
+.new-learning-page .top-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30rpx;
+}
+
+.new-learning-page .progress-info {
+  background-color: #fff;
+  padding: 15rpx 30rpx;
+  border-radius: 60rpx;
+  box-shadow: 0 2rpx 10rpx rgba(0, 0, 0, 0.1);
+}
+
+.progress-text {
+  font-size: 32rpx;
+  font-weight: 500;
+  color: #333;
+}
+
+.shuffle-button {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  background-color: #fff;
+  padding: 15rpx 30rpx;
+  border-radius: 60rpx;
+  box-shadow: 0 2rpx 10rpx rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+}
+
+.shuffle-button:active {
+  transform: scale(0.95);
+}
+
+.shuffle-icon {
+  font-size: 32rpx;
+}
+
+.shuffle-text {
+  font-size: 28rpx;
+  color: #666;
+}
+
+/* 完成组操作页面 */
+.group-complete-page {
+  padding: 40rpx 30rpx;
+  min-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+}
+
+/* 进度部分 */
+.progress-section {
+  margin-bottom: 60rpx;
+  background: white;
+  padding: 40rpx 30rpx;
+  border-radius: 24rpx;
+  box-shadow: 0 8rpx 24rpx rgba(0, 0, 0, 0.08);
+  border: 1rpx solid rgba(0, 0, 0, 0.05);
+}
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30rpx;
+}
+
+.progress-title {
+  font-size: 36rpx;
+  color: #333;
+  font-weight: 600;
+  text-shadow: 0 2rpx 4rpx rgba(0, 0, 0, 0.05);
+}
+
+.progress-group-info {
+  font-size: 34rpx;
+  color: #07c160;
+  font-weight: 700;
+  background: rgba(7, 193, 96, 0.1);
+  padding: 10rpx 20rpx;
+  border-radius: 20rpx;
+  border: 2rpx solid rgba(7, 193, 96, 0.3);
+}
+
+.progress-bar-container {
+  width: 100%;
+  margin-top: 10rpx;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 16rpx;
+  background-color: #f0f0f0;
+  border-radius: 8rpx;
+  overflow: hidden;
+  box-shadow: inset 0 2rpx 4rpx rgba(0, 0, 0, 0.1);
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #07c160 0%, #06b255 100%);
+  border-radius: 8rpx;
+  transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2rpx 8rpx rgba(7, 193, 96, 0.4);
+  position: relative;
+}
+
+.progress-fill::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.3) 50%, transparent 100%);
+  animation: shine 2s infinite;
+}
+
+@keyframes shine {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* 操作部分 */
+.action-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 30rpx;
+}
+
+.action-title {
+  font-size: 40rpx;
+  font-weight: 700;
+  color: #333;
+  margin-bottom: 30rpx;
+  text-align: center;
+  text-shadow: 0 2rpx 4rpx rgba(0, 0, 0, 0.05);
+  letter-spacing: 2rpx;
+}
+
+/* 按钮样式 */
+.next-group-button,
+.custom-mix-button,
+.end-early-button,
+.final-test-button {
+  width: 100%;
+  padding: 35rpx;
+  border-radius: 24rpx;
+  font-size: 34rpx;
+  font-weight: 600;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  border: none;
+  box-shadow: 0 6rpx 20rpx rgba(0, 0, 0, 0.12);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 15rpx;
+}
+
+.next-group-button {
+  background: linear-gradient(135deg, #07c160 0%, #06b255 100%);
+  color: white;
+}
+
+.next-group-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.2) 50%, transparent 100%);
+  transition: left 0.6s;
+}
+
+.next-group-button:hover::before {
+  left: 100%;
+}
+
+.next-group-button:active {
+  transform: translateY(4rpx) scale(0.98);
+  box-shadow: 0 4rpx 12rpx rgba(7, 193, 96, 0.4);
+}
+
+.custom-mix-button {
+  background: linear-gradient(135deg, #4A90E2 0%, #3A80D2 100%);
+  color: white;
+}
+
+.custom-mix-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.2) 50%, transparent 100%);
+  transition: left 0.6s;
+}
+
+.custom-mix-button:hover::before {
+  left: 100%;
+}
+
+.custom-mix-button:active {
+  transform: translateY(4rpx) scale(0.98);
+  box-shadow: 0 4rpx 12rpx rgba(74, 144, 226, 0.4);
+}
+
+.end-early-button {
+  background: white;
+  color: #666;
+  border: 2rpx solid #e0e0e0;
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.06);
+}
+
+.end-early-button:active {
+  background: #f8f9fa;
+  transform: translateY(4rpx) scale(0.98);
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.06);
+}
+
+/* 课后检测按钮样式 */
+.final-test-button {
+  background: linear-gradient(135deg, #ff9500 0%, #e68a00 100%);
+  color: white;
+}
+
+.final-test-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.2) 50%, transparent 100%);
+  transition: left 0.6s;
+}
+
+.final-test-button:hover::before {
+  left: 100%;
+}
+
+.final-test-button:active {
+  transform: translateY(4rpx) scale(0.98);
+  box-shadow: 0 4rpx 12rpx rgba(255, 149, 0, 0.4);
+}
+
+/* 自定义混组面板样式 */
+.custom-mix-panel {
+  padding: 20rpx 15rpx;
+  min-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(135deg, #f0f4f8 0%, #e9ecef 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+/* 背景装饰效果 - 简化 */
+.custom-mix-panel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle at top right, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
+  z-index: 0;
+}
+
+/* 面板内容容器 */
+.custom-mix-panel .panel-header,
+.custom-mix-panel .select-all-section,
+.custom-mix-panel .groups-list,
+.custom-mix-panel .panel-actions {
+  position: relative;
+  z-index: 1;
+}
+
+/* 面板头部 */
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 40rpx;
+  padding-bottom: 25rpx;
+  border-bottom: 2rpx solid rgba(102, 126, 234, 0.2);
+  position: relative;
+}
+
+.panel-title {
+  font-size: 36rpx;
+  font-weight: 600;
+  color: #333;
+  transition: all 0.3s ease;
+  position: relative;
+  z-index: 1;
+}
+
+.panel-header:hover .panel-title {
+  color: #667eea;
+}
+
+.panel-close {
+  padding: 10rpx;
+  transition: all 0.3s ease;
+  border-radius: 50%;
+  position: relative;
+}
+
+.panel-close:hover {
+  background-color: rgba(153, 153, 153, 0.1);
+  transform: scale(1.05);
+}
+
+.panel-close:active {
+  transform: scale(0.95);
+  background-color: rgba(153, 153, 153, 0.2);
+}
+
+.close-icon {
+  font-size: 32rpx;
+  color: #999;
+  transition: color 0.3s ease;
+  font-weight: normal;
+}
+
+.panel-close:hover .close-icon {
+  color: #667eea;
+}
+
+.panel-close:active .close-icon {
+  color: #666;
+}
+
+/* 全选区域 */
+.select-all-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20rpx;
+  padding: 20rpx;
+  background-color: white;
+  border-radius: 16rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+  border: 1rpx solid rgba(102, 126, 234, 0.1);
+  position: relative;
+}
+
+.select-all-section:active {
+  transform: translateY(2rpx);
+  box-shadow: 0 1rpx 4rpx rgba(0, 0, 0, 0.06);
+}
+
+.checkbox {
+  margin-right: 15rpx;
+  width: 40rpx;
+  height: 40rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.checkbox-inner {
+  width: 32rpx;
+  height: 32rpx;
+  border: 2rpx solid #667eea;
+  border-radius: 6rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  background-color: white;
+  position: relative;
+}
+
+.checkbox-inner.checked {
+  background-color: #667eea;
+  border-color: #667eea;
+  transform: scale(1.05);
+  box-shadow: 0 2rpx 8rpx rgba(102, 126, 234, 0.3);
+}
+
+.checkbox-check {
+  color: white;
+  font-size: 20rpx;
+  font-weight: bold;
+  transition: all 0.3s ease;
+  position: relative;
+  z-index: 2;
+}
+
+.select-all-text {
+  font-size: 28rpx;
+  font-weight: 500;
+  color: #333;
+  flex: 1;
+  transition: all 0.3s ease;
+}
+
+.select-all-section:hover .select-all-text {
+  color: #667eea;
+}
+
+/* 选中数量增强样式 */
+.selected-count {
+  font-size: 24rpx;
+  color: #667eea;
+  font-weight: 500;
+  background-color: rgba(102, 126, 234, 0.1);
+  padding: 8rpx 16rpx;
+  border-radius: 20rpx;
+  border: 1rpx solid rgba(102, 126, 234, 0.2);
+  transition: all 0.3s ease;
+  box-shadow: 0 2rpx 6rpx rgba(102, 126, 234, 0.1);
+}
+
+.selected-count:hover {
+  background-color: rgba(102, 126, 234, 0.15);
+  box-shadow: 0 3rpx 10rpx rgba(102, 126, 234, 0.15);
+}
+
+/* 组列表 */
+.groups-list {
+  flex: 1;
+  overflow-y: auto;
+  margin-bottom: 30rpx;
+}
+
+/* 组项样式 */
+.group-item {
+  display: flex;
+  align-items: center;
+  padding: 25rpx;
+  background-color: white;
+  border-radius: 16rpx;
+  margin-bottom: 15rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+  cursor: pointer;
+  border: 1rpx solid rgba(102, 126, 234, 0.1);
+  position: relative;
+}
+
+.group-item:active {
+  transform: translateY(2rpx) scale(0.98);
+  box-shadow: 0 1rpx 4rpx rgba(0, 0, 0, 0.06);
+}
+
+/* 选中状态的组项 */
+.group-item.selected {
+  background-color: rgba(102, 126, 234, 0.05);
+  border-left: 8rpx solid #667eea;
+  box-shadow: 0 4rpx 12rpx rgba(102, 126, 234, 0.15);
+  transform: translateX(4rpx);
+  border-color: rgba(102, 126, 234, 0.2);
+}
+
+/* 组图标 */
+.group-icon {
+  width: 60rpx;
+  height: 60rpx;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 30rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 20rpx;
+  box-shadow: 0 2rpx 8rpx rgba(102, 126, 234, 0.3);
+  transition: all 0.3s ease;
+  position: relative;
+  z-index: 1;
+}
+
+.group-item.selected .group-icon {
+  transform: scale(1.05);
+  box-shadow: 0 4rpx 12rpx rgba(102, 126, 234, 0.4);
+}
+
+.group-number {
+  color: white;
+  font-size: 28rpx;
+  font-weight: bold;
+  position: relative;
+  z-index: 2;
+}
+
+/* 组信息 */
+.group-info {
+  flex: 1;
+  position: relative;
+  z-index: 1;
+}
+
+.group-name {
+  font-size: 28rpx;
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 6rpx;
+  transition: all 0.3s ease;
+}
+
+.group-item.selected .group-name {
+  color: #667eea;
+  font-weight: 600;
+}
+
+.group-mix-count {
+  font-size: 20rpx;
+  color: #999;
+  font-style: italic;
+  transition: all 0.3s ease;
+  background: rgba(153, 153, 153, 0.08);
+  padding: 4rpx 12rpx;
+  border-radius: 12rpx;
+  display: inline-block;
+}
+
+.group-item.selected .group-mix-count {
+  color: #667eea;
+  background: rgba(102, 126, 234, 0.1);
+  font-weight: 400;
+}
+
+/* 组复选框 */
+.group-checkbox {
+  margin-left: 20rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 组复选框内部样式 */
+.group-checkbox .checkbox-inner {
+  width: 40rpx;
+  height: 40rpx;
+  border: 4rpx solid #667eea;
+  border-radius: 10rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  background-color: white;
+  position: relative;
+  overflow: hidden;
+}
+
+.group-checkbox .checkbox-inner::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  transform: scale(0);
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 1;
+}
+
+.group-checkbox .checkbox-inner.checked {
+  border-color: #667eea;
+  transform: scale(1.1);
+  box-shadow: 0 6rpx 20rpx rgba(102, 126, 234, 0.5);
+}
+
+.group-checkbox .checkbox-inner.checked::before {
+  transform: scale(1);
+}
+
+.group-checkbox .checkbox-check {
+  color: white;
+  font-size: 28rpx;
+  font-weight: bold;
+  transition: all 0.4s ease;
+  position: relative;
+  z-index: 2;
+  opacity: 0;
+  transform: scale(0.5);
+}
+
+.group-checkbox .checkbox-inner.checked .checkbox-check {
+  opacity: 1;
+  transform: scale(1);
+  animation: checkmarkAppear 0.4s ease;
+}
+
+/* 面板操作按钮 */
+.panel-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20rpx;
+  background-color: white;
+  border-radius: 16rpx;
+  margin-top: 20rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.08);
+  border: 1rpx solid rgba(102, 126, 234, 0.1);
+  position: relative;
+}
+
+/* 按钮样式 */
+.cancel-button, .start-review-button {
+  flex: 1;
+  padding: 20rpx;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  border: none;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.1);
+  position: relative;
+}
+
+.cancel-button {
+  background-color: #f5f5f5;
+  color: #666;
+  margin-right: 15rpx;
+  border: 1rpx solid #e0e0e0;
+}
+
+.cancel-button:hover {
+  background-color: #e8e8e8;
+  border-color: #d0d0d0;
+  transform: translateY(-1rpx);
+  box-shadow: 0 3rpx 10rpx rgba(0, 0, 0, 0.1);
+}
+
+.cancel-button:active {
+  background-color: #d8d8d8;
+  transform: translateY(2rpx);
+  box-shadow: 0 1rpx 4rpx rgba(0, 0, 0, 0.08);
+}
+
+.start-review-button {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  box-shadow: 0 3rpx 12rpx rgba(102, 126, 234, 0.3);
+  position: relative;
+}
+
+.start-review-button:hover {
+  transform: translateY(-1rpx);
+  box-shadow: 0 4rpx 16rpx rgba(102, 126, 234, 0.4);
+}
+
+.start-review-button:active {
+  transform: translateY(2rpx);
+  box-shadow: 0 2rpx 8rpx rgba(102, 126, 234, 0.3);
+}
+
+.start-review-button:disabled {
+  background: linear-gradient(135deg, #cccccc 0%, #999999 100%);
+  color: #666;
+  box-shadow: 0 2rpx 6rpx rgba(0, 0, 0, 0.08);
+  cursor: not-allowed;
+}
+
+.start-review-button:disabled:hover {
+  transform: none;
+  box-shadow: 0 2rpx 6rpx rgba(0, 0, 0, 0.08);
+}
+
+/* 滚动条样式 */
+.groups-list::-webkit-scrollbar {
+  width: 6rpx;
+  border-radius: 3rpx;
+}
+
+.groups-list::-webkit-scrollbar-track {
+  background: rgba(102, 126, 234, 0.05);
+  border-radius: 3rpx;
+}
+
+.groups-list::-webkit-scrollbar-thumb {
+  background: rgba(102, 126, 234, 0.4);
+  border-radius: 3rpx;
+  transition: all 0.3s ease;
+}
+
+.groups-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(102, 126, 234, 0.6);
+}
+
+.groups-list::-webkit-scrollbar-thumb:active {
+  background: rgba(102, 126, 234, 0.7);
+}
+
+/* 滚动条角落样式 */
+.groups-list::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* 动画效果 */
+@keyframes groupSelect {
+  0% {
+    transform: scale(1) translateX(0);
+    box-shadow: 0 8rpx 24rpx rgba(0, 0, 0, 0.12);
+  }
+  30% {
+    transform: scale(1.03) translateX(10rpx);
+    box-shadow: 0 12rpx 32rpx rgba(102, 126, 234, 0.3);
+  }
+  70% {
+    transform: scale(1.01) translateX(8rpx);
+    box-shadow: 0 10rpx 28rpx rgba(102, 126, 234, 0.25);
+  }
+  100% {
+    transform: scale(1) translateX(8rpx);
+    box-shadow: 0 12rpx 32rpx rgba(102, 126, 234, 0.25);
+  }
+}
+
+.group-item.selected {
+  animation: groupSelect 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 面板淡入动画 */
+@keyframes panelFadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(50rpx) scale(0.9);
+  }
+  60% {
+    opacity: 0.8;
+    transform: translateY(-10rpx) scale(1.02);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.custom-mix-panel {
+  animation: panelFadeIn 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 列表项淡入动画 */
+@keyframes itemFadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(30rpx) scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.group-item {
+  animation: itemFadeIn 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 为每个列表项添加不同的动画延迟 */
+.group-item:nth-child(1) {
+  animation-delay: 0.1s;
+}
+
+.group-item:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.group-item:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.group-item:nth-child(4) {
+  animation-delay: 0.4s;
+}
+
+.group-item:nth-child(5) {
+  animation-delay: 0.5s;
+}
+
+.group-item:nth-child(6) {
+  animation-delay: 0.6s;
+}
+
+.group-item:nth-child(7) {
+  animation-delay: 0.7s;
+}
+
+.group-item:nth-child(8) {
+  animation-delay: 0.8s;
+}
+
+.group-item:nth-child(9) {
+  animation-delay: 0.9s;
+}
+
+.group-item:nth-child(10) {
+  animation-delay: 1.0s;
+}
+
+.prev-batch-button, .next-batch-button, .complete-review-button {
+  flex: 1;
+  text-align: center;
+}
+
+/* 混组检测页面 */
+.mix-review-page {
+  padding: 30rpx 20rpx;
+  min-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.complete-mix-review-button {
+  background-color: #07c160;
+  color: white;
+  padding: 20rpx 40rpx;
+  border-radius: 10rpx;
+  font-size: 32rpx;
+  font-weight: bold;
+  transition: background-color 0.2s ease;
+  margin: 0 10rpx;
+  flex: 1;
+  text-align: center;
+}
+
+.complete-mix-review-button:disabled {
+  background-color: #cccccc;
+  color: #666;
+}
+
+/* 学习模式单词项 - 与预习模式统一 */
+.word-item-learning {
+  padding: 25rpx;
+  margin-bottom: 15rpx;
+  background-color: #fff;
+  border-radius: 16rpx;
+  border: 3rpx solid #e0e0e0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  transition: all 0.2s ease;
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.08);
+  min-height: auto;
+}
+
+.word-item-learning:active {
+  transform: scale(0.98);
+}
+
+.tap-hint {
+  margin-top: 15rpx;
+  text-align: right;
+}
+
+.tap-hint text {
+  font-size: 24rpx;
+  color: #999;
+}
+
+/* 课后检测页面 */
+.final-test-page {
+  padding: 40rpx; /* 适当减小页面内边距 */
+  background-color: #f8f8f8;
+  border-radius: 25rpx; /* 稍微减小页面圆角 */
+  margin: 15rpx;
+  border: 3rpx solid #e8e8e8;
+}
+
+.test-header-flex {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 15px;
+  background-color: #fff;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.final-test-page .test-progress {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  background: transparent;
+  padding: 0;
+  border: none;
+  box-shadow: none;
+  min-height: 0;
+}
+
+.final-test-page .words-list {
+  margin-top: 20rpx;
+}
+
+.progress-label {
+  font-size: 32rpx;
+  color: #666;
+}
+
+.progress-value {
+  font-size: 36rpx;
+  font-weight: bold;
+  color: #07c160;
+}
+
+/* 操作按钮容器 */
+.word-actions {
+  display: flex;
+  gap: 15rpx;
+  align-items: center;
+  position: absolute;
+  right: 30rpx;
+  bottom: 30rpx;
+  flex-shrink: 0; /* 确保按钮不会被压缩 */
+}
+
+/* 操作按钮样式 - 减小尺寸避免遮挡单词 */
+.action-button {
+  width: 60rpx;
+  height: 60rpx;
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 36rpx;
+  font-weight: bold;
+  transition: all 0.2s ease;
+  border: 2rpx solid #e6e6e6;
+}
+
+/* 对勾按钮 */
+.correct-button {
+  background-color: #fff;
+  color: #07c160;
+}
+
+.correct-button.active {
+  background-color: #07c160;
+  color: #fff;
+}
+
+.correct-button:active {
+  background-color: #e6f7ef;
+}
+
+.correct-button.active:active {
+  background-color: #06b255;
+}
+
+/* 错叉按钮 */
+.wrong-button {
+  background-color: #fff;
+  color: #e64340;
+}
+
+.wrong-button.active {
+  background-color: #e64340;
+  color: #fff;
+}
+
+.wrong-button:active {
+  background-color: #fce8e8;
+}
+
+.wrong-button.active:active {
+  background-color: #d53e3b;
+}
+
+/* 预习模式下的单词项 */
+.word-item-preview {
+  display: flex;
+  flex-direction: column;
+  padding: 30rpx 30rpx 70rpx;
+  margin-bottom: 20rpx;
+  background-color: #fff;
+  border-radius: 20rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+/* 单词项已掌握状态 */
+.word-item-preview.mastered {
+  background-color: rgba(7, 193, 96, 0.05);
+  border: 2rpx solid rgba(7, 193, 96, 0.3);
+  box-shadow: 0 2rpx 12rpx rgba(7, 193, 96, 0.15);
+  animation: masteredPulse 0.5s ease-out;
+}
+
+/* 单词项未掌握状态 */
+.word-item-preview.difficult {
+  background-color: rgba(255, 77, 79, 0.05);
+  border: 2rpx solid rgba(255, 77, 79, 0.3);
+  box-shadow: 0 2rpx 12rpx rgba(255, 77, 79, 0.15);
+  animation: difficultPulse 0.5s ease-out;
+}
+
+/* 单词掌握状态标记动画 */
+@keyframes masteredPulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.02);
+    box-shadow: 0 4rpx 20rpx rgba(7, 193, 96, 0.25);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes difficultPulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.02);
+    box-shadow: 0 4rpx 20rpx rgba(255, 77, 79, 0.25);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.word-item-preview:active {
+  transform: translateY(-5rpx);
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.16);
+}
+
+/* 单词状态指示器 */
+.word-status-indicator {
+  position: absolute;
+  top: 15rpx;
+  right: 15rpx;
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
+  background-color: transparent;
+  transition: all 0.3s ease;
+  opacity: 0;
+}
+
+.word-status-indicator.status-mastered {
+  background-color: #07c160;
+  opacity: 1;
+  animation: statusAppear 0.3s ease-out;
+}
+
+.word-status-indicator.status-difficult {
+  background-color: #ff4d4f;
+  opacity: 1;
+  animation: statusAppear 0.3s ease-out;
+}
+
+@keyframes statusAppear {
+  0% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* 预习模式下的单词操作按钮 */
+.word-item-preview .word-actions {
+  position: absolute;
+  bottom: 20rpx;
+  right: 20rpx;
+  display: flex;
+  gap: 15rpx;
+  z-index: 10;
+  margin-top: 0;
+  padding: 0;
+  width: auto;
+}
+
+/* 预习模式下的操作按钮样式 */
+.word-item-preview .action-button {
+  width: 65rpx;
+  height: 65rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30rpx;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.1);
+  background-color: white;
+  border: 2rpx solid #eee;
+  position: relative;
+  overflow: hidden;
+}
+
+/* 按钮波纹效果 */
+.word-item-preview .action-button::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.5);
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s;
+}
+
+.word-item-preview .action-button.active::before {
+  width: 300rpx;
+  height: 300rpx;
+}
+
+/* 预习模式下的对勾按钮 */
+.word-item-preview .correct-button {
+  color: #07c160;
+  border-color: #07c160;
+  background-color: rgba(7, 193, 96, 0.15);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 预习模式下的错叉按钮 */
+.word-item-preview .wrong-button {
+  color: #ff4d4f;
+  border-color: #ff4d4f;
+  background-color: rgba(255, 77, 79, 0.15);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 预习模式下的对勾按钮激活状态 - 提高优先级 */
+.words-list .word-item-preview .correct-button.active {
+  background-color: #07c160 !important;
+  color: white !important;
+  transform: scale(1.2) !important;
+  box-shadow: 0 8rpx 25rpx rgba(7, 193, 96, 0.5), 0 0 0 6rpx rgba(7, 193, 96, 0.3), inset 0 0 0 2rpx rgba(255, 255, 255, 0.3) !important;
+  border-color: #07c160 !important;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  z-index: 20 !important;
+}
+
+/* 预习模式下的错叉按钮激活状态 - 提高优先级 */
+.words-list .word-item-preview .wrong-button.active {
+  background-color: #ff4d4f !important;
+  color: white !important;
+  transform: scale(1.2) !important;
+  box-shadow: 0 8rpx 25rpx rgba(255, 77, 79, 0.5), 0 0 0 6rpx rgba(255, 77, 79, 0.3), inset 0 0 0 2rpx rgba(255, 255, 255, 0.3) !important;
+  border-color: #ff4d4f !important;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  z-index: 20 !important;
+}
+
+/* 非激活状态按钮样式优化 */
+.word-item-preview .correct-button:not(.active) {
+  background-color: rgba(7, 193, 96, 0.1);
+  color: #07c160;
+  border-color: rgba(7, 193, 96, 0.3);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.word-item-preview .wrong-button:not(.active) {
+  background-color: rgba(255, 77, 79, 0.1);
+  color: #ff4d4f;
+  border-color: rgba(255, 77, 79, 0.3);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 预习模式下的操作按钮点击效果优化 */
+.word-item-preview .action-button:active {
+  transform: scale(0.92);
+  opacity: 0.85;
+  transition: all 0.1s cubic-bezier(0.4, 0, 0.2, 1);
+  filter: brightness(0.9);
+}
+
+/* 增强预习模式下的波纹效果 */
+.word-item-preview .action-button:active::before {
+  width: 300rpx;
+  height: 300rpx;
+  transition: width 0.3s, height 0.3s;
+}
+
+/* 优化统计信息显示 */
+.preview-status {
+  animation: statsUpdate 0.3s ease-out;
+}
+
+@keyframes statsUpdate {
+  0% {
+    transform: scale(0.98);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* 九宫格复习样式 */
+.grid-review-page {
+  padding: 20rpx;
+  background-color: #f5f5f5;
+  min-height: 100vh;
+}
+
+/* 九宫格容器 */
+.grid-container {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 20rpx;
+  margin: 30rpx 0;
+}
+
+/* 九宫格项目 */
+.grid-item {
+  width: calc(33.33% - 14rpx);
+  background: #fff;
+  border-radius: 20rpx;
+  padding: 30rpx 20rpx;
+  box-shadow: 0 2rpx 10rpx rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  min-height: 200rpx;
+  justify-content: space-between;
+  transition: all 0.3s ease;
+}
+
+.grid-item:active {
+  transform: scale(0.98);
+  box-shadow: 0 1rpx 5rpx rgba(0, 0, 0, 0.1);
+}
+
+/* 九宫格中的单词内容 */
+.grid-item .word-content {
+  margin-bottom: 20rpx;
+  width: 100%;
+}
+
+.grid-item .word-text {
+  font-size: 36rpx;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 10rpx;
+  display: block;
+}
+
+.grid-item .word-translation {
+  font-size: 28rpx;
+  color: #666;
+  line-height: 1.4;
+}
+
+/* 九宫格中的操作按钮 */
+.grid-item .word-actions {
+  display: flex;
+  gap: 15rpx;
+  justify-content: center;
+  width: 100%;
+}
+
+.grid-item .action-button {
+  flex: 1;
+  max-width: 100rpx;
+  height: 60rpx;
+  border-radius: 30rpx;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 32rpx;
+  font-weight: bold;
+  transition: all 0.2s ease;
+  border: none;
+}
+
+.grid-item .correct-button {
+  background-color: rgba(7, 193, 96, 0.1);
+  color: #07c160;
+}
+
+.grid-item .correct-button.active {
+  background-color: #07c160;
+  color: #fff;
+  box-shadow: 0 4rpx 8rpx rgba(7, 193, 96, 0.3);
+}
+
+.grid-item .wrong-button {
+  background-color: rgba(255, 77, 79, 0.1);
+  color: #ff4d4f;
+}
+
+.grid-item .wrong-button.active {
+  background-color: #ff4d4f;
+  color: #fff;
+  box-shadow: 0 4rpx 8rpx rgba(255, 77, 79, 0.3);
+}
+
+.grid-item .action-button:active {
+  transform: scale(0.95);
+  opacity: 0.8;
+}
+
+/* ===== 预习页按钮简洁化覆盖 ===== */
+.top-batch-info .batch-nav-buttons.small .prev-batch-button.tiny,
+.top-batch-info .batch-nav-buttons.small .next-batch-button.tiny {
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #4b5563;
+  border: 2rpx solid #d9e1ea;
+  box-shadow: none;
+  font-size: 26rpx;
+  font-weight: 600;
+}
+
+.top-batch-info .batch-nav-buttons.small .prev-batch-button.tiny:disabled,
+.top-batch-info .batch-nav-buttons.small .next-batch-button.tiny:disabled {
+  background: #f5f7fa;
+  color: #a3acb8;
+  border-color: #e5eaf1;
+  box-shadow: none;
+}
+
+.top-batch-info .batch-nav-buttons.small .prev-batch-button.tiny:active,
+.top-batch-info .batch-nav-buttons.small .next-batch-button.tiny:active {
+  transform: scale(0.96);
+  box-shadow: none;
+}
+
+.preview-content .word-item-preview .word-actions {
+  gap: 10rpx;
+  right: 18rpx;
+  bottom: 18rpx;
+}
+
+.preview-content .word-item-preview .action-button {
+  width: 56rpx;
+  height: 56rpx;
+  border: 2rpx solid #dbe2eb;
+  box-shadow: none;
+  transition: background-color 0.2s ease, color 0.2s ease, transform 0.15s ease;
+}
+
+.preview-content .word-item-preview .action-button::before,
+.preview-content .word-item-preview .action-button.active::before {
+  display: none;
+}
+
+.preview-content .word-item-preview .correct-button:not(.active),
+.preview-content .word-item-preview .correct-button {
+  background: #f4fbf7;
+  color: #11a55b;
+  border-color: #bfe8cf;
+}
+
+.preview-content .word-item-preview .wrong-button:not(.active),
+.preview-content .word-item-preview .wrong-button {
+  background: #fff6f6;
+  color: #e05252;
+  border-color: #f3c3c3;
+}
+
+.preview-content .words-list .word-item-preview .correct-button.active {
+  background: #11a55b !important;
+  color: #ffffff !important;
+  border-color: #11a55b !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.preview-content .words-list .word-item-preview .wrong-button.active {
+  background: #e05252 !important;
+  color: #ffffff !important;
+  border-color: #e05252 !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.preview-content .word-item-preview .action-button:active {
+  transform: scale(0.95);
+  opacity: 0.95;
+  filter: none;
+}
+
+.preview-content .start-new-learning-button {
+  background: #12b665;
+  color: #ffffff;
+  border: none;
+  border-radius: 44rpx;
+  font-size: 32rpx;
+  font-weight: 600;
+  padding: 20rpx 0;
+  box-shadow: none;
+}
+
+.preview-content .start-new-learning-button:active {
+  background: #10a55b;
+}
+
+/* ===== 预习页排版优化覆盖（不改逻辑） ===== */
+.preview-page {
+  padding: 16rpx;
+}
+
+.preview-page .preview-content {
+  border-radius: 18rpx;
+  padding: 18rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.06);
+}
+
+.preview-page .top-batch-info {
+  margin-bottom: 14rpx;
+  padding: 4rpx 2rpx;
+}
+
+.preview-page .batch-number-text {
+  font-size: 36rpx;
+  color: #2f3a46;
+  letter-spacing: 1rpx;
+}
+
+.preview-page .words-list {
+  margin-bottom: 18rpx;
+  padding-right: 4rpx;
+}
+
+.preview-page .word-item-preview {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  min-height: 120rpx;
+  padding: 20rpx 18rpx;
+  margin-bottom: 12rpx;
+  border-radius: 14rpx;
+  border: 2rpx solid #e8edf3;
+  box-shadow: none;
+}
+
+.preview-page .word-item-preview.mastered,
+.preview-page .word-item-preview.difficult {
+  animation: none;
+}
+
+.preview-page .word-content {
+  flex: 1;
+  margin-bottom: 0;
+  padding-right: 12rpx;
+}
+
+.preview-page .word-text {
+  font-size: 46rpx;
+  line-height: 1.25;
+  margin-bottom: 8rpx;
+}
+
+.preview-page .word-phonetic {
+  font-size: 24rpx;
+  margin-bottom: 6rpx;
+}
+
+.preview-page .word-translation {
+  font-size: 30rpx;
+}
+
+.preview-page .word-item-preview .word-actions {
+  position: static;
+  margin-left: auto;
+  right: auto;
+  bottom: auto;
+  gap: 8rpx;
+}
+
+.preview-page .bottom-action {
+  margin-top: 0;
+  padding: 10rpx 0 4rpx;
+  position: sticky;
+  bottom: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, #ffffff 34%);
+}
+
+.preview-page .start-new-learning-button {
+  height: 86rpx;
+  line-height: 86rpx;
+  font-size: 32rpx;
+  border-radius: 44rpx;
+}
+
+/* 统一防遮挡：长单词与按钮分栏布局 */
+.preview-page .word-item-preview {
+  align-items: flex-start;
+}
+
+.preview-page .word-content {
+  min-width: 0;
+  flex: 1;
+}
+
+.preview-page .word-text {
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.preview-page .word-item-preview .word-actions {
+  flex: 0 0 126rpx;
+  justify-content: flex-end;
+  align-self: center;
+}
+
+/* 预习页空白修正：取消固定高度造成的冗余留白 */
+.container {
+  padding-bottom: 48rpx;
+}
+
+.preview-page {
+  min-height: 0 !important;
+  height: auto !important;
+  padding: 0 !important;
+}
+
+.preview-page .preview-content {
+  min-height: 0 !important;
+  height: auto !important;
+  display: flex;
+  flex-direction: column;
+}
+
+.preview-page .words-list {
+  max-height: none !important;
+  overflow-y: visible !important;
+  margin-bottom: 12rpx;
+}
+
+.preview-page .bottom-action {
+  position: static;
+  bottom: auto;
+  background: transparent;
+  padding: 8rpx 0 0;
+}

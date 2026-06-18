@@ -1,0 +1,135 @@
+<!-- 学习记录页面 -->
+<view class="container">
+  <!-- 顶部导航栏 -->
+  <view class="header">
+    <view class="header-actions">
+      <button class="data-manage-btn" size="mini" bindtap="showDataManagement">
+        数据管理
+      </button>
+    </view>
+  </view>
+
+  <!-- 时间筛选区域 - 优化样式 -->
+  <view class="filter-container">
+    <view class="filter-tabs">
+      <view class="filter-tab {{timeFilter === 'all' ? 'active' : ''}}" bindtap="changeTimeFilter" data-filter="all">
+        <text class="tab-text">全部</text>
+      </view>
+      <view class="filter-tab {{timeFilter === 'week' ? 'active' : ''}}" bindtap="changeTimeFilter" data-filter="week">
+        <text class="tab-text">本周</text>
+      </view>
+      <view class="filter-tab {{timeFilter === 'month' ? 'active' : ''}}" bindtap="changeTimeFilter" data-filter="month">
+        <text class="tab-text">本月</text>
+      </view>
+      <view class="filter-tab {{timeFilter === 'year' ? 'active' : ''}}" bindtap="changeTimeFilter" data-filter="year">
+        <text class="tab-text">本年</text>
+      </view>
+    </view>
+
+    <view class="record-type-tabs">
+      <view class="record-type-tab {{recordTypeFilter === 'word' ? 'active' : ''}}" bindtap="changeRecordTypeFilter" data-filter="word">
+        <text class="tab-text">单词记录</text>
+      </view>
+      <view class="record-type-tab {{recordTypeFilter === 'anti' ? 'active' : ''}}" bindtap="changeRecordTypeFilter" data-filter="anti">
+        <text class="tab-text">抗遗忘记录</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 记录列表 -->
+  <view class="records-list">
+    <!-- 加载状态 -->
+    <view wx:if="{{isLoading}}" class="loading-container">
+      <view class="loading-spinner"></view>
+      <text class="loading-text">加载记录中...</text>
+    </view>
+    
+    <!-- 有数据时显示 -->
+    <block wx:elif="!isLoading && filteredRecords.length > 0">
+      <!-- 统计卡片 -->
+      <view class="stats-card">
+        <view class="stat-item">
+          <text class="stat-number">{{displayedRecords.length}}</text>
+          <text class="stat-label">当前显示</text>
+        </view>
+        <view class="stat-divider"></view>
+        <view class="stat-item">
+          <text class="stat-number">{{filteredRecords.length}}</text>
+          <text class="stat-label">总记录数</text>
+        </view>
+      </view>
+      
+      <!-- 记录列表渲染 -->
+      <view wx:for="{{displayedRecords}}" wx:key="item.id">
+        <!-- 简化的记录项 -->
+        <view class="record-item" data-id="{{item.id}}" bindtap="onRecordTap">
+          <!-- 记录头部信息 -->
+          <view class="record-header">
+            <text class="wordbook-title">{{item.wordbookTitle || '未知词书'}}</text>
+          </view>
+
+          <!-- 学习信息卡片 -->
+          <view class="info-card">
+            <!-- 学习日期 -->
+            <view class="info-item date-info">
+              <text class="info-label">学习日期</text>
+              <text class="info-value date-value">{{item.formattedDate}}</text>
+            </view>
+            
+            <!-- 学习统计 -->
+            <view class="stats-grid {{item.recordCategory === 'anti' ? 'single-col' : ''}}">
+              <!-- 学习单词 -->
+              <view class="info-item word-info">
+                <text class="info-label">学习单词</text>
+                <text class="info-value word-value">{{item.totalWords || item.wordCount || 0}}个</text>
+              </view>
+
+              <!-- 单词记录：掌握情况（右侧上下） -->
+              <view wx:if="{{item.recordCategory !== 'anti'}}" class="mastery-panel">
+                <view class="mastery-row mastery-row-mastered">
+                  <text class="mastery-row-label">已掌握</text>
+                  <text class="mastery-row-value">{{item.masteredCount || 0}}</text>
+                </view>
+                <view class="mastery-row mastery-row-not-mastered">
+                  <text class="mastery-row-label">未掌握</text>
+                  <text class="mastery-row-value">{{item.notMasteredCount || 0}}</text>
+                </view>
+              </view>
+            </view>
+          </view>
+          
+          <!-- 简化的删除按钮 -->
+          <view class="simple-delete-btn">
+            <text 
+              class="delete-btn-text"
+              catchtap="deleteRecord"
+              data-id="{{item.id}}"
+            >删除</text>
+          </view>
+        </view>
+      </view>
+
+      <!-- 加载更多 -->
+      <view class="load-more-container" wx:if="{{hasMoreData}}">
+        <view wx:if="{{isLoadingMore}}" class="loading-more">
+          <view class="loading-spinner small"></view>
+          <text>加载中...</text>
+        </view>
+        <button wx:else class="load-more-btn" size="mini" bindtap="loadMore">
+          加载更多记录
+        </button>
+      </view>
+
+      <!-- 没有更多数据提示 -->
+      <view class="no-more-data" wx:elif="!hasMoreData && displayedRecords.length > 0">
+        <text>没有更多记录了</text>
+      </view>
+    </block>
+
+    <!-- 空状态 - 优化显示 -->
+    <view wx:else class="empty-state">
+      <text class="empty-title">暂无学习记录</text>
+      <text class="empty-subtitle">开始你的学习之旅吧！</text>
+    </view>
+  </view>
+</view>

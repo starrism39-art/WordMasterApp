@@ -1,0 +1,62 @@
+page {
+  background: #FFF9F0;
+  min-height: 100vh;
+}
+
+.splash-container {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0 40rpx;
+  opacity: 1;
+  transition: opacity 180ms ease-out;
+  background: #FFF9F0;
+}
+
+.splash-container.is-fading {
+  opacity: 0;
+}
+
+.brand-block {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 20vh;
+}
+
+.splash-logo {
+  width: 220rpx;
+  animation: logoFadeIn 0.8s ease both;
+}
+
+.brand-name {
+  margin-top: 40rpx;
+  font-size: 36rpx;
+  font-weight: 700;
+  color: #333333;
+  letter-spacing: 2rpx;
+}
+
+.brand-slogan {
+  position: absolute;
+  bottom: 100rpx;
+  font-size: 22rpx;
+  color: #B8B8B8;
+  letter-spacing: 1rpx;
+}
+
+@keyframes logoFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(18rpx) scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

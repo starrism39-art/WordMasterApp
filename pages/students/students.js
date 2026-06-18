@@ -1,0 +1,658 @@
+﻿﻿// pages/students/students.js
+const app = getApp();
+
+Page({
+  data: {
+    currentUser: null,
+    isLoggingOut: false,
+    storageUsage: '未知',
+    isEditingNickname: false,
+    nicknameEditValue: ''
+  },
+
+  loadTeacherProfile: async function() {
+    try {
+      const openid = wx.getStorageSync('openid');
+      if (!openid || !wx.cloud) {
+        // 云不可用时保留本地缓存的名字，不做覆盖
+        return;
+      }
+
+      const db = wx.cloud.database({ env: 'cloudbase-4gafzdch60ad597b' });
+      // 用 teacher_id 查询，与 saveNickname / createTeacherRecord 一致
+      const res = await db.collection('teachers').where({ teacher_id: openid }).limit(1).get();
+      const teacher = (res && Array.isArray(res.data) && res.data[0]) || null;
+
+      if (teacher) {
+        // 云端有记录：优先用云端 name，否则保留本地已编辑的名字
+        const localName = (this.data.currentUser && this.data.currentUser.name) || '';
+        const cloudName = teacher.name || '';
+        const finalName = cloudName || localName || '';
+
+        this.setData({
+          currentUser: {
+            ...(this.data.currentUser || {}),
+            ...(teacher || {}),
+            name: finalName
+          }
+        });
+      }
+      // 云端无记录时不做任何覆盖，保留本地 currentUser
+    } catch (error) {
+      console.error('拉取教师档案失败:', error);
+      // 失败也不覆盖本地名字
+    }
+  },
+
+  // 开始编辑昵称
+  startEditNickname: function() {
+    const currentName = this.data.currentUser?.name || '';
+    this.setData({
+      isEditingNickname: true,
+      nicknameEditValue: currentName
+    });
+  },
+
+  // 取消编辑昵称
+  cancelEditNickname: function() {
+    this.setData({
+      isEditingNickname: false,
+      nicknameEditValue: ''
+    });
+  },
+
+  // 输入昵称
+  onNicknameInput: function(e) {
+    this.setData({
+      nicknameEditValue: e.detail.value
+    });
+  },
+
+  // 保存昵称到云端 + 本地
+  saveNickname: async function() {
+    const newName = (this.data.nicknameEditValue || '').trim();
+    if (!newName) {
+      wx.showToast({ title: '昵称不能为空', icon: 'none' });
+      return;
+    }
+
+    wx.showLoading({ title: '保存中...' });
+
+    try {
+      // 1. 更新本地 currentUser
+      const updatedUser = {
+        ...(this.data.currentUser || {}),
+        name: newName
+      };
+      this.setData({
+        currentUser: updatedUser,
+        isEditingNickname: false,
+        nicknameEditValue: ''
+      });
+
+      // 2. 更新 globalData 和 Storage
+      const app = getApp();
+      if (app.globalData.currentUser) {
+        app.globalData.currentUser.name = newName;
+      }
+      wx.setStorageSync('currentUser', updatedUser);
+
+      // 3. 更新云端 teachers 集合
+      const openid = wx.getStorageSync('openid');
+      if (openid && wx.cloud) {
+        const db = wx.cloud.database({ env: 'cloudbase-4gafzdch60ad597b' });
+        const teachersRef = db.collection('teachers');
+        const existing = await teachersRef.where({ teacher_id: openid }).limit(1).get();
+        if (existing && Array.isArray(existing.data) && existing.data.length > 0) {
+          await teachersRef.doc(existing.data[0]._id).update({
+            data: { name: newName }
+          });
+          console.log('[Nickname] 云端教师昵称已更新:', newName);
+        }
+
+        // ★ 4. 级联更新：批量更新该老师名下所有学生的 teacher_name
+        try {
+          const studentsRef = db.collection('students');
+          const studentsRes = await studentsRef
+            .where({ teacher_id: openid })
+            .get();
+
+          if (studentsRes && Array.isArray(studentsRes.data) && studentsRes.data.length > 0) {
+            const BATCH_SIZE = 50;
+            const batches = [];
+            for (let i = 0; i < studentsRes.data.length; i += BATCH_SIZE) {
+              batches.push(studentsRes.data.slice(i, i + BATCH_SIZE));
+            }
+
+            for (const batch of batches) {
+              const nowTs = Date.now();
+              await Promise.all(batch.map((studentDoc) =>
+                studentsRef.doc(studentDoc._id).update({
+                  data: { teacher_name: newName, updatedAt: nowTs }
+                })
+              ));
+            }
+
+            console.log('[Nickname] 级联更新完成, 受影响学生数:', studentsRes.data.length);
+
+            // ★ 同步更新本地 students 缓存
+            const localStudents = wx.getStorageSync('students') || [];
+            const nowTs = Date.now();
+            const updatedLocalStudents = localStudents.map(s => {
+              if (s && s.teacher_id === openid) {
+                return { ...s, teacher_name: newName, updatedAt: nowTs };
+              }
+              return s;
+            });
+            wx.setStorageSync('students', updatedLocalStudents);
+          }
+        } catch (cascadeError) {
+          console.error('[Nickname] 级联更新学生失败（非阻塞）:', cascadeError);
+        }
+      }
+
+      wx.hideLoading();
+      wx.showToast({ title: '昵称已保存', icon: 'success' });
+    } catch (error) {
+      console.error('[Nickname] 保存昵称失败:', error);
+      wx.hideLoading();
+      wx.showToast({ title: '保存失败，请重试', icon: 'none' });
+    }
+  },
+
+  // 跳转到添加学生信息页面
+  navigateToAddStudent() {
+    wx.navigateTo({
+      url: '/subpages/add-student/add-student',
+      success: () => {
+        console.log('成功跳转到添加学生信息页面');
+      },
+      fail: (err) => {
+        console.error('跳转到添加学生信息页面失败:', err);
+        wx.showToast({
+          title: '跳转失败',
+          icon: 'none'
+        });
+      }
+    });
+  },
+  
+  // 跳转到学生列表页面
+  navigateToStudentList() {
+    wx.navigateTo({
+      url: '/subpages/student-list/student-list',
+      success: () => {
+        console.log('成功跳转到学生列表页面');
+      },
+      fail: (err) => {
+        console.error('跳转到学生列表页面失败:', err);
+        wx.showToast({
+          title: '跳转失败',
+          icon: 'none'
+        });
+      }
+    });
+  },
+  
+  // 检查存储使用情况
+  checkStorageUsage() {
+    wx.getStorageInfo({
+      success: (res) => {
+        const used = res.currentSize;
+        const total = res.limitSize;
+        const percent = ((used / total) * 100).toFixed(1);
+        
+        this.setData({
+          storageUsage: `${used}KB / ${total}KB (${percent}%)`
+        });
+        
+        wx.showModal({
+          title: '存储使用情况',
+          content: `当前使用: ${used}KB\n总容量: ${total}KB\n使用率: ${percent}%`,
+          showCancel: false,
+          confirmText: '知道了'
+        });
+      },
+      fail: (error) => {
+        console.error('获取存储信息失败:', error);
+        wx.showToast({
+          title: '获取存储信息失败',
+          icon: 'none'
+        });
+      }
+    });
+  },
+
+  // 显示数据管理菜单
+  showDataManagement() {
+    wx.showActionSheet({
+      itemList: ['数据修复中心', '备份与恢复', '清理30天前数据', '清理60天前数据', '清理90天前数据', '查看存储使用情况'],
+      success: (res) => {
+        switch (res.tapIndex) {
+          case 0:
+            this.navigateToDataRepair();
+            break;
+          case 1:
+            // 导航到备份与恢复页面
+            this.navigateToDataBackup();
+            break;
+          case 2:
+            this.cleanupOldRecords(30);
+            break;
+          case 3:
+            this.cleanupOldRecords(60);
+            break;
+          case 4:
+            this.cleanupOldRecords(90);
+            break;
+          case 5:
+            this.checkStorageUsage();
+            break;
+        }
+      }
+    });
+  },
+
+  goToManualStats() {
+    const currentStudent = app.globalData.currentStudent || wx.getStorageSync('currentStudent');
+    const currentWordbook = app.globalData.currentWordbook || app.globalData.selectedWordbook || wx.getStorageSync('selectedWordbook');
+
+    if (!currentStudent || !currentStudent.id) {
+      wx.showModal({
+        title: '需要选择学生',
+        content: '先选择学生后再手动修正统计。是否前往学生列表？',
+        success: (res) => {
+          if (res.confirm) {
+            this.navigateToStudentList();
+          }
+        }
+      });
+      return;
+    }
+
+    wx.showActionSheet({
+      itemList: ['核心统计', '词书详细统计'],
+      success: (res) => {
+        if (res.tapIndex === 0) {
+          const studentId = encodeURIComponent(currentStudent.id);
+          wx.navigateTo({
+            url: `/pages/debug-update-stats/index?mode=core&studentId=${studentId}`
+          });
+          return;
+        }
+
+        if (!currentWordbook || !currentWordbook.id) {
+          wx.showToast({ title: '请先选择词书', icon: 'none' });
+          return;
+        }
+
+        const studentId = encodeURIComponent(currentStudent.id);
+        const wordbookId = encodeURIComponent(currentWordbook.id);
+        wx.navigateTo({
+          url: `/pages/debug-update-stats/index?mode=wordbook&studentId=${studentId}&wordbookId=${wordbookId}`
+        });
+      }
+    });
+  },
+
+  // 导航到备份与恢复页面
+  navigateToDataBackup() {
+    wx.navigateTo({
+      url: '/subpages/data-backup/data-backup',
+      fail: (error) => {
+        console.error('导航到数据备份页面失败:', error);
+        wx.showToast({
+          title: '页面导航失败',
+          icon: 'error'
+        });
+      }
+    });
+  },
+
+  // 导航到数据修复页面
+  navigateToDataRepair() {
+    wx.navigateTo({
+      url: '/subpages/data-repair/data-repair',
+      fail: (error) => {
+        console.error('导航到数据修复页面失败:', error);
+        wx.showToast({
+          title: '页面导航失败',
+          icon: 'error'
+        });
+      }
+    });
+  },
+
+  // 清理旧记录
+  cleanupOldRecords(days) {
+    wx.showModal({
+      title: '确认清理',
+      content: `确定要清理${days}天前的学习记录吗？`,
+      showCancel: true,
+      cancelText: '取消',
+      confirmText: '确定',
+      success: (res) => {
+        if (res.confirm) {
+          const app = getApp();
+          const result = app.cleanupOldData({
+            days: days,
+            types: ['learningRecords']
+          });
+
+          if (result.success) {
+            wx.showToast({
+              title: `成功清理${result.deletedCount}条记录`,
+              icon: 'success',
+              duration: 1500
+            });
+            // 重新加载数据
+            this.getRecordCount();
+          } else {
+            wx.showToast({
+              title: '清理失败',
+              icon: 'none',
+              duration: 1500
+            });
+          }
+        }
+      }
+    });
+  },
+
+  onLoad: function() {
+    this.loadTeacherProfile();
+    this.loadData();
+  },
+  
+  onShow: function() {
+    if (typeof this.getTabBar === 'function') {
+      const tabBar = this.getTabBar();
+      if (tabBar && typeof tabBar.setSelected === 'function') {
+        tabBar.setSelected(1);
+      } else if (tabBar && typeof tabBar.setData === 'function') {
+        tabBar.setData({ selected: 1 });
+      }
+    }
+
+    // 每次页面显示时刷新教师名称
+    this.loadTeacherProfile();
+    this.loadData();
+    
+    // 检查是否为学生选择模式
+    if (app.globalData.studentSelectMode) {
+      console.log('检测到学生选择模式，自动跳转到学生列表');
+      // 清除选择模式标记，避免重复跳转
+      app.globalData.studentSelectMode = false;
+      // 立即跳转到学生列表页面
+      this.navigateToStudentList();
+    }
+  },
+  
+  // 加载所有数据
+  loadData() {
+    this.updateStorageUsage();
+  },
+  // 更新存储使用情况
+  updateStorageUsage() {
+    wx.getStorageInfo({
+      success: (res) => {
+        const used = res.currentSize;
+        const total = res.limitSize;
+        const percent = ((used / total) * 100).toFixed(1);
+        
+        this.setData({
+          storageUsage: `${percent}%`
+        });
+      },
+      fail: (error) => {
+        console.error('获取存储信息失败:', error);
+      }
+    });
+  },
+  
+  // 上传头像功能
+  uploadAvatar: function() {
+    const that = this;
+    wx.chooseImage({
+      count: 1,
+      sizeType: ['compressed'],
+      sourceType: ['album', 'camera'],
+      success: function(res) {
+        const tempFilePath = res.tempFilePaths[0];
+        
+        // 在实际应用中，这里应该上传到服务器
+        // 这里简单地将头像路径保存到本地和全局数据中
+        wx.showLoading({ title: '保存中...' });
+        
+        try {
+          // 更新本地用户信息
+          const updatedUser = {
+            ...that.data.currentUser,
+            avatar: tempFilePath
+          };
+          that.setData({ currentUser: updatedUser });
+          
+          // 更新全局用户信息
+          if (app.globalData.currentUser) {
+            app.globalData.currentUser.avatar = tempFilePath;
+            // 同时更新本地存储中的currentUser
+            wx.setStorageSync('currentUser', app.globalData.currentUser);
+          }
+          
+          // 更新用户列表中的头像信息，这样下次登录时也能保持头像
+          const users = wx.getStorageSync('wordMasterUsers') || [];
+          const userIndex = users.findIndex(u => u.username === updatedUser.username);
+          if (userIndex !== -1) {
+            users[userIndex].avatar = tempFilePath;
+            wx.setStorageSync('wordMasterUsers', users);
+          }
+          
+          wx.hideLoading();
+          wx.showToast({ title: '头像更新成功' });
+        } catch (error) {
+          console.error('保存头像失败:', error);
+          wx.hideLoading();
+          wx.showToast({ title: '保存失败', icon: 'none' });
+        }
+      }
+    });
+  },
+  
+  // 退出登录功能
+  logout: function() {
+    wx.showModal({
+      title: '确认退出',
+      content: '确定要退出登录吗？',
+      success: (res) => {
+        if (res.confirm) {
+          // 设置退出中状态
+          this.setData({ isLoggingOut: true });
+          
+          // 清除全局用户信息
+          if (app.globalData) {
+            app.globalData.currentUser = null;
+            app.globalData.currentStudent = null;
+          }
+
+          // ★ 清除登录凭证，防止自动静默登录（支持多账号切换）
+          wx.removeStorageSync('openid');
+          wx.removeStorageSync('currentUser');
+          
+          // 添加一个短暂延迟，让用户看到加载状态
+          setTimeout(() => {
+            // 跳转到登录页面
+            wx.redirectTo({
+              url: '/pages/login/login',
+              complete: () => {
+                // 重置退出状态
+                this.setData({ isLoggingOut: false });
+              }
+            });
+          }, 300);
+        }
+      }
+    });
+  },
+
+  // 备份数据
+  backupData: function() {
+    console.log('备份数据');
+    try {
+      const openid = wx.getStorageSync('openid') || '';
+      // 收集所有需要备份的数据
+      const backupData = {
+        appId: 'wordMaster_backup',
+        openid: openid,
+        students: wx.getStorageSync('students') || [],
+        wordbooks: wx.getStorageSync('wordbooks') || [],
+        wordMastery: wx.getStorageSync('wordMastery') || {},
+        learningProgress: wx.getStorageSync('learningProgress') || {},
+        antiForgettingRecords: wx.getStorageSync('antiForgettingRecords') || [],
+        selectedStudent: wx.getStorageSync('selectedStudent') || null,
+        selectedWordbook: wx.getStorageSync('selectedWordbook') || null,
+        currentStudent: wx.getStorageSync('currentStudent') || null,
+        currentWordbook: wx.getStorageSync('currentWordbook') || null,
+        learningRecords: wx.getStorageSync('learningRecords') || [],
+        timestamp: Date.now(),
+        version: '1.0'
+      };
+
+      // 将数据转换为JSON字符串
+      const backupJson = JSON.stringify(backupData);
+      console.log('备份数据大小:', backupJson.length, '字符');
+
+      // 将数据复制到剪贴板
+      wx.setClipboardData({
+        data: backupJson,
+        success: function(res) {
+          // 剪贴板成功后，同时写一份到云端（兜底剪贴板容量限制）
+          const openid = wx.getStorageSync('openid');
+          if (openid && wx.cloud && backupJson.length < 800000) {
+            const db = wx.cloud.database({ env: 'cloudbase-4gafzdch60ad597b' });
+            const backupId = `backup_${openid}_${Date.now()}`;
+            db.collection('backups').doc(backupId).set({
+              data: {
+                teacher_id: openid,
+                backup_id: backupId,
+                payload: backupData,
+                size_bytes: backupJson.length,
+                created_at: new Date().toISOString()
+              }
+            }).then(() => {
+              console.log('云端备份已保存:', backupId);
+            }).catch((cloudError) => {
+              console.error('云端备份保存失败:', cloudError);
+            });
+          }
+          wx.showToast({
+            title: '数据备份成功，已复制到剪贴板',
+            icon: 'success',
+            duration: 2000
+          });
+        },
+        fail: function(err) {
+          console.error('复制到剪贴板失败:', err);
+          wx.showToast({
+            title: '备份失败，请重试',
+            icon: 'none',
+            duration: 2000
+          });
+        }
+      });
+    } catch (error) {
+      console.error('备份数据失败:', error);
+      wx.showToast({
+        title: '备份失败，请重试',
+        icon: 'none',
+        duration: 2000
+      });
+    }
+  },
+
+  // 恢复数据
+  restoreData: function() {
+    console.log('恢复数据');
+    wx.showModal({
+      title: '恢复数据',
+      content: '请确保已将备份数据复制到剪贴板，点击确定后将从剪贴板恢复数据。',
+      success: function(res) {
+        if (res.confirm) {
+          // 从剪贴板获取数据
+          wx.getClipboardData({
+            success: function(res) {
+              try {
+                // 解析数据
+                const backupData = JSON.parse(res.data);
+
+                // 校验备份签名，防止误恢复或恶意覆盖
+                if (backupData.appId !== 'wordMaster_backup') {
+                  throw new Error('格式不匹配');
+                }
+
+                // openid 归属校验：跨账号恢复给出警示但允许继续
+                const currentOpenid = wx.getStorageSync('openid') || '';
+                const backupOpenid = backupData.openid || '';
+                if (backupOpenid && currentOpenid && backupOpenid !== currentOpenid) {
+                  console.warn('备份数据来自不同账号，当前 openid:', currentOpenid, '备份 openid:', backupOpenid);
+                }
+
+                console.log('恢复数据:', backupData);
+
+                // 安全合并：只追加不覆盖，单项隔离，不丢已有数据
+                var safeMergeModule = require('../../utils/safe-merge-restore.js');
+                var mergeResult = safeMergeModule.safeMergeRestore(backupData);
+                console.log('[restoreData] 合并结果:', JSON.stringify(mergeResult.summary));
+
+                // 单值字段：仅本地为空时才恢复（不覆盖已有选择）
+                if (!wx.getStorageSync('selectedStudent')) {
+                  wx.setStorageSync('selectedStudent', backupData.selectedStudent || null);
+                }
+                if (!wx.getStorageSync('selectedWordbook')) {
+                  wx.setStorageSync('selectedWordbook', backupData.selectedWordbook || null);
+                }
+                if (!wx.getStorageSync('currentStudent')) {
+                  wx.setStorageSync('currentStudent', backupData.currentStudent || null);
+                }
+                if (!wx.getStorageSync('currentWordbook')) {
+                  wx.setStorageSync('currentWordbook', backupData.currentWordbook || null);
+                }
+
+                // 显示恢复成功提示
+                var addedTotal = mergeResult.summary && mergeResult.summary.totalAdded || 0;
+                wx.showToast({
+                  title: '数据恢复成功' + (addedTotal > 0 ? '，新增' + addedTotal + '项' : ''),
+                  icon: 'success',
+                  duration: 2000
+                });
+
+                // 刷新页面
+                setTimeout(function() {
+                  wx.reLaunch({
+                    url: '/pages/index/index'
+                  });
+                }, 2000);
+              } catch (error) {
+                console.error('解析备份数据失败:', error);
+                wx.showToast({
+                  title: error && error.message === '格式不匹配'
+                    ? '剪贴板内容不是有效的数据备份文件！'
+                    : '恢复失败，数据格式错误',
+                  icon: 'none',
+                  duration: 2000
+                });
+              }
+            },
+            fail: function(err) {
+              console.error('获取剪贴板数据失败:', err);
+              wx.showToast({
+                title: '恢复失败，请重试',
+                icon: 'none',
+                duration: 2000
+              });
+            }
+          });
+        }
+      }
+    });
+  }
+});

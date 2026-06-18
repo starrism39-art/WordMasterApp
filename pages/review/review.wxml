@@ -1,0 +1,178 @@
+<!-- pages/review/review.wxml -->
+<view class="container">
+  <!-- 抗遗忘复习记录列表模式 -->
+  <view wx:if="{{!learningMode || learningMode !== 'review'}}">
+    <!-- 顶部导航栏 -->
+    <view class="nav-bar">
+      <view class="nav-left">
+        <!-- 移除抗遗忘文字 -->
+      </view>
+      <view class="nav-right">
+        <button class="nav-button active">抗遗忘</button>
+        <button class="nav-button" bindtap="toggleMergeView">合并视图</button>
+      </view>
+    </view>
+
+    <!-- 复习列表标题 -->
+    <view class="review-list-header">
+      <text class="review-list-title">待复习列表</text>
+      <text class="review-list-count">{{reviewRecords.length}}条</text>
+    </view>
+
+    <!-- 加载状态 -->
+    <view wx:if="{{loading}}" class="loading-container">
+      <view class="loading-spinner"></view>
+      <text class="loading-text">加载中...</text>
+    </view>
+
+    <!-- 错误状态 -->
+    <view wx:elif="{{hasError}}" class="error-container">
+      <text class="error-text">{{errorMessage}}</text>
+      <view class="error-actions">
+        <button class="retry-button" bindtap="retryLoad">重试</button>
+        <button class="retry-button diagnostic-button" bindtap="runDiagnostics">诊断</button>
+      </view>
+    </view>
+
+    <!-- 抗遗忘复习记录 -->
+    <view wx:else class="review-records">
+      <view 
+        wx:for="{{reviewRecords}}" 
+        wx:key="id"
+        class="review-record"
+      >
+        <!-- 日期和轮数 -->
+        <view class="record-header">
+          <text class="record-date">{{item.date}}</text>
+          <view class="record-header-right">
+            <text class="review-status {{item.canReview ? 'status-ready' : 'status-wait'}}">{{item.canReview ? '可复习' : '未到时间'}}</text>
+            <view class="record-round">
+            <text class="round-badge">第{{item.round}}轮</text>
+            </view>
+          </view>
+        </view>
+
+        <!-- 学习信息 -->
+        <view class="record-info">
+          <view class="info-item">
+            <text class="info-label">所学词书：</text>
+            <text class="info-value">{{item.wordbookName}}</text>
+          </view>
+          <view class="info-item">
+            <text class="info-label">学习日期：</text>
+            <text class="info-value">{{item.learningDate}}</text>
+          </view>
+          <view class="info-item">
+            <text class="info-label">单词数量：</text>
+            <text class="info-value">{{item.wordCount}}</text>
+          </view>
+        </view>
+
+        <!-- 操作按钮 -->
+        <view class="record-actions">
+          <button 
+            class="start-review-button {{item.canReview ? '' : 'disabled'}}"
+            bindtap="startReview"
+            data-record-id="{{item.id}}"
+            disabled="{{!item.canReview}}"
+          >
+            {{item.canReview ? '开始复习' : '未到时间'}}
+          </button>
+          <button 
+            class="view-words-button"
+            bindtap="viewWords"
+            data-record-id="{{item.id}}"
+          >
+            查看单词
+          </button>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 复习模式页面（与预习界面相同） -->
+  <view wx:elif="{{learningMode === 'review'}}">
+    <!-- 进度条和正确显示 -->
+    <view class="progress-container">
+      <view class="progress-info">
+        <text class="progress-text">进度：{{reviewedCount}}/{{totalWordsCount}}</text>
+        <text class="correct-rate">正确：{{correctRate}}%</text>
+      </view>
+      <view class="progress-bar">
+        <view class="progress-fill" style="width: {{progressPercentage}}%"></view>
+      </view>
+    </view>
+
+    <!-- 加载状态 -->
+    <view wx:if="{{loading}}" class="loading-container">
+      <view class="loading-spinner"></view>
+      <text class="loading-text">加载中...</text>
+    </view>
+
+    <!-- 错误状态 -->
+    <view wx:elif="{{hasError}}" class="error-container">
+      <text class="error-text">{{errorMessage}}</text>
+      <view class="error-actions">
+        <button class="retry-button" bindtap="retryLoad">重试</button>
+        <button class="retry-button diagnostic-button" bindtap="runDiagnostics">诊断</button>
+      </view>
+    </view>
+
+    <!-- 空数据状态 -->
+    <view wx:elif="{{!currentBatchWords || currentBatchWords.length === 0}}" class="empty-container">
+      <text class="empty-text">暂无单词数据</text>
+      <text class="empty-subtext">请确保已选择正确的词书</text>
+    </view>
+
+    <!-- 单词列表 -->
+    <view wx:else class="preview-page">
+      <!-- 单词列表 -->
+      <view class="words-list">
+        <view 
+          wx:for="{{currentBatchWords}}" 
+          wx:key="id"
+          class="word-item-preview {{(previewMastery[item.id] === true || previewMastery[item.id] === 'mastered') ? 'mastered' : (previewMastery[item.id] === false || previewMastery[item.id] === 'difficult') ? 'difficult' : ''}}"
+          bindtap="toggleWordMeaning"
+          data-id="{{item.id}}"
+        >
+          <!-- 单词掌握状态标记 -->
+          <view class="word-status-indicator {{(previewMastery[item.id] === true || previewMastery[item.id] === 'mastered') ? 'status-mastered' : (previewMastery[item.id] === false || previewMastery[item.id] === 'difficult') ? 'status-difficult' : ''}}"></view>
+          
+          <view class="word-content">
+            <text class="word-text">{{item.word || '未知单词'}}</text>
+            <text wx:if="{{showPhonetic[item.id]}}" class="word-phonetic">{{item.phonetic || ''}}</text>
+            <text wx:if="{{showMeaning[item.id]}}" class="word-translation">{{item.translation || item.meaning || '无释义'}}</text>
+          </view>
+          <view class="word-actions">
+            <view 
+              class="action-button correct-button {{(previewMastery[item.id] === true || previewMastery[item.id] === 'mastered') ? 'active' : ''}}"
+              data-id="{{item.id}}"
+              data-status="true"
+              catchtap="updatePreviewMastery"
+            >
+              ✓
+            </view>
+            <view 
+              class="action-button wrong-button {{(previewMastery[item.id] === false || previewMastery[item.id] === 'difficult') ? 'active' : ''}}"
+              data-id="{{item.id}}"
+              data-status="false"
+              catchtap="updatePreviewMastery"
+            >
+              ✗
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <!-- 完成复习按钮 -->
+      <view class="bottom-action">
+        <button 
+          class="complete-review-button"
+          bindtap="completeReview"
+        >
+          完成复习
+        </button>
+      </view>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,46 @@
+<view class="container">
+  <view class="header">
+    <text class="title">学生数据修复中心</text>
+    <text class="subtitle">当前账号：{{userLabel}}</text>
+  </view>
+
+  <view class="card guide-card">
+    <view class="card-title">新版本建议操作</view>
+    <view class="guide-line">1. 仅当发现学生异常时才进入修复流程</view>
+    <view class="guide-line">2. 先点“立即手动备份”再做迁移</view>
+    <view class="guide-line">3. 若迁移结果不对，再点“一键回滚到最近备份”</view>
+  </view>
+
+  <view class="card">
+    <view class="card-title">当前数据概览</view>
+    <view class="row"><text class="label">学生总数</text><text class="value">{{studentsTotal}}</text></view>
+    <view class="row"><text class="label">本账号学生</text><text class="value">{{ownedCount}}</text></view>
+    <view class="row"><text class="label">待迁移（无归属）</text><text class="value warn">{{unownedCount}}</text></view>
+    <view class="row"><text class="label">历史模拟数据</text><text class="value">{{legacyMockCount}}</text></view>
+  </view>
+
+  <view class="card">
+    <view class="card-title">安全备份</view>
+    <view class="row"><text class="label">最近备份条数</text><text class="value">{{backupInfo ? backupInfo.count : 0}}</text></view>
+    <view class="row"><text class="label">最近备份场景</text><text class="value">{{backupInfo ? backupInfo.scene : '暂无'}}</text></view>
+    <view class="row"><text class="label">最近备份时间</text><text class="value small">{{backupInfo ? backupInfo.timestamp : '暂无'}}</text></view>
+    <button class="btn btn-primary" bindtap="createSafetyBackup">立即手动备份</button>
+  </view>
+
+  <view class="card">
+    <view class="card-title">修复操作</view>
+    <button class="btn btn-info" bindtap="previewMigration">预览迁移影响</button>
+    <button class="btn btn-success" bindtap="runMigration">执行无归属学生迁移</button>
+    <button class="btn btn-danger" bindtap="restoreFromBackup">一键回滚到最近备份</button>
+    <button class="btn btn-ghost" bindtap="refreshRepairStatus">刷新状态</button>
+  </view>
+
+  <view class="card">
+    <view class="card-title">修复日志</view>
+    <button class="btn btn-ghost" bindtap="clearLogs">清空日志</button>
+    <view class="logs">
+      <view class="log-item" wx:for="{{logs}}" wx:key="index">{{item}}</view>
+      <view class="empty" wx:if="{{logs.length === 0}}">暂无日志</view>
+    </view>
+  </view>
+</view>

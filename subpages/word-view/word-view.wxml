@@ -1,0 +1,68 @@
+<view class="container">
+  <!-- 加载状态 -->
+  <view wx:if="{{loading}}" class="loading-container">
+    <view class="loading-spinner"></view>
+  </view>
+  
+  <!-- 错误状态 -->
+  <view wx:elif="{{hasError}}" class="empty-container">
+    <text class="empty-text">{{errorMessage || '加载失败'}}</text>
+    <text class="empty-subtext">请返回重试</text>
+  </view>
+  
+  <!-- 单词列表 -->
+  <view wx:else class="preview-page">
+    <view wx:if="{{showRecordFilter}}" class="record-summary-panel">
+      <view class="summary-item">
+        <text class="summary-label">总单词</text>
+        <text class="summary-value">{{masteryStats.total || allWords.length || 0}}</text>
+      </view>
+      <view class="summary-item mastered">
+        <text class="summary-label">已掌握</text>
+        <text class="summary-value">{{masteryStats.mastered || 0}}</text>
+      </view>
+      <view class="summary-item not-mastered">
+        <text class="summary-label">未掌握</text>
+        <text class="summary-value">{{masteryStats.notMastered || 0}}</text>
+      </view>
+    </view>
+
+    <view wx:if="{{showRecordFilter}}" class="filter-tabs">
+      <view class="filter-tab {{wordFilter === 'notMastered' ? 'active' : ''}}" data-filter="notMastered" bindtap="changeWordFilter">
+        <text>未掌握</text>
+      </view>
+      <view class="filter-tab {{wordFilter === 'mastered' ? 'active' : ''}}" data-filter="mastered" bindtap="changeWordFilter">
+        <text>已掌握</text>
+      </view>
+      <view class="filter-tab {{wordFilter === 'all' ? 'active' : ''}}" data-filter="all" bindtap="changeWordFilter">
+        <text>全部</text>
+      </view>
+    </view>
+
+    <!-- 单词列表 -->
+    <view class="words-list">
+      <view 
+        wx:for="{{words}}" 
+        wx:key="id"
+        class="word-item-preview"
+        bindtap="toggleWordMeaning"
+        data-id="{{item.id}}"
+      >
+        <!-- 单词掌握状态标记 -->
+        <view class="word-status-indicator {{item.masteryStatus === 'mastered' ? 'status-mastered' : ''}} {{item.masteryStatus === 'notMastered' ? 'status-not-mastered' : ''}}"></view>
+        
+        <view class="word-content">
+          <text class="word-text">{{item.word || '未知单词'}}</text>
+          <text wx:if="{{showPhonetic[item.id]}}" class="word-phonetic">{{item.phonetic || ''}}</text>
+          <text wx:if="{{showMeaning[item.id]}}" class="word-translation">{{item.translation || item.meaning || '无释义'}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+  
+  <!-- 空状态 -->
+  <view wx:if="{{!loading && !hasError && words.length === 0}}" class="empty-container">
+    <text class="empty-text">没有单词可查看</text>
+    <text class="empty-subtext">请确保复习记录中包含单词</text>
+  </view>
+</view>

@@ -1,0 +1,62 @@
+<view class="login-root">
+  <view class="top-space"></view>
+
+  <view class="brand-area">
+    <image class="brand-logo" src="/images/app_logo_new.jpg" mode="aspectFit" />
+    <view class="brand-name">啃词</view>
+    <view class="brand-slogan">每一次咀嚼，都是记忆的沉淀</view>
+  </view>
+
+  <view class="login-card">
+    <!-- 老用户登录 -->
+    <button
+      class="btn-primary"
+      bindtap="onLoginTap"
+      loading="{{isLoading}}"
+      disabled="{{isLoading}}"
+      hover-class="btn-primary--tap"
+    >
+      微信一键登录
+    </button>
+
+    <view class="divider-row">
+      <view class="divider-line"></view>
+      <text class="divider-text">或</text>
+      <view class="divider-line"></view>
+    </view>
+
+    <!-- 新用户体验 -->
+    <button
+      class="btn-outline"
+      bindtap="onGuestTap"
+      disabled="{{isLoading}}"
+      hover-class="btn-outline--tap"
+    >
+      先体验一下
+    </button>
+
+  </view>
+
+  <!-- 协议弹窗 -->
+  <view class="agreement-mask" wx:if="{{showAgreementModal}}">
+    <view class="agreement-dialog" catchtap="noop">
+      <view class="agreement-title">用户协议与隐私政策</view>
+      <view class="agreement-desc">登录前请阅读并同意以下协议</view>
+
+      <view class="agreement-row" bindtap="toggleAgreement">
+        <view class="checkbox {{hasAgreed ? 'checkbox--checked' : ''}}"></view>
+        <view class="agreement-text">
+          我已阅读并同意
+          <text class="legal-link" catchtap="onViewUserAgreement">《用户协议》</text>
+          与
+          <text class="legal-link" catchtap="onViewPrivacy">《隐私政策》</text>
+        </view>
+      </view>
+
+      <view class="agreement-actions">
+        <button class="btn-ghost" bindtap="closeAgreementModal">取消</button>
+        <button class="btn-primary btn-primary--modal" bindtap="confirmAgreement">同意并登录</button>
+      </view>
+    </view>
+  </view>
+</view>

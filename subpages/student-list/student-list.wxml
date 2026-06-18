@@ -1,0 +1,60 @@
+<!-- pages/student-list/student-list.wxml -->
+<view class="container {{selectMode ? 'select-mode' : ''}}">
+  <view class="header">
+    <text class="title">{{selectMode ? '选择学生' : '学生管理'}}</text>
+    <text wx:if="{{!selectMode}}" class="subtitle">共 {{students.length}} 人 · 当前显示 {{filteredStudents.length}} 人</text>
+  </view>
+
+  <view class="search-bar">
+    <input
+      type="text"
+      placeholder="搜索学生姓名或年级"
+      value="{{searchKey}}"
+      bindinput="onSearch"
+      confirm-type="search"
+    />
+    <view wx:if="{{searchKey}}" class="clear-search" bindtap="clearSearch">清空</view>
+  </view>
+
+  <view class="student-list">
+    <block wx:for="{{filteredStudents}}" wx:key="id">
+      <view class="student-item-wrapper" wx:if="{{item.id || item._id}}">
+        <movable-area class="slide-area">
+          <movable-view
+            class="slide-view"
+            direction="horizontal"
+            animation="true"
+            out-of-bounds="true"
+            damping="60"
+            x="{{swipeXById[item.id || item._id] || 0}}"
+            bindchange="onSwipeChange"
+            bindtouchend="onSwipeEnd"
+            data-id="{{item.id || item._id}}"
+          >
+            <view class="card-content" catchtap="selectStudent" data-id="{{item.id || item._id}}">
+              <view class="name-row">
+                <text class="student-name">{{item.name || '未命名'}}</text>
+                <text class="current-tag" wx:if="{{currentStudentId === (item.id || item._id)}}">当前</text>
+              </view>
+              <text class="student-grade">{{item.grade || '未设置年级'}}</text>
+            </view>
+
+            <view class="action-buttons">
+              <view class="action-btn edit-btn" catchtap="editStudent" data-id="{{item.id || item._id}}">编辑</view>
+              <view class="action-btn delete-btn" catchtap="deleteStudent" data-id="{{item.id || item._id}}">删除</view>
+            </view>
+          </movable-view>
+        </movable-area>
+      </view>
+    </block>
+
+    <view wx:if="{{filteredStudents.length === 0}}" class="empty-state">
+      <text class="empty-title">{{searchKey ? '没有找到匹配的学生' : '暂无学生数据'}}</text>
+      <text class="empty-desc">{{searchKey ? '换个关键词试试，例如姓名或年级' : '点击右下角 + 添加第一位学生'}}</text>
+    </view>
+  </view>
+
+  <view wx:if="{{!selectMode}}" class="floating-add-button">
+    <button bindtap="addStudent" type="primary" size="default" class="fab-button">+ 添加学生</button>
+  </view>
+</view>

@@ -1,0 +1,92 @@
+<!-- pages/grid-review/grid-review.wxml -->
+<view class="container">
+  <!-- 页面头部 -->
+  <view class="header">
+    <text class="page-title">{{pageTitle}}</text>
+  </view>
+
+  <!-- 加载状态 -->
+  <view wx:if="{{loading}}" class="loading-container">
+    <loading class="loading-spinner"></loading>
+    <text class="loading-text">加载中...</text>
+  </view>
+
+  <!-- 错误提示 -->
+  <view wx:elif="{{hasError}}" class="error-container">
+    <text class="error-message">{{errorMessage}}</text>
+    <button type="primary" bindtap="retryLoad">重试</button>
+  </view>
+
+  <!-- 内容区域 -->
+  <view wx:else class="content">
+    <!-- 单词批次信息 -->
+    <view class="batch-info">
+      <text class="info-text">
+        批次: {{currentBatchIndex + 1}} / {{totalBatches}}
+      </text>
+      <text class="info-text">
+        当前批次单词数: {{currentBatchWordsCount}}
+      </text>
+    </view>
+
+    <!-- 九宫格单词列表 -->
+    <view class="grid-container">
+      <view 
+        wx:for="{{currentBatchWords}}" 
+        wx:key="id"
+        class="grid-item"
+        data-index="{{index}}"
+        bind:tap="onGridWordTap"
+        style="background-color: {{selectedWord && selectedWord.id === item.id ? '#e6f7ff' : (isMatched(item.id) ? '#f6ffed' : '#ffffff')}}; border: {{selectedWord && selectedWord.id === item.id ? '2px solid #1989fa' : (isMatched(item.id) ? '2px solid #52c41a' : '1px solid #e8e8e8')}};"
+      >
+        <!-- 单词显示 -->
+        <view class="word-item" data-id="{{item.id}}">
+          <text class="word-text">{{item.display}}</text>
+          
+          <!-- 音标显示 -->
+          <text 
+            wx:if="{{showPhonetic[item.id]}}" 
+            class="phonetic-text"
+          >
+            {{item.phonetic}}
+          </text>
+          
+          <!-- 音标切换按钮 -->
+          <view 
+            class="phonetic-toggle" 
+            data-id="{{item.id}}"
+            catchtap="togglePhonetic"
+          >
+            {{showPhonetic[item.id] ? '隐藏' : '显示'}}音标
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 控制按钮 -->
+    <view class="control-buttons">
+      <button 
+        type="default" 
+        bindtap="prevBatch"
+        disabled="{{currentBatchIndex <= 0}}"
+      >
+        上一批
+      </button>
+      
+      <button 
+        type="primary" 
+        bindtap="refreshBatch"
+      >
+        重新打乱
+      </button>
+      
+      <button 
+        type="default" 
+        bindtap="nextBatch"
+        disabled="{{!hasMoreWords && currentBatchIndex >= totalBatches - 1}}"
+      >
+        下一批
+      </button>
+    </view>
+  </view>
+</view>

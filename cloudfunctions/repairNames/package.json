@@ -1,0 +1,9 @@
+{
+  "name": "repairNames",
+  "version": "1.0.0",
+  "description": "批量修复云端各集合缺失的 student_name / teacher_name 字段",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "latest"
+  }
+}

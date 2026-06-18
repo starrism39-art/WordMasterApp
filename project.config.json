@@ -1,0 +1,233 @@
+{
+  "description": "词汇学习助手小程序",
+  "packOptions": {
+    "ignore": [
+      {
+        "value": ".gitignore",
+        "type": "file"
+      },
+      {
+        "value": "README.md",
+        "type": "file"
+      },
+      {
+        "value": "*.log",
+        "type": "file"
+      },
+      {
+        "value": "*.py",
+        "type": "file"
+      },
+      {
+        "value": "*.bat",
+        "type": "file"
+      },
+      {
+        "value": "*.ps1",
+        "type": "file"
+      },
+      {
+        "value": "add*.js",
+        "type": "file"
+      },
+      {
+        "value": "convert*.js",
+        "type": "file"
+      },
+      {
+        "value": "create*.js",
+        "type": "file"
+      },
+      {
+        "value": "count*.js",
+        "type": "file"
+      },
+      {
+        "value": "generate*.js",
+        "type": "file"
+      },
+      {
+        "value": "test*.js",
+        "type": "file"
+      },
+      {
+        "value": "update*.js",
+        "type": "file"
+      },
+      {
+        "value": "clean*.js",
+        "type": "file"
+      },
+      {
+        "value": "reset*.js",
+        "type": "file"
+      },
+      {
+        "value": "analyze*.js",
+        "type": "file"
+      },
+      {
+        "value": "calculate*.js",
+        "type": "file"
+      },
+      {
+        "value": "remove*.js",
+        "type": "file"
+      },
+      {
+        "value": "index.html",
+        "type": "file"
+      },
+      {
+        "value": "demo-learning-flow.html",
+        "type": "file"
+      },
+      {
+        "value": "DATA_BACKUP_GUIDE.md",
+        "type": "file"
+      },
+      {
+        "value": "QUICK_START_BACKUP.md",
+        "type": "file"
+      },
+      {
+        "value": "CODEBUDDY.md",
+        "type": "file"
+      },
+      {
+        "value": "cloudbaserc.json",
+        "type": "file"
+      },
+      {
+        "value": "project.private.config.json",
+        "type": "file"
+      },
+      {
+        "value": "package-lock.json",
+        "type": "file"
+      },
+      {
+        "value": "query_word.js",
+        "type": "file"
+      },
+      {
+        "value": "wxStorage.json",
+        "type": "file"
+      },
+      {
+        "value": ".mcp.json",
+        "type": "file"
+      },
+      {
+        "value": "test_results.txt",
+        "type": "file"
+      },
+      {
+        "value": "ji_*.js",
+        "type": "file"
+      },
+      {
+        "value": "new_standard_*.js",
+        "type": "file"
+      },
+      {
+        "value": "ren_jiao_*.js",
+        "type": "file"
+      },
+      {
+        "value": "yi_lin_*.js",
+        "type": "file"
+      },
+      {
+        "value": "*_words.json",
+        "type": "file"
+      },
+      {
+        "value": "word_pronunciations.json",
+        "type": "file"
+      },
+      {
+        "value": "primary_real_words.js",
+        "type": "file"
+      },
+      {
+        "value": "senior_real_words.js",
+        "type": "file"
+      }
+    ],
+    "include": []
+  },
+  "setting": {
+    "urlCheck": true,
+    "es6": true,
+    "enhance": true,
+    "postcss": false,
+    "preloadBackgroundData": false,
+    "minified": true,
+    "newFeature": true,
+    "coverView": true,
+    "nodeModules": false,
+    "autoAudits": false,
+    "showShadowRootInWxmlPanel": true,
+    "uglifyFileName": false,
+    "checkInvalidKey": true,
+    "checkSiteMap": true,
+    "uploadWithSourceMap": false,
+    "compileHotReLoad": false,
+    "lazyloadPlaceholderEnable": false,
+    "useMultiFrameRuntime": false,
+    "useApiHook": false,
+    "useApiHostProcess": false,
+    "showES6CompileOption": false,
+    "babelSetting": {
+      "ignore": [
+        "**/*"
+      ],
+      "disablePlugins": [
+        "transform-runtime"
+      ],
+      "outputPath": ""
+    },
+    "enableEngineNative": false,
+    "useIsolateContext": false,
+    "userConfirmedUseNameTree": false,
+    "packNpmManually": false,
+    "packNpmRelationList": [],
+    "minifyWXSS": true,
+    "compileWorklet": false,
+    "minifyWXML": true,
+    "localPlugins": false,
+    "disableUseStrict": false,
+    "useCompilerPlugins": false,
+    "condition": true,
+    "swc": true,
+    "disableSWC": false,
+    "compressTemplate": true,
+    "reserveExtname": false,
+    "minifyJs": true
+  },
+  "cloudfunctionRoot": "cloudfunctions/",
+  "compileType": "miniprogram",
+  "libVersion": "3.10.3",
+  "appid": "wx930eccb9442dc8f3",
+  "projectname": "啃词",
+  "isGameTourist": false,
+  "simulatorType": "wechat",
+  "simulatorPluginLibVersion": {},
+  "condition": {
+    "search": {
+      "list": []
+    },
+    "conversation": {
+      "list": []
+    },
+    "game": {
+      "list": []
+    },
+    "miniprogram": {
+      "list": []
+    }
+  },
+  "editorSetting": {},
+  "cloudfunctionTemplateRoot": "cloudfunctionTemplate/"
+}

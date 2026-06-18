@@ -1,0 +1,118 @@
+{
+  "version": "1.0",
+  "generatedAt": "2024-01-01T00:00:00.000Z",
+  "totalWords": 33400,
+  "wordbooks": [
+    {
+      "id": "pep_primary",
+      "title": "小学英语通用版",
+      "description": "适用于全国小学生的基础英语词汇",
+      "words": [
+        {
+          "id": "p0001",
+          "word": "apple",
+          "phonetic": "/ˈæpl/",
+          "phoneticText": "ˈæpl",
+          "audioUrl": "https://api.example.com/pronunciation/apple",
+          "audioSources": {
+            "american": "https://api.example.com/pronunciation/apple?accent=us",
+            "british": "https://api.example.com/pronunciation/apple?accent=uk"
+          },
+          "syllables": ["ap", "ple"],
+          "stressPosition": 0
+        },
+        {
+          "id": "p0002",
+          "word": "book",
+          "phonetic": "/bʊk/",
+          "phoneticText": "bʊk",
+          "audioUrl": "https://api.example.com/pronunciation/book",
+          "audioSources": {
+            "american": "https://api.example.com/pronunciation/book?accent=us",
+            "british": "https://api.example.com/pronunciation/book?accent=uk"
+          },
+          "syllables": ["book"],
+          "stressPosition": 0
+        },
+        {
+          "id": "p0003",
+          "word": "cat",
+          "phonetic": "/kæt/",
+          "phoneticText": "kæt",
+          "audioUrl": "https://api.example.com/pronunciation/cat",
+          "audioSources": {
+            "american": "https://api.example.com/pronunciation/cat?accent=us",
+            "british": "https://api.example.com/pronunciation/cat?accent=uk"
+          },
+          "syllables": ["cat"],
+          "stressPosition": 0
+        }
+      ]
+    },
+    {
+      "id": "beijing_junior_1",
+      "title": "北京版初中英语（七年级）",
+      "description": "北京地区七年级英语词汇",
+      "words": [
+        {
+          "id": "bj1_0001",
+          "word": "achieve",
+          "phonetic": "/əˈtʃiːv/",
+          "phoneticText": "əˈtʃiːv",
+          "audioUrl": "https://api.example.com/pronunciation/achieve",
+          "audioSources": {
+            "american": "https://api.example.com/pronunciation/achieve?accent=us",
+            "british": "https://api.example.com/pronunciation/achieve?accent=uk"
+          },
+          "syllables": ["a", "chieve"],
+          "stressPosition": 1
+        },
+        {
+          "id": "bj1_0002",
+          "word": "benefit",
+          "phonetic": "/ˈbenɪfɪt/",
+          "phoneticText": "ˈbenɪfɪt",
+          "audioSources": {
+            "american": "https://api.example.com/pronunciation/benefit?accent=us",
+            "british": "https://api.example.com/pronunciation/benefit?accent=uk"
+          },
+          "syllables": ["ben", "e", "fit"],
+          "stressPosition": 0
+        }
+      ]
+    },
+    {
+      "id": "beijing_senior_1",
+      "title": "北京版高中英语（高一）",
+      "description": "北京地区高一英语词汇",
+      "words": [
+        {
+          "id": "bs1_0001",
+          "word": "analyze",
+          "phonetic": "/ˈænəlaɪz/",
+          "phoneticText": "ˈænəlaɪz",
+          "audioUrl": "https://api.example.com/pronunciation/analyze",
+          "audioSources": {
+            "american": "https://api.example.com/pronunciation/analyze?accent=us",
+            "british": "https://api.example.com/pronunciation/analyze?accent=uk"
+          },
+          "syllables": ["a", "na", "lyze"],
+          "stressPosition": 0
+        },
+        {
+          "id": "bs1_0002",
+          "word": "concept",
+          "phonetic": "/ˈkɒnsept/",
+          "phoneticText": "ˈkɒnsept",
+          "audioUrl": "https://api.example.com/pronunciation/concept",
+          "audioSources": {
+            "american": "https://api.example.com/pronunciation/concept?accent=us",
+            "british": "https://api.example.com/pronunciation/concept?accent=uk"
+          },
+          "syllables": ["con", "cept"],
+          "stressPosition": 0
+        }
+      ]
+    }
+  ]
+}

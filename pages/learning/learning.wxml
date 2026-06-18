@@ -1,0 +1,601 @@
+<!-- pages/learning/learning.wxml -->
+<view class="container">
+  <!-- 加载状态 -->
+  <view wx:if="{{loading}}" class="loading-container">
+    <view class="loading-spinner"></view>
+    <text class="loading-text">加载中...</text>
+  </view>
+
+  <!-- 错误状态 -->
+  <view wx:elif="{{hasError}}" class="error-container">
+    <text class="error-text">{{errorMessage}}</text>
+    <button class="retry-button" bindtap="retryLoad">重试</button>
+  </view>
+
+  <!-- 学习完成页面 -->
+  <view wx:elif="{{learningMode === 'completed'}}">
+    <!-- 学习完成信息 -->
+    <view class="completed-page">
+    </view>
+  </view>
+
+  <!-- 学习入口页面 -->
+  <view wx:elif="{{!learningMode}}" class="entry-page">
+    <!-- 学生信息 -->
+    <view class="student-info-card">
+      <view class="student-info">
+        <text class="student-label">当前学生：</text>
+        <text class="student-name">{{currentStudent && currentStudent.name ? currentStudent.name : '未选择'}}</text>
+        <button class="choose-button" bindtap="chooseStudent">选择</button>
+      </view>
+    </view>
+
+    <!-- 词书信息 -->
+    <view class="wordbook-info-card">
+      <view class="wordbook-info">
+        <text class="wordbook-label">当前词书：</text>
+        <text class="wordbook-title">{{currentWordbook && currentWordbook.title ? currentWordbook.title : '未选择'}}</text>
+        <button class="choose-button" bindtap="chooseWordbook">选择</button>
+      </view>
+    </view>
+
+
+
+    <!-- 开始学习按钮 -->
+    <button class="start-learning-button" bindtap="initStudyProcess">
+      开始学习
+    </button>
+  </view>
+
+  <!-- 课前预习和抗遗忘复习页面 -->
+  <view wx:elif="{{learningMode === 'preview' || learningMode === 'review' || pageTitle === '单词预习' || pageTitle === '单词复习'}}" class="preview-page">
+    <!-- 加载状态 -->
+    <view wx:if="{{loading}}" class="loading-container">
+      <view class="loading-spinner"></view>
+      <text class="loading-text">加载中...</text>
+    </view>
+
+    <!-- 错误状态 -->
+    <view wx:elif="{{hasError}}" class="error-container">
+      <text class="error-text">{{errorMessage}}</text>
+      <button class="retry-button" bindtap="retryLoad">重试</button>
+    </view>
+
+    <!-- 空数据状态 -->
+    <view wx:elif="{{!currentBatchWords || currentBatchWords.length === 0}}" class="empty-container">
+      <text class="empty-text">暂无单词数据</text>
+      <text class="empty-subtext">请确保已选择正确的词书</text>
+    </view>
+
+    <!-- 单词列表 -->
+    <view wx:else class="preview-content">
+      <!-- 顶部批次信息和音标开关 -->
+      <view class="top-batch-info">
+        <view class="batch-meta">
+          <view wx:if="{{learningMode === 'preview'}}" class="batch-number">
+            <text class="batch-number-text">{{currentBatchIndex + 1}}/{{totalBatches}}</text>
+          </view>
+          <view class="phonetic-mode-switch">
+            <text class="phonetic-mode-label">音标：</text>
+            <view class="phonetic-mode-options">
+              <view
+                class="phonetic-mode-option {{phoneticModeEnabled ? 'active' : ''}}"
+                data-enabled="true"
+                bindtap="togglePhoneticMode"
+              >开</view>
+              <view
+                class="phonetic-mode-option {{!phoneticModeEnabled ? 'active' : ''}}"
+                data-enabled="false"
+                bindtap="togglePhoneticMode"
+              >关</view>
+            </view>
+          </view>
+        </view>
+        <view wx:if="{{learningMode === 'preview'}}" class="batch-nav-buttons small">
+          <button 
+            class="prev-batch-button tiny"
+            bindtap="prevBatch"
+            disabled="{{currentBatchIndex === 0}}"
+          >
+            ←
+          </button>
+          <button 
+            class="next-batch-button tiny"
+            bindtap="nextBatch"
+          >
+            →
+          </button>
+        </view>
+      </view>
+
+      <!-- 单词列表 -->
+      <view class="words-list">
+        <view 
+          wx:for="{{currentBatchWords}}" 
+          wx:key="id"
+          class="word-item-preview {{(previewMastery[item.id] === true || previewMastery[item.id] === 'mastered') ? 'mastered' : (previewMastery[item.id] === false || previewMastery[item.id] === 'difficult') ? 'difficult' : ''}}"
+          bindtap="toggleWordMeaning"
+          data-id="{{item.id}}"
+        >
+          <!-- 单词掌握状态标记 -->
+          <view class="word-status-indicator {{(previewMastery[item.id] === true || previewMastery[item.id] === 'mastered') ? 'status-mastered' : (previewMastery[item.id] === false || previewMastery[item.id] === 'difficult') ? 'status-difficult' : ''}}"></view>
+          
+          <view class="word-content">
+            <text class="word-text">{{item.word || '未知单词'}}</text>
+            <text wx:if="{{showPhonetic[item.id]}}" class="word-phonetic">{{item.phonetic || ''}}</text>
+            <text wx:if="{{showMeaning[item.id]}}" class="word-translation">{{item.translation || item.meaning || '无释义'}}</text>
+          </view>
+          <view class="word-actions">
+            <view 
+              class="action-button correct-button {{(previewMastery[item.id] === true || previewMastery[item.id] === 'mastered') ? 'active' : ''}}"
+              data-id="{{item.id}}"
+              data-status="true"
+              catchtap="updatePreviewMastery"
+            >
+              ✓
+            </view>
+            <view 
+              class="action-button wrong-button {{(previewMastery[item.id] === false || previewMastery[item.id] === 'difficult') ? 'active' : ''}}"
+              data-id="{{item.id}}"
+              data-status="false"
+              catchtap="updatePreviewMastery"
+            >
+              ✗
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <!-- 批次切换和学习按钮 -->
+      <view class="bottom-action">
+        <button 
+          class="start-new-learning-button"
+          bindtap="startNewLearning"
+        >
+          开始学习（{{notMasteredWordsCount}}）
+        </button>
+      </view>
+    </view>
+  </view>
+
+  <!-- 新词学习页面 -->
+  <view wx:elif="{{learningMode === 'newLearning' && !showGroupCompletePage && !showCustomMixPanel}}" class="new-learning-page">
+    <!-- 顶部信息 -->
+    <view class="top-info">
+      <!-- 进度显示 -->
+      <view class="progress-info">
+        <text class="progress-text">{{currentGroupIndex + 1}}/{{totalGroups}}</text>
+      </view>
+      <!-- 打乱顺序按钮 -->
+      <view class="shuffle-button" bindtap="shuffleCurrentWords">
+        <text class="shuffle-icon">🔄</text>
+        <text class="shuffle-text">打乱顺序</text>
+      </view>
+    </view>
+
+    <!-- 全局音标开关 -->
+    <view class="top-batch-info">
+      <view class="batch-meta">
+        <view class="phonetic-mode-switch">
+          <text class="phonetic-mode-label">音标：</text>
+          <view class="phonetic-mode-options">
+            <view
+              class="phonetic-mode-option {{phoneticModeEnabled ? 'active' : ''}}"
+              data-enabled="true"
+              bindtap="togglePhoneticMode"
+            >开</view>
+            <view
+              class="phonetic-mode-option {{!phoneticModeEnabled ? 'active' : ''}}"
+              data-enabled="false"
+              bindtap="togglePhoneticMode"
+            >关</view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 单词列表 -->
+    <view class="words-list">
+      <view 
+        wx:for="{{currentBatchWords}}" 
+        wx:key="id"
+        class="word-item-learning"
+        bindtap="toggleWordMeaning"
+        data-id="{{item.id}}"
+      >
+        <view class="word-content">
+          <text class="word-text">{{item.word || '未知单词'}}</text>
+          <text wx:if="{{showPhonetic[item.id]}}" class="word-phonetic">{{item.phonetic || ''}}</text>
+          <text wx:if="{{showMeaning[item.id]}}" class="word-translation">{{item.translation || item.meaning || '无释义'}}</text>
+        </view>
+        <view class="tap-hint">
+          <text>点击显示释义</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 完成本组学习按钮 -->
+    <view class="bottom-action">
+      <button 
+        class="complete-group-button"
+        bindtap="completeCurrentGroup"
+      >
+        完成本组学习
+      </button>
+    </view>
+  </view>
+
+  <!-- 完成组操作页面 -->
+  <view wx:elif="{{learningMode === 'newLearning' && showGroupCompletePage && !showCustomMixPanel}}" class="group-complete-page">
+    <!-- 进度信息 -->
+    <view class="progress-section">
+      <view class="progress-header">
+        <text class="progress-title">当前进度</text>
+        <text class="progress-group-info">{{currentGroupIndex + 1}}/{{totalGroups}}组</text>
+      </view>
+      <view class="progress-bar-container">
+        <view class="progress-bar">
+          <view 
+            class="progress-fill" 
+            style="width: {{(currentGroupIndex + 1) / totalGroups * 100}}%"
+          ></view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 操作按钮 -->
+    <view class="action-section">
+      <text class="action-title">下一步操作</text>
+      
+      <!-- 下一组新词按钮 -->
+      <button 
+        wx:if="{{currentGroupIndex + 1 < totalGroups}}"
+        class="next-group-button"
+        bindtap="continueToNextGroup"
+      >
+        📚 下一组新词（剩余{{totalGroups - currentGroupIndex - 1}}组）
+      </button>
+      
+      <!-- 课后检测按钮（只在最后一组时显示） -->
+      <button 
+        wx:if="{{currentGroupIndex + 1 >= totalGroups}}"
+        class="final-test-button"
+        bindtap="startFinalTest"
+      >
+        ✅ 开始课后检测
+      </button>
+      
+      <!-- 自定义混组按钮 -->
+      <button 
+        class="custom-mix-button"
+        bindtap="showCustomMixPanel"
+      >
+        📋 自定义混组
+      </button>
+      
+      <!-- 提前结束学习按钮 -->
+      <button 
+        class="end-early-button"
+        bindtap="endStudyEarly"
+      >
+        🚪 提前结束学习
+      </button>
+    </view>
+  </view>
+
+  <!-- 自定义混组选择面板 -->
+  <view wx:elif="{{learningMode === 'newLearning' && showCustomMixPanel}}" class="custom-mix-panel">
+    <!-- 面板标题 -->
+    <view class="panel-header">
+      <text class="panel-title">选择复习组</text>
+      <view class="panel-close" bindtap="closeCustomMixPanel">
+        <text class="close-icon">✕</text>
+      </view>
+    </view>
+
+    <!-- 全选功能 -->
+    <view class="select-all-section">
+      <view 
+        class="checkbox"
+        bindtap="toggleSelectAll"
+      >
+        <view class="checkbox-inner {{selectAll ? 'checked' : ''}}" catchtap="toggleSelectAll">
+          <text wx:if="{{selectAll}}" class="checkbox-check">✓</text>
+        </view>
+      </view>
+      <text class="select-all-text">全选</text>
+      <text class="selected-count">已选择{{selectedGroups.length}}组</text>
+    </view>
+
+    <!-- 组列表 -->
+    <view class="groups-list">
+      <view 
+        wx:for="{{learnedGroups}}" 
+        wx:key="index"
+        class="group-item"
+        bindtap="toggleGroupSelection"
+        data-index="{{index}}"
+      >
+        <view class="group-icon">
+          <text class="group-number">{{index + 1}}</text>
+        </view>
+        <view class="group-info">
+          <text class="group-name">第{{index + 1}}组</text>
+          <text class="group-mix-count">混组{{groupMixCount[index] || 0}}次</text>
+        </view>
+        <view class="group-checkbox">
+          <view 
+            class="checkbox-inner {{groupSelected[index] ? 'checked' : ''}}"
+            catchtap="toggleGroupSelection"
+            data-index="{{index}}"
+          >
+            <text wx:if="{{groupSelected[index]}}" class="checkbox-check">✓</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 操作按钮 -->
+    <view class="panel-actions">
+      <button 
+        class="cancel-button"
+        bindtap="closeCustomMixPanel"
+      >
+        取消
+      </button>
+      <button 
+        class="start-review-button"
+        bindtap="startCustomMixReview"
+        disabled="{{selectedGroups.length === 0}}"
+      >
+        开始复习（{{selectedGroups.length}}）
+      </button>
+    </view>
+  </view>
+
+  <!-- 混组检测页面 -->
+  <view wx:elif="{{learningMode === 'mixReview'}}" class="mix-review-page">
+    <!-- 顶部音标开关 -->
+    <view class="top-batch-info">
+      <view class="batch-meta">
+        <view class="phonetic-mode-switch">
+          <text class="phonetic-mode-label">音标：</text>
+          <view class="phonetic-mode-options">
+            <view
+              class="phonetic-mode-option {{phoneticModeEnabled ? 'active' : ''}}"
+              data-enabled="true"
+              bindtap="togglePhoneticMode"
+            >开</view>
+            <view
+              class="phonetic-mode-option {{!phoneticModeEnabled ? 'active' : ''}}"
+              data-enabled="false"
+              bindtap="togglePhoneticMode"
+            >关</view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 单词列表 -->
+    <view class="words-list">
+      <view 
+        wx:for="{{currentBatchWords}}" 
+        wx:key="id"
+        class="word-item-preview"
+        bindtap="toggleWordMeaning"
+        data-id="{{item.id}}"
+      >
+        <view class="word-content">
+          <text class="word-text">{{item.word || '未知单词'}}</text>
+          <text wx:if="{{showPhonetic[item.id]}}" class="word-phonetic">{{item.phonetic || ''}}</text>
+          <text wx:if="{{showMeaning[item.id]}}" class="word-translation">{{item.translation || item.meaning || '无释义'}}</text>
+        </view>
+        <view class="word-actions">
+          <view 
+            class="action-button correct-button {{(previewMastery[item.id] === true || previewMastery[item.id] === 'mastered') ? 'active' : ''}}"
+            data-id="{{item.id}}"
+            data-status="true"
+            catchtap="updatePreviewMastery"
+          >
+            ✓
+          </view>
+          <view 
+            class="action-button wrong-button {{(previewMastery[item.id] === false || previewMastery[item.id] === 'difficult') ? 'active' : ''}}"
+            data-id="{{item.id}}"
+            data-status="false"
+            catchtap="updatePreviewMastery"
+          >
+            ✗
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 完成混组检测按钮 -->
+    <view class="bottom-action">
+      <button 
+        class="complete-mix-review-button"
+        bindtap="completeMixReview"
+      >
+        完成混组检测
+      </button>
+    </view>
+  </view>
+
+  <!-- 课后检测页面 -->
+  <view wx:elif="{{learningMode === 'finalTest' || pageTitle === '课后检测'}}" class="final-test-page">
+    <!-- 课后检测头部：正确率 + 音标开关同排 -->
+    <view class="test-header-flex">
+      <view class="test-progress">
+        <text class="progress-label">正确率：</text>
+        <text class="progress-value">{{testProgress}}%</text>
+      </view>
+      <view class="phonetic-mode-switch">
+        <text class="phonetic-mode-label">音标：</text>
+        <view class="phonetic-mode-options">
+          <view
+            class="phonetic-mode-option {{phoneticModeEnabled ? 'active' : ''}}"
+            data-enabled="true"
+            bindtap="togglePhoneticMode"
+          >开</view>
+          <view
+            class="phonetic-mode-option {{!phoneticModeEnabled ? 'active' : ''}}"
+            data-enabled="false"
+            bindtap="togglePhoneticMode"
+          >关</view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 单词列表 -->
+    <view class="words-list">
+      <view 
+        wx:for="{{testWords || allWords}}" 
+        wx:key="id"
+        class="word-item-preview"
+        bindtap="toggleWordMeaning"
+        data-id="{{item.id}}"
+      >
+        <view class="word-content">
+          <text class="word-text">{{item.word || '未知单词'}}</text>
+          <text wx:if="{{showPhonetic[item.id]}}" class="word-phonetic">{{item.phonetic || ''}}</text>
+          <text wx:if="{{showMeaning[item.id]}}" class="word-translation">{{item.translation || item.meaning || '无释义'}}</text>
+        </view>
+        <view class="word-actions">
+          <view 
+              class="action-button correct-button {{previewMastery[item.id] === 'mastered' ? 'active' : ''}}"
+              data-word-id="{{item.id}}" 
+              data-status="mastered"
+              catchtap="updatePreviewMastery"
+            >
+              ✓
+            </view>
+            <view 
+              class="action-button wrong-button {{previewMastery[item.id] === 'difficult' ? 'active' : ''}}"
+              data-word-id="{{item.id}}" 
+              data-status="difficult"
+              catchtap="updatePreviewMastery"
+            >
+              ✗
+            </view>
+        </view>
+      </view>
+    </view>
+    
+    <!-- 分页控制 - 只在预习模式下显示 -->
+    <view wx:if="{{learningMode === 'preview' && hasMoreWords}}" class="pagination-container">
+      <view class="pagination-info">
+        <text>第{{currentPage + 1}}页，共{{totalBatches}}页</text>
+      </view>
+      <button 
+        wx:if="{{!loading}}"
+        class="load-more-button"
+        bindtap="loadMoreWords"
+      >
+        加载更多
+      </button>
+      <view wx:else class="loading-more">
+        <text>加载中...</text>
+      </view>
+    </view>
+
+    <!-- 完成检测按钮 -->
+    <view class="bottom-action">
+      <button 
+        class="complete-test-button"
+        bindtap="completeTest"
+      >
+        完成检测
+      </button>
+    </view>
+  </view>
+  
+  <!-- 九宫格复习页面 -->
+  <view wx:elif="{{learningMode === 'gridReview'}}" class="grid-review-page">
+    <!-- 顶部信息 -->
+    <view class="top-info">
+      <!-- 进度显示 -->
+      <view class="progress-info">
+        <text class="progress-text">第 {{currentBatchIndex + 1}} 组 / 共 {{totalBatches}} 组</text>
+      </view>
+      <!-- 打乱顺序按钮 -->
+      <view class="shuffle-button" bindtap="shuffleCurrentWords">
+        <text class="shuffle-icon">🔄</text>
+        <text class="shuffle-text">打乱顺序</text>
+      </view>
+    </view>
+
+    <!-- 全局音标开关 -->
+    <view class="top-batch-info">
+      <view class="batch-meta">
+        <view class="phonetic-mode-switch">
+          <text class="phonetic-mode-label">音标：</text>
+          <view class="phonetic-mode-options">
+            <view
+              class="phonetic-mode-option {{phoneticModeEnabled ? 'active' : ''}}"
+              data-enabled="true"
+              bindtap="togglePhoneticMode"
+            >开</view>
+            <view
+              class="phonetic-mode-option {{!phoneticModeEnabled ? 'active' : ''}}"
+              data-enabled="false"
+              bindtap="togglePhoneticMode"
+            >关</view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 九宫格单词 -->
+    <view class="grid-container">
+      <view 
+        wx:for="{{currentBatchWords}}" 
+        wx:key="id"
+        class="grid-item"
+        bindtap="toggleWordMeaning"
+        data-id="{{item.id}}"
+      >
+        <view class="word-content">
+          <text class="word-text">{{item.word || '未知单词'}}</text>
+          <text wx:if="{{showPhonetic[item.id]}}" class="word-phonetic">{{item.phonetic || ''}}</text>
+          <text wx:if="{{showMeaning[item.id]}}" class="word-translation">{{item.translation || item.meaning || '无释义'}}</text>
+        </view>
+        <view class="word-actions">
+          <view 
+              class="action-button correct-button {{previewMastery[item.id] === 'mastered' ? 'active' : ''}}"
+              data-word-id="{{item.id}}" 
+              data-status="mastered"
+              catchtap="updatePreviewMastery"
+            >
+              ✓
+            </view>
+            <view 
+              class="action-button wrong-button {{previewMastery[item.id] === 'difficult' ? 'active' : ''}}"
+              data-word-id="{{item.id}}" 
+              data-status="difficult"
+              catchtap="updatePreviewMastery"
+            >
+              ✗
+            </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 批次切换按钮 -->
+    <view class="bottom-action">
+      <button 
+        class="prev-batch-button"
+        bindtap="prevBatch"
+        disabled="{{currentBatchIndex === 0}}"
+      >
+        上一组
+      </button>
+      <button 
+        class="next-batch-button"
+        bindtap="nextBatch"
+      >
+        下一组
+      </button>
+    </view>
+  </view>
+</view>

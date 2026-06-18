@@ -1,0 +1,191 @@
+/* pages/grid-review/grid-review.wxss */
+
+.container {
+  min-height: 100vh;
+  background-color: #f7f8fa;
+  padding-bottom: 140rpx;
+  padding: 20rpx;
+  box-sizing: border-box;
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 30rpx;
+  padding-top: 20rpx;
+}
+
+.page-title {
+  font-size: 36rpx;
+  font-weight: bold;
+  color: #323233;
+}
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 80vh;
+}
+
+.loading-spinner {
+  width: 60rpx;
+  height: 60rpx;
+  margin-bottom: 20rpx;
+}
+
+.loading-text {
+  font-size: 28rpx;
+  color: #606266;
+}
+
+.error-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 80vh;
+  padding: 0 40rpx;
+}
+
+.error-message {
+  font-size: 28rpx;
+  color: #909399;
+  margin-bottom: 40rpx;
+  text-align: center;
+}
+
+.content {
+  background-color: #ffffff;
+  border-radius: 12rpx;
+  padding: 30rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.05);
+}
+
+.batch-info {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 30rpx;
+  padding-bottom: 20rpx;
+  border-bottom: 1rpx solid #ebedf0;
+}
+
+.info-text {
+  font-size: 26rpx;
+  color: #606266;
+}
+
+.grid-container {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  margin-bottom: 40rpx;
+}
+
+.grid-item {
+  width: 30%;
+  margin-bottom: 30rpx;
+  padding: 20rpx;
+  border-radius: 8rpx;
+  box-sizing: border-box;
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.grid-item:hover {
+  transform: translateY(-2rpx);
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.1);
+}
+
+.word-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.word-text {
+  font-size: 32rpx;
+  font-weight: bold;
+  color: #323233;
+  margin-bottom: 10rpx;
+  word-break: break-all;
+}
+
+.phonetic-text {
+  font-size: 22rpx;
+  color: #909399;
+  margin-bottom: 10rpx;
+}
+
+.phonetic-toggle {
+  font-size: 20rpx;
+  color: #1989fa;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.control-buttons {
+  display: flex;
+  justify-content: space-between;
+  gap: 20rpx;
+}
+
+.control-buttons button {
+  flex: 1;
+  margin: 0;
+}
+
+/* 适配不同屏幕尺寸 */
+@media (max-width: 375px) {
+  .grid-item {
+    width: 31%;
+    padding: 15rpx;
+  }
+  
+  .word-text {
+    font-size: 28rpx;
+  }
+  
+  .phonetic-text {
+    font-size: 20rpx;
+  }
+  
+  .phonetic-toggle {
+    font-size: 18rpx;
+  }
+}
+
+@media (max-width: 320px) {
+  .grid-item {
+    width: 30%;
+    padding: 10rpx;
+    margin-bottom: 20rpx;
+  }
+  
+  .word-text {
+    font-size: 26rpx;
+  }
+  
+  .phonetic-text {
+    font-size: 18rpx;
+  }
+  
+  .phonetic-toggle {
+    font-size: 16rpx;
+  }
+}
+
+@media (min-width: 414px) {
+  .grid-item {
+    padding: 25rpx;
+  }
+  
+  .word-text {
+    font-size: 34rpx;
+  }
+  
+  .phonetic-text {
+    font-size: 24rpx;
+  }
+}

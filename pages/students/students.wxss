@@ -1,0 +1,286 @@
+/* pages/students/students.wxss */
+.container {
+  padding: 20rpx;
+  padding-bottom: 140rpx;
+  background: #f5f7fb;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 30rpx;
+}
+
+/* 通用卡片样式 */
+.card {
+  background-color: #fff;
+  border-radius: 16rpx;
+  box-shadow: 0 2rpx 10rpx rgba(15, 23, 42, 0.06);
+  border: 1rpx solid #e8edf3;
+  padding: 30rpx;
+  transition: all 0.3s ease;
+}
+
+.card:active {
+  transform: translateY(1rpx);
+  box-shadow: 0 1rpx 6rpx rgba(15, 23, 42, 0.08);
+}
+
+/* 账号信息区域样式 */
+.account-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 48rpx 30rpx;
+  background: #ffffff;
+  border-radius: 16rpx;
+  border: 1rpx solid #e8edf3;
+  box-shadow: 0 2rpx 10rpx rgba(15, 23, 42, 0.06);
+  transition: all 0.3s ease;
+}
+
+.account-info:active {
+  transform: translateY(1rpx);
+  box-shadow: 0 1rpx 6rpx rgba(15, 23, 42, 0.08);
+}
+
+/* 头像容器样式 */
+.avatar-container {
+  position: relative;
+  margin-bottom: 40rpx;
+}
+
+/* 头像样式 */
+.avatar {
+  width: 200rpx;
+  height: 200rpx;
+  border-radius: 50%;
+  border: 4rpx solid #e6ebf2;
+  background-color: #f8f8f8;
+  box-shadow: 0 2rpx 8rpx rgba(15, 23, 42, 0.08);
+}
+
+/* 更换头像按钮样式 */
+.avatar-upload-btn {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  background: #eef2f7;
+  color: #334155;
+  padding: 10rpx 20rpx;
+  border-radius: 18rpx;
+  font-size: 24rpx;
+  box-shadow: 0 1rpx 4rpx rgba(15, 23, 42, 0.08);
+  border: 1rpx solid #d9e1ec;
+  font-weight: 500;
+}
+
+.avatar-upload-btn:active {
+  background: #e5ebf3;
+  transform: scale(0.96);
+}
+
+/* 账号详情样式 */
+.account-details {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.account-name {
+  font-size: 42rpx;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.account-role {
+  font-size: 28rpx;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 8rpx 24rpx;
+  border-radius: 16rpx;
+  border: 1rpx solid #e2e8f0;
+}
+
+/* 区域标题样式 */
+.section-title {
+  font-size: 36rpx;
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 28rpx;
+  padding-bottom: 16rpx;
+  border-bottom: 2rpx solid #f0f0f0;
+  display: flex;
+  align-items: center;
+}
+
+
+
+/* 功能菜单区域 */
+.feature-menu {
+  margin-bottom: 10rpx;
+}
+
+.menu-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 24rpx;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 116rpx;
+  padding: 20rpx;
+  background: #ffffff;
+  border-radius: 14rpx;
+  border: 1rpx solid #e8edf3;
+  box-shadow: 0 2rpx 8rpx rgba(15, 23, 42, 0.05);
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.menu-item:active {
+  transform: translateY(2rpx);
+  box-shadow: 0 1rpx 5rpx rgba(15, 23, 42, 0.08);
+}
+
+.menu-label {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #334155;
+  text-align: center;
+}
+
+/* 系统信息区域 */
+.system-info {
+  margin-bottom: 20rpx;
+}
+
+.system-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}
+
+.system-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+
+.system-item:last-child {
+  border-bottom: none;
+}
+
+.system-label {
+  font-size: 28rpx;
+  color: #666;
+  font-weight: 500;
+}
+
+.system-value {
+  font-size: 28rpx;
+  color: #4A90E2;
+  font-weight: 500;
+  background: rgba(74, 144, 226, 0.1);
+  padding: 6rpx 20rpx;
+  border-radius: 16rpx;
+}
+
+/* 退出登录按钮容器 */
+.logout-container {
+  display: flex;
+  justify-content: center;
+  padding: 30rpx 40rpx 60rpx;
+  margin-top: 20rpx;
+}
+
+/* 退出登录按钮样式 */
+.logout-btn {
+  font-family: 'SimHei', '黑体', sans-serif;
+  font-size: 40rpx;
+  font-weight: bold;
+  padding: 40rpx 0;
+  width: 100%;
+  max-width: 550rpx;
+  border-radius: 60rpx;
+  background: linear-gradient(135deg, #4A90E2 0%, #6AA8FF 100%);
+  color: white;
+  border: 4rpx solid #357ABD;
+  box-shadow: 0 12rpx 32rpx rgba(74, 144, 226, 0.4);
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+  text-shadow: 0 3rpx 6rpx rgba(0, 0, 0, 0.2);
+  letter-spacing: 4rpx;
+}
+
+.logout-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+  transition: left 0.5s;
+}
+
+.logout-btn:active {
+  transform: scale(0.96);
+  box-shadow: 0 8rpx 20rpx rgba(74, 144, 226, 0.3);
+  background: linear-gradient(135deg, #6AA8FF 0%, #4A90E2 100%);
+}
+
+.logout-btn:active::before {
+  left: 100%;
+}
+
+/* 按钮悬停效果 */
+.logout-btn:hover {
+  box-shadow: 0 16rpx 40rpx rgba(74, 144, 226, 0.5);
+  transform: translateY(-2rpx);
+}
+
+/* 适配不同尺寸的屏幕 */
+@media screen and (min-width: 768rpx) {
+  .logout-btn {
+    max-width: 450rpx;
+    font-size: 36rpx;
+    padding: 36rpx 0;
+  }
+  
+  .menu-grid {
+    gap: 28rpx;
+  }
+}
+
+/* 响应式设计 */
+@media screen and (max-width: 375rpx) {
+  .menu-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .account-info {
+    padding: 40rpx 20rpx;
+  }
+  
+  .avatar {
+    width: 160rpx;
+    height: 160rpx;
+  }
+  
+  .account-name {
+    font-size: 36rpx;
+  }
+  
+  .logout-btn {
+    font-size: 32rpx;
+    padding: 32rpx 0;
+    border-width: 3rpx;
+    letter-spacing: 2rpx;
+  }
+}

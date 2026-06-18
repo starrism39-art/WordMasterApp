@@ -1,0 +1,483 @@
+/* 学习记录页面样式 */
+.container {
+  padding: 20rpx;
+  padding-bottom: 140rpx;
+  background-color: #f8f8f8;
+  min-height: 100vh;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+/* 顶部导航栏 */
+.header {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin-bottom: 30rpx;
+  padding: 20rpx 0;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+}
+
+.data-manage-btn {
+  background: linear-gradient(135deg, #4A90E2 0%, #357ABD 100%);
+  color: #fff;
+  font-size: 26rpx;
+  padding: 0 24rpx;
+  height: 60rpx;
+  border-radius: 30rpx;
+  box-shadow: 0 4rpx 12rpx rgba(74, 144, 226, 0.3);
+}
+
+.data-manage-btn::after {
+  border: none;
+  border-radius: 30rpx;
+}
+
+.data-manage-btn:active {
+  background: linear-gradient(135deg, #357ABD 0%, #4A90E2 100%);
+  transform: scale(0.96);
+}
+
+/* 筛选器容器 */
+.filter-container {
+  margin-bottom: 30rpx;
+}
+
+.record-type-tabs {
+  display: flex;
+  background: #ffffff;
+  border-radius: 20rpx;
+  padding: 10rpx;
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.06);
+  border: 1rpx solid #f0f0f0;
+  margin-top: 14rpx;
+}
+
+.record-type-tab {
+  flex: 1;
+  text-align: center;
+  padding: 16rpx 0;
+  border-radius: 16rpx;
+  transition: all 0.3s ease;
+}
+
+.record-type-tab.active {
+  background: linear-gradient(135deg, #4A90E2 0%, #357ABD 100%);
+  color: #fff;
+  box-shadow: 0 4rpx 12rpx rgba(74, 144, 226, 0.3);
+}
+
+.filter-tabs {
+  display: flex;
+  background: #ffffff;
+  border-radius: 20rpx;
+  padding: 10rpx;
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.06);
+  border: 1rpx solid #f0f0f0;
+}
+
+.filter-tab {
+  flex: 1;
+  text-align: center;
+  padding: 16rpx 0;
+  border-radius: 16rpx;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.filter-tab.active {
+  background: linear-gradient(135deg, #4A90E2 0%, #357ABD 100%);
+  color: #fff;
+  box-shadow: 0 4rpx 12rpx rgba(74, 144, 226, 0.3);
+}
+
+.tab-text {
+  font-size: 28rpx;
+  font-weight: 500;
+}
+
+/* 记录列表样式优化 */
+
+/* 统计卡片 */
+.stats-card {
+  display: flex;
+  background: linear-gradient(135deg, #fff, #f9f9f9);
+  border-radius: 20rpx;
+  padding: 30rpx;
+  margin-bottom: 30rpx;
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.05);
+  border: 1rpx solid #f0f0f0;
+}
+
+.stat-item {
+  flex: 1;
+  text-align: center;
+}
+
+.stat-number {
+  display: block;
+  font-size: 48rpx;
+  font-weight: 700;
+  color: #4A90E2;
+  margin-bottom: 8rpx;
+}
+
+.stat-label {
+  font-size: 26rpx;
+  color: #666;
+}
+
+.stat-divider {
+  width: 2rpx;
+  background: #e0e0e0;
+  margin: 0 20rpx;
+}
+
+/* 记录列表 */
+.records-list {
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
+}
+
+/* 加载状态 */
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 100rpx 0;
+}
+
+.loading-spinner {
+  width: 50rpx;
+  height: 50rpx;
+  border: 6rpx solid #f0f0f0;
+  border-top: 6rpx solid #4A90E2;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 20rpx;
+}
+
+.loading-spinner.small {
+  width: 30rpx;
+  height: 30rpx;
+  border-width: 4rpx;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.loading-text {
+  font-size: 28rpx;
+  color: #666;
+}
+
+/* 记录项样式 */
+.record-item {
+  background: #ffffff;
+  padding: 30rpx;
+  border: 1rpx solid #f0f0f0;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 24rpx;
+  border-radius: 20rpx;
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.05);
+  position: relative;
+}
+
+.record-item:active {
+  transform: scale(0.98);
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.05);
+}
+
+/* 简化的删除按钮样式 */
+.simple-delete-btn {
+  position: absolute;
+  top: 20rpx;
+  right: 20rpx;
+}
+
+.delete-btn-text {
+  color: #ff4757;
+  font-size: 26rpx;
+  padding: 8rpx 16rpx;
+  border-radius: 20rpx;
+  background-color: #ffebee;
+}
+
+/* 记录头部 */
+.record-header {
+  margin-bottom: 20rpx;
+  padding-bottom: 20rpx;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+
+.wordbook-title {
+  font-size: 34rpx;
+  font-weight: 600;
+  color: #333;
+}
+
+/* 信息卡片 */
+.info-card {
+  background: #f8f9fa;
+  border-radius: 16rpx;
+  padding: 24rpx;
+  margin-bottom: 24rpx;
+  box-shadow: inset 0 1rpx 3rpx rgba(0,0,0,0.05);
+}
+
+/* 信息项基础样式 */
+.info-item {
+  margin-bottom: 20rpx;
+}
+
+.info-item:last-child {
+  margin-bottom: 0;
+}
+
+/* 信息标签 */
+.info-label {
+  display: block;
+  font-size: 24rpx;
+  color: #666;
+  margin-bottom: 8rpx;
+  font-weight: 500;
+}
+
+/* 信息值 */
+.info-value {
+  font-weight: 600;
+}
+
+/* 日期信息 */
+.date-info {
+  margin-bottom: 24rpx;
+  padding-bottom: 20rpx;
+  border-bottom: 1rpx solid #e9ecef;
+}
+
+.date-value {
+  font-size: 32rpx;
+  color: #333;
+  font-weight: 600;
+  letter-spacing: 1rpx;
+}
+
+/* 统计网格 */
+.stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20rpx;
+  align-items: stretch;
+}
+
+.stats-grid.single-col {
+  grid-template-columns: 1fr;
+}
+
+/* 单词信息 */
+.word-info {
+  background: #ffffff;
+  padding: 20rpx;
+  border-radius: 12rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.05);
+  text-align: center;
+  margin-bottom: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.word-value {
+  font-size: clamp(36rpx, 6vw, 60rpx);
+  color: #28a745;
+  font-weight: 700;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  letter-spacing: 1rpx;
+  line-height: 1.2;
+}
+
+.mastered-info {
+  background: #ffffff;
+  padding: 20rpx;
+  border-radius: 12rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.05);
+  text-align: center;
+}
+
+.mastery-panel {
+  background: #ffffff;
+  border-radius: 12rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.05);
+  padding: 16rpx;
+  margin-bottom: 0;
+  height: 100%;
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  gap: 12rpx;
+}
+
+.mastery-row {
+  border-radius: 10rpx;
+  padding: 14rpx 16rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mastery-row-mastered {
+  background: #edf9f1;
+}
+
+.mastery-row-not-mastered {
+  background: #fff3f2;
+}
+
+.mastery-row-label {
+  font-size: 24rpx;
+  color: #666;
+  font-weight: 500;
+}
+
+.mastery-row-value {
+  font-size: 34rpx;
+  font-weight: 700;
+  color: #333;
+  line-height: 1;
+}
+
+.mastered-value {
+  font-size: clamp(36rpx, 6vw, 60rpx);
+  color: #1f8f4c;
+  font-weight: 700;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  letter-spacing: 1rpx;
+  line-height: 1.2;
+}
+
+/* 时长信息 */
+.duration-info {
+  background: #ffffff;
+  padding: 20rpx;
+  border-radius: 12rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.05);
+  text-align: center;
+}
+
+.duration-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* 学习时长专用样式 */
+.duration-value {
+  font-size: clamp(36rpx, 6vw, 60rpx);
+  font-weight: 700;
+  color: #4A90E2;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  letter-spacing: 1rpx;
+  line-height: 1.2;
+}
+
+/* 调试信息样式 */
+.debug-info {
+  font-size: 20rpx;
+  color: #999;
+  margin-left: 12rpx;
+  font-family: monospace;
+}
+
+/* 操作按钮区域 */
+.record-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.delete-btn {
+  background: #fff;
+  color: #ff4757;
+  border: 1rpx solid #ffd7da;
+  font-size: 26rpx;
+  padding: 0 24rpx;
+  height: 60rpx;
+  border-radius: 30rpx;
+}
+
+.delete-btn:active {
+  background: #fff0f0;
+}
+
+/* 加载更多 */
+.load-more-container {
+  display: flex;
+  justify-content: center;
+  padding: 30rpx 0;
+}
+
+.loading-more {
+  display: flex;
+  align-items: center;
+  font-size: 26rpx;
+  color: #666;
+}
+
+.loading-more .loading-spinner {
+  margin-right: 12rpx;
+  margin-bottom: 0;
+}
+
+.load-more-btn {
+  background: #fff;
+  color: #4A90E2;
+  border: 1rpx solid #d0e3ff;
+  font-size: 28rpx;
+  padding: 0 36rpx;
+  height: 70rpx;
+  border-radius: 35rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.05);
+}
+
+.load-more-btn:active {
+  background: #f0f7ff;
+}
+
+/* 没有更多数据 */
+.no-more-data {
+  text-align: center;
+  padding: 30rpx 0;
+  color: #999;
+  font-size: 26rpx;
+}
+
+/* 空状态 */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 120rpx 24rpx;
+  text-align: center;
+}
+
+.empty-title {
+  font-size: 34rpx;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 12rpx;
+}
+
+.empty-subtitle {
+  font-size: 28rpx;
+  color: #999;
+  line-height: 1.5;
+}

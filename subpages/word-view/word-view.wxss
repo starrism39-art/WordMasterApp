@@ -1,0 +1,233 @@
+/* 单词查看页面样式 - 与预习界面一致 */
+.container {
+  min-height: 100vh;
+  background-color: #f8f9fa;
+  padding: 30rpx 0;
+  padding-bottom: 140rpx;
+}
+
+.preview-page {
+  padding: 0 30rpx;
+}
+
+.record-summary-panel {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16rpx;
+  margin-bottom: 20rpx;
+}
+
+.summary-item {
+  background: #ffffff;
+  border-radius: 16rpx;
+  padding: 16rpx 12rpx;
+  text-align: center;
+  box-shadow: 0 2rpx 10rpx rgba(0, 0, 0, 0.06);
+}
+
+.summary-item.mastered {
+  background: #e8f7ee;
+}
+
+.summary-item.not-mastered {
+  background: #fff1f1;
+}
+
+.summary-label {
+  display: block;
+  font-size: 22rpx;
+  color: #666;
+}
+
+.summary-value {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 34rpx;
+  font-weight: 700;
+  color: #2f3a4a;
+}
+
+.filter-tabs {
+  display: flex;
+  gap: 14rpx;
+  margin-bottom: 22rpx;
+}
+
+.filter-tab {
+  flex: 1;
+  text-align: center;
+  padding: 14rpx 0;
+  border-radius: 999rpx;
+  background: #eef2f5;
+  color: #5f6b7a;
+  font-size: 24rpx;
+  font-weight: 600;
+}
+
+.filter-tab.active {
+  background: #2f7dff;
+  color: #ffffff;
+}
+
+.words-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}
+
+.word-item-preview {
+  display: flex;
+  align-items: flex-start;
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+  border-radius: 24rpx;
+  padding: 32rpx;
+  margin-bottom: 24rpx;
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.08);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.word-item-preview::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 6rpx;
+  height: 100%;
+  background: linear-gradient(180deg, #64b5f6 0%, #42a5f5 100%);
+  border-radius: 6rpx 0 0 6rpx;
+}
+
+.word-item-preview:hover {
+  transform: translateY(-4rpx);
+  box-shadow: 0 8rpx 24rpx rgba(0, 0, 0, 0.12);
+}
+
+.word-status-indicator {
+  width: 24rpx;
+  height: 24rpx;
+  border-radius: 50%;
+  margin-right: 24rpx;
+  margin-top: 8rpx;
+  background: #e0e0e0;
+}
+
+.word-status-indicator.status-mastered {
+  background: #22b36a;
+}
+
+.word-status-indicator.status-not-mastered {
+  background: #ef5350;
+}
+
+.word-content {
+  flex: 1;
+  min-height: 120rpx;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  position: relative;
+  z-index: 1;
+}
+
+.word-text {
+  font-size: 40rpx;
+  font-weight: 600;
+  color: #2c3e50;
+  line-height: 1.2;
+  margin-bottom: 12rpx;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+}
+
+.word-phonetic {
+  font-size: 28rpx;
+  color: #7f8c8d;
+  font-style: italic;
+  margin-bottom: 16rpx;
+  opacity: 0.9;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.word-translation {
+  font-size: 32rpx;
+  color: #34495e;
+  line-height: 1.4;
+  margin-top: 8rpx;
+  opacity: 0.95;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.empty-container {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-height: 80vh;
+  padding: 0 30rpx;
+}
+
+.empty-text {
+  font-size: 36rpx;
+  color: #999999;
+  text-align: center;
+  margin-bottom: 20rpx;
+  font-weight: 500;
+}
+
+.empty-subtext {
+  font-size: 28rpx;
+  color: #cccccc;
+  text-align: center;
+  line-height: 1.4;
+}
+
+/* 动画效果 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10rpx);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 响应式设计 */
+@media (max-width: 375px) {
+  .word-item-preview {
+    padding: 28rpx;
+    margin-bottom: 20rpx;
+  }
+  
+  .word-text {
+    font-size: 36rpx;
+  }
+  
+  .word-translation {
+    font-size: 28rpx;
+  }
+}
+
+/* 加载状态 */
+.loading-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 80vh;
+}
+
+.loading-spinner {
+  width: 60rpx;
+  height: 60rpx;
+  border: 6rpx solid #f3f3f3;
+  border-top: 6rpx solid #64b5f6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}

@@ -1,0 +1,174 @@
+<!--pages/review-merged/review-merged.wxml-->
+<view class="container">
+  <!-- 顶部导航栏 -->
+  <view class="nav-bar">
+    <view class="nav-left">
+      <!-- 移除抗遗忘文字 -->
+    </view>
+    <view class="nav-right">
+      <button class="nav-button" bindtap="goToNormalReview">抗遗忘</button>
+      <button class="nav-button active">合并视图</button>
+    </view>
+  </view>
+
+  <!-- 加载状态 -->
+  <view wx:if="{{loading}}" class="loading-container">
+    <view class="loading-spinner"></view>
+    <text class="loading-text">加载中...</text>
+  </view>
+
+  <!-- 错误状态 -->
+  <view wx:if="{{hasError}}" class="error-container">
+    <text class="error-text">{{errorMessage}}</text>
+    <view class="error-actions">
+      <button class="retry-button" bindtap="retryLoad">重试</button>
+      <button class="retry-button diagnostic-button" bindtap="runDiagnostics">诊断</button>
+    </view>
+  </view>
+
+  <!-- 合并视图内容 -->
+  <view wx:elif="{{!loading && !hasError && mergedViewRecords.length > 0}}" class="merged-view-container">
+    <view class="header">
+      <text class="header-title">按日期合并</text>
+      <text class="header-count">{{mergedViewRecords.length}}天</text>
+    </view>
+
+    <!-- 合并记录列表 -->
+    <view class="merged-records-list">
+      <view wx:for="{{mergedViewRecords}}" wx:key="{{item.id}}" class="merged-record-item">
+        <!-- 日期头部 -->
+        <view class="record-date">
+          <text class="date-text">{{item.date}}</text>
+          <text class="record-count">{{item.recordCount}}条记录</text>
+        </view>
+
+        <!-- 记录内容 -->
+        <view class="record-content">
+          <!-- 学生信息 -->
+          <view class="student-info">
+            <text class="student-name">{{currentStudent && currentStudent.name ? currentStudent.name : '11111'}}</text>
+          </view>
+
+          <!-- 词书信息 -->
+          <view class="wordbook-info">
+            <text class="label">所学词书：</text>
+            <text class="value">{{item.wordbookName || '未知词书'}}</text>
+          </view>
+
+          <!-- 学习日期 -->
+          <view class="learning-date-info">
+            <text class="label">学习日期：</text>
+            <text class="value">{{item.learningDate}}</text>
+          </view>
+
+          <!-- 单词数量 -->
+          <view class="word-count-info">
+            <text class="label">单词数量：</text>
+            <text class="value">{{item.wordCount}}个</text>
+          </view>
+
+          <!-- 开始复习按钮 -->
+          <view class="action-buttons">
+            <button 
+              class="start-review-button {{item.reviewable ? '' : 'disabled'}}" 
+              bindtap="startReview" 
+              data-record-id="{{item.id}}"
+              disabled="{{!item.reviewable}}"
+            >
+              开始复习
+            </button>
+          </view>
+
+
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 空状态 -->
+  <view wx:elif="{{!loading && !hasError && mergedViewRecords.length === 0}}" class="empty-container">
+    <text class="empty-text">当前没有合并复习记录</text>
+  </view>
+
+
+
+  <!-- 复习模式 -->
+  <view wx:if="{{learningMode === 'review'}}" class="review-mode-container">
+    <!-- 复习模式头部 -->
+    <view class="review-header">
+      <text class="review-title">合并视图复习</text>
+      <button class="back-button" bindtap="backToRecordList">
+        <text class="back-button-text">返回记录</text>
+      </button>
+    </view>
+
+    <!-- 复习进度 -->
+    <view class="review-progress">
+      <text class="progress-text">
+        已复习 {{reviewedCount}}/{{totalWordsCount}} 个单词
+      </text>
+      <view class="progress-bar">
+        <view class="progress-fill" style="width: {{progressPercentage}}"></view>
+      </view>
+      <text class="correct-rate">正确率：{{correctRate}}%</text>
+    </view>
+
+    <!-- 单词列表 -->
+    <view class="review-words-list">
+      <view wx:for="{{currentBatchWords}}" wx:key="id" class="review-word-item">
+        <!-- 单词卡片 -->
+        <view class="word-card">
+          <!-- 单词和音标 -->
+          <view class="word-info">
+            <text class="word-text">{{item.word}}</text>
+            <text wx:if="{{showPhonetic[item.id]}}" class="phonetic-text">{{item.phonetic}}</text>
+          </view>
+
+          <!-- 释义 -->
+          <view wx:if="{{showMeaning[item.id]}}" class="meaning-info">
+            <text class="meaning-text">{{item.meaning}}</text>
+          </view>
+
+          <!-- 操作按钮 -->
+          <view class="word-actions">
+            <button 
+              class="action-button" 
+              bindtap="toggleWordMeaning" 
+              data-id="{{item.id}}"
+            >
+              <text class="action-button-text">
+                {{clickCounts[item.id] % 2 === 1 ? '显示释义' : '播放读音'}}
+              </text>
+            </button>
+          </view>
+
+          <!-- 单词掌握状态按钮 -->
+          <view class="mastery-buttons">
+            <button 
+              class="mastery-button mastered" 
+              bindtap="markWordAsMastered" 
+              data-id="{{item.id}}"
+            >
+              <text class="mastery-button-text">已掌握</text>
+            </button>
+            <button 
+              class="mastery-button difficult" 
+              bindtap="markWordAsDifficult" 
+              data-id="{{item.id}}"
+            >
+              <text class="mastery-button-text">困难</text>
+            </button>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 空状态 -->
+    <view wx:if="{{currentBatchWords.length === 0}}" class="empty-review-container">
+      <text class="empty-review-text">当前没有需要复习的单词</text>
+      <button class="back-button" bindtap="backToRecordList">
+        <text class="back-button-text">返回记录</text>
+      </button>
+    </view>
+  </view>
+</view>
