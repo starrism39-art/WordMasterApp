@@ -100,6 +100,8 @@ Page({
   // 加载学生列表
   loadStudents: async function() {
     try {
+      wx.showLoading({ title: '加载中...', mask: true });
+
       // ★ 第一步：从云端强制拉取最新学生数据（双向合并+增量补传）
       const openid = wx.getStorageSync('openid');
       if (openid && wx.cloud) {
@@ -131,8 +133,10 @@ Page({
         currentStudentId,
         swipeXById: this.buildSwipeState(students)
       });
+      wx.hideLoading();
     } catch (error) {
       console.error('加载学生数据失败:', error);
+      wx.hideLoading();
       // 降级：直接用本地缓存
       const allStudents = wx.getStorageSync('students') || [];
       const students = this.sanitizeStudents(allStudents);

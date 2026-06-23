@@ -596,9 +596,6 @@ Page({
           studyTime = Math.floor(parseFloat(record.studyTime));
         }
         
-        // 调试信息：打印每条记录的studyTime字段
-        console.log('记录的studyTime字段:', record.studyTime, 'duration字段:', record.duration, '计算后studyTime:', studyTime);
-        
         return {
           ...record,
           id: record.id || Date.now().toString() + Math.random().toString(36).substr(2, 9),
@@ -1847,9 +1844,13 @@ Page({
       // 记录学习开始时间，用于计算学习时长
       app.globalData.studyStartTime = new Date().getTime();
       
+      // 显示加载提示，让用户立即感知到操作已触发
+      wx.showLoading({ title: '正在加载...', mask: true });
+      
       // 跳转到学习页面并传递词书ID参数和fromStart标志
       wx.navigateTo({
-        url: `/pages/learning/learning?wordbookId=${wordbookId}&fromStart=true`
+        url: `/pages/learning/learning?wordbookId=${wordbookId}&fromStart=true`,
+        complete: () => { wx.hideLoading(); }
       });
     } else {
       wx.showToast({

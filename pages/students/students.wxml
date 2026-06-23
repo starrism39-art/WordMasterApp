@@ -1,22 +1,40 @@
 <view class="container">
   <!-- 账号信息区域 -->
   <view class="account-info">
-    <!-- 头像显示区域 -->
-    <view class="avatar-container">
-      <image class="avatar" src="{{currentUser && currentUser.avatar ? currentUser.avatar : '/images/avatar_default.png'}}" mode="aspectFill"></image>
-      <view class="avatar-upload-btn" bindtap="uploadAvatar">
-        <text>更换头像</text>
+    <!-- 账号信息内容：已登录 -->
+    <block wx:if="{{isLoggedIn}}">
+      <view class="account-details">
+        <view wx:if="{{!isEditingNickname}}" class="account-name" bindtap="startEditNickname">{{currentUser && currentUser.name ? currentUser.name : '默认用户'}}</view>
+        <view wx:else class="nickname-edit-container">
+          <input class="nickname-input" type="text" value="{{nicknameEditValue}}" bindinput="onNicknameInput" placeholder="输入教师昵称" maxlength="20" />
+          <view class="nickname-edit-actions">
+            <button class="nickname-btn cancel" bindtap="cancelEditNickname" size="mini">取消</button>
+            <button class="nickname-btn save" bindtap="saveNickname" size="mini">保存</button>
+          </view>
+        </view>
+        <view class="account-role">教师账号</view>
       </view>
-    </view>
-    
-    <!-- 账号信息内容 -->
-    <view class="account-details">
-      <view class="account-name">{{currentUser && currentUser.name ? currentUser.name : '默认用户'}}</view>
-      <view class="account-role">教师账号</view>
-    </view>
+    </block>
+    <!-- 账号信息内容：未登录 -->
+    <block wx:else>
+      <view class="account-details">
+        <view class="account-name account-name--guest">游客模式</view>
+        <view class="account-role">登录后可同步数据到云端</view>
+      </view>
+    </block>
   </view>
   
-
+  <!-- 登录入口（未登录时显示） -->
+  <view wx:if="{{!isLoggedIn}}" class="login-prompt card">
+    <view class="login-prompt-content">
+      <view class="login-prompt-icon">🔑</view>
+      <view class="login-prompt-text">
+        <view class="login-prompt-title">登录账号</view>
+        <view class="login-prompt-desc">登录后可云端同步数据，多设备共享学习进度</view>
+      </view>
+    </view>
+    <button class="login-btn" bindtap="goToLogin" hover-class="login-btn--tap">去登录</button>
+  </view>
   
   <!-- 功能菜单区域 -->
   <view class="feature-menu card">
@@ -76,8 +94,8 @@
     </view>
   </view>
   
-  <!-- 退出登录按钮 -->
-  <view class="logout-container">
+  <!-- 退出登录按钮（仅登录后显示） -->
+  <view wx:if="{{isLoggedIn}}" class="logout-container">
     <button class="logout-btn" type="warn" size="default" bindtap="logout" loading="{{isLoggingOut}}">
       {{isLoggingOut ? '退出中...' : '退出登录'}}
     </button>

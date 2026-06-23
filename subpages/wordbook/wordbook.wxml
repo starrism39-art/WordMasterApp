@@ -9,7 +9,6 @@
     <view class="filter-item {{currentFilter === '初中' ? 'active' : ''}}" bindtap="changeFilter" data-filter="初中">初中</view>
     <view class="filter-item {{currentFilter === '高中' ? 'active' : ''}}" bindtap="changeFilter" data-filter="高中">高中</view>
     <view class="filter-item {{currentFilter === '大学' ? 'active' : ''}}" bindtap="changeFilter" data-filter="大学">大学</view>
-    <view class="filter-item {{currentFilter === 'favorites' ? 'active' : ''}}" bindtap="changeFilter" data-filter="favorites">收藏</view>
     <view class="filter-item {{currentFilter === 'inProgress' ? 'active' : ''}}" bindtap="changeFilter" data-filter="inProgress">学习中</view>
   </scroll-view>
   
@@ -22,12 +21,6 @@
           <view class="wordbook-info">
             <view class="wordbook-header">
               <text class="wordbook-title">{{item.title}}</text>
-              <image 
-                class="favorite-icon {{item.isFavorited ? 'favorited' : ''}}" 
-                src="{{item.isFavorited ? '/images/star-filled.png' : '/images/star.png'}}" 
-                bindtap="toggleFavorite" 
-                data-id="{{item.id}}"
-              ></image>
             </view>
             <text class="wordbook-meta">{{item.totalWords}}个单词</text>
           </view>

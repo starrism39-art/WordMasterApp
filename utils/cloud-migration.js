@@ -1,5 +1,4 @@
 const DEFAULT_ENV = 'cloudbase-4gafzdch60ad597b';
-const DEFAULT_TEACHER_NAME = 'Default Teacher';
 const MAX_CONCURRENCY = 20;
 const MAX_QUERY_LIMIT = 20;
 
@@ -122,11 +121,14 @@ const ensureTeacher = async (db, openid) => {
     };
   }
 
+  // 生成带时间戳的默认教师名（不用 count() 避免权限问题）
+  const defaultName = '教师' + String(Date.now()).slice(-4);
+
   await teachersRef.add({
     data: {
       teacher_id: openid,
       openid: openid,
-      name: DEFAULT_TEACHER_NAME,
+      name: defaultName,
       userRole: 'external',
       memberLevel: 'free',
       createdAt: db.serverDate ? db.serverDate() : new Date()
@@ -680,9 +682,9 @@ const syncDataFromCloud = async (openid) => {
   }
 };
 
-const migrateLocalDataToCloud = async () => {
+const migrateLocalDataToCloud = async (options = {}) => {
   try {
-    if (wx.getStorageSync('hasMigratedToCloud')) {
+    if (!options.force && wx.getStorageSync('hasMigratedToCloud')) {
       console.log('[cloud-migration] already migrated, skip');
       return { skipped: true };
     }

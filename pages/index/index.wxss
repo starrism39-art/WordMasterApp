@@ -56,9 +56,17 @@ div {
 }
 
 .empty-icon {
-  font-size: 160rpx;
   margin-bottom: 40rpx;
-  opacity: 0.8;
+  display: flex;
+  justify-content: center;
+}
+
+.empty-icon-img {
+  width: 160rpx;
+  height: 160rpx;
+  border-radius: 50%;
+  background: #f0f4ff;
+  box-shadow: 0 4rpx 16rpx rgba(74, 144, 226, 0.12);
 }
 
 .empty-title {

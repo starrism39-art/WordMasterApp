@@ -10,8 +10,12 @@ Page({
     }, 1120);
 
     this.jumpTimer = setTimeout(() => {
-      wx.redirectTo({
-        url: '/pages/login/login'
+      // 不再强制跳转登录页，直接进入首页体验功能
+      wx.switchTab({
+        url: '/pages/index/index',
+        fail: () => {
+          wx.redirectTo({ url: '/pages/index/index' });
+        }
       });
     }, 1300);
   },

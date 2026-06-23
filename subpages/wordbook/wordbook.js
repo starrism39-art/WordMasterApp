@@ -186,7 +186,7 @@ Page({
             } else if (studentGrade.includes('初中') || studentGrade.includes('初一') || studentGrade.includes('七年级') || studentGrade.includes('初二') || studentGrade.includes('八年级') || studentGrade.includes('初三') || studentGrade.includes('九年级')) {
               filteredWordbooks = processedWordbooks.filter(wordbook => wordbook.category === 'junior');
               console.log('通过文字判断为初中，筛选后词书数量:', filteredWordbooks.length);
-            } else if (studentGrade.includes('高中')) {
+            } else if (studentGrade.includes('高中') || studentGrade.includes('高一') || studentGrade.includes('高二') || studentGrade.includes('高三')) {
               filteredWordbooks = processedWordbooks.filter(wordbook => wordbook.category === 'senior');
               console.log('通过文字判断为高中，筛选后词书数量:', filteredWordbooks.length);
             } else {
@@ -204,9 +204,9 @@ Page({
       console.log('最终筛选结果的前5个词书:', filteredWordbooks.slice(0, 5).map(book => book.title));
       console.log('=====================================');
       
-      // 设置数据到页面
+      // 设置数据到页面：allWordbooks 存全部（供筛选栏使用），wordbooks 存当前显示的
       this.setData({
-        allWordbooks: filteredWordbooks,
+        allWordbooks: processedWordbooks,
         wordbooks: filteredWordbooks,
         loading: false,
         hasError: false
@@ -332,7 +332,6 @@ Page({
     
     const processedWordbooks = mockWordbooks.map(wordbook => ({
       ...wordbook,
-      isFavorited: Math.random() > 0.5,
       learnedWords: Math.floor(Math.random() * 50) + 10,
       progressPercent: Math.floor(Math.random() * 50) + 10,
       isInProgress: Math.random() > 0.3
@@ -354,18 +353,15 @@ Page({
       const studentId = currentStudent?.id || '';
       
       // 使用与app.js一致的存储键
-      let userFavorites = [];
       let learningProgress = {};
       
       try {
-        userFavorites = studentId ? wx.getStorageSync('userFavorites_' + studentId) || [] : [];
         learningProgress = wx.getStorageSync('learningProgress') || {};
       } catch (e) {
         console.error('获取存储数据失败:', e);
       }
       
       return wordbooks.map(wordbook => {
-        const isFavorited = userFavorites.includes(wordbook.id);
         // 统一读取嵌套结构 learningProgress[studentId].wordbooks[wordbookId]
         const studentProgress = studentId ? (learningProgress[studentId] || {}) : {};
         const studentWordbooksProgress = studentProgress.wordbooks || {};
@@ -380,7 +376,6 @@ Page({
         
         return {
           ...metadata,
-          isFavorited,
           learnedWords: completedCount,
           progressPercent,
           isInProgress
@@ -393,7 +388,6 @@ Page({
         const { words, ...metadata } = wordbook;
         return {
           ...metadata,
-          isFavorited: Math.random() > 0.5,
           learnedWords: Math.floor(Math.random() * 30) + 5,
           progressPercent: Math.floor(Math.random() * 30) + 5,
           isInProgress: Math.random() > 0.7
@@ -459,22 +453,6 @@ Page({
       // 真正显示所有词书，不再根据学生年级筛选
       console.log('显示所有词书，总数:', allWordbooks.length);
       return allWordbooks;
-    } else if (currentFilter === 'favorites') {
-      // 获取收藏的词书
-      if (!currentStudent) {
-        console.log('未选择学生，无法筛选收藏词书');
-        wx.showToast({
-          title: '请先选择学生',
-          icon: 'none'
-        });
-        return allWordbooks;
-      }
-      
-      const userFavorites = wx.getStorageSync('userFavorites_' + currentStudent.id) || [];
-      console.log('学生收藏词书ID列表:', userFavorites);
-      const filtered = allWordbooks.filter(wordbook => userFavorites.includes(wordbook.id));
-      console.log('筛选后收藏词书数量:', filtered.length);
-      return filtered;
     } else if (currentFilter === 'inProgress') {
       // 获取正在学习的词书
       if (!currentStudent) {
@@ -523,50 +501,6 @@ Page({
                bookCategory.includes(filterLower) ||
                // 同时匹配对应的英文标识，确保真实词书能被正确筛选
                (englishGrade && (bookGrade === englishGrade || bookCategory === englishGrade));
-      });
-    }
-  },
-  
-  // 切换词书收藏状态
-  toggleFavorite: function(e) {
-    try {
-      const wordbookId = e.currentTarget.dataset.id;
-      const currentStudent = getApp().globalData.currentStudent;
-      
-      if (!currentStudent) {
-        wx.showToast({
-          title: '请先选择学生账号',
-          icon: 'none'
-        });
-        return;
-      }
-      
-      const studentId = currentStudent.id;
-      let userFavorites = wx.getStorageSync('userFavorites_' + studentId) || [];
-      const index = userFavorites.indexOf(wordbookId);
-      
-      if (index > -1) {
-        userFavorites.splice(index, 1);
-        wx.showToast({ title: '已取消收藏' });
-      } else {
-        userFavorites.push(wordbookId);
-        wx.showToast({ title: '收藏成功' });
-      }
-      
-      wx.setStorageSync('userFavorites_' + studentId, userFavorites);
-      
-      // 更新词书数据中的收藏状态
-      const processedWordbooks = this.processWordbooksData(this.data.allWordbooks);
-      this.setData({ 
-        allWordbooks: processedWordbooks, // 更新完整列表
-      });
-      // 重新应用筛选条件
-      this.updateFilteredWordbooks();
-    } catch (error) {
-      console.error('切换收藏状态失败:', error);
-      wx.showToast({
-        title: '操作失败，请重试',
-        icon: 'none'
       });
     }
   },

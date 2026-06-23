@@ -1,7 +1,19 @@
 <!-- pages/learning/learning.wxml -->
 <view class="container">
-  <!-- 加载状态 -->
-  <view wx:if="{{loading}}" class="loading-container">
+  <!-- 自定义加载弹窗 -->
+  <view wx:if="{{showLoadingModal}}" class="loading-modal-mask">
+    <view class="loading-modal-card">
+      <view class="loading-modal-message">{{loadingMessage}}</view>
+      <view class="loading-dots-container">
+        <view class="loading-dot loading-dot-1"></view>
+        <view class="loading-dot loading-dot-2"></view>
+        <view class="loading-dot loading-dot-3"></view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 加载状态（自定义弹窗显示时隐藏旧的加载界面） -->
+  <view wx:if="{{loading && !showLoadingModal}}" class="loading-container">
     <view class="loading-spinner"></view>
     <text class="loading-text">加载中...</text>
   </view>
@@ -20,7 +32,7 @@
   </view>
 
   <!-- 学习入口页面 -->
-  <view wx:elif="{{!learningMode}}" class="entry-page">
+  <view wx:elif="{{!learningMode && !showLoadingModal}}" class="entry-page">
     <!-- 学生信息 -->
     <view class="student-info-card">
       <view class="student-info">
@@ -69,42 +81,24 @@
 
     <!-- 单词列表 -->
     <view wx:else class="preview-content">
-      <!-- 顶部批次信息和音标开关 -->
-      <view class="top-batch-info">
-        <view class="batch-meta">
-          <view wx:if="{{learningMode === 'preview'}}" class="batch-number">
-            <text class="batch-number-text">{{currentBatchIndex + 1}}/{{totalBatches}}</text>
-          </view>
-          <view class="phonetic-mode-switch">
-            <text class="phonetic-mode-label">音标：</text>
-            <view class="phonetic-mode-options">
-              <view
-                class="phonetic-mode-option {{phoneticModeEnabled ? 'active' : ''}}"
-                data-enabled="true"
-                bindtap="togglePhoneticMode"
-              >开</view>
-              <view
-                class="phonetic-mode-option {{!phoneticModeEnabled ? 'active' : ''}}"
-                data-enabled="false"
-                bindtap="togglePhoneticMode"
-              >关</view>
-            </view>
-          </view>
+      <!-- 紧凑工具栏：批次 | 音标 | 翻页 | 打乱 -->
+      <view class="toolbar">
+        <view wx:if="{{learningMode === 'preview'}}" class="toolbar-batch">{{currentBatchIndex + 1}}/{{totalBatches}}</view>
+        <view class="toolbar-divider" wx:if="{{learningMode === 'preview'}}"></view>
+        <view class="toolbar-btn phonetic-btn {{phoneticModeEnabled ? 'active' : ''}}" bindtap="togglePhoneticMode" data-enabled="{{phoneticModeEnabled ? false : true}}">
+          <image wx:if="{{phoneticModeEnabled}}" src="/images/icons/volume.svg" class="toolbar-icon" mode="aspectFit" />
+          <image wx:else src="/images/icons/volume-off.svg" class="toolbar-icon" mode="aspectFit" />
         </view>
-        <view wx:if="{{learningMode === 'preview'}}" class="batch-nav-buttons small">
-          <button 
-            class="prev-batch-button tiny"
-            bindtap="prevBatch"
-            disabled="{{currentBatchIndex === 0}}"
-          >
-            ←
-          </button>
-          <button 
-            class="next-batch-button tiny"
-            bindtap="nextBatch"
-          >
-            →
-          </button>
+        <view class="toolbar-divider"></view>
+        <view class="toolbar-btn nav-btn {{currentBatchIndex === 0 ? 'disabled' : ''}}" bindtap="prevBatch">
+          <image src="/images/icons/chevron-left.svg" class="toolbar-icon" mode="aspectFit" />
+        </view>
+        <view class="toolbar-btn nav-btn" bindtap="nextBatch">
+          <image src="/images/icons/chevron-right.svg" class="toolbar-icon" mode="aspectFit" />
+        </view>
+        <view class="toolbar-spacer"></view>
+        <view class="toolbar-btn shuffle-btn" bindtap="shufflePreviewWords">
+          <image src="/images/icons/shuffle.svg" class="toolbar-icon" mode="aspectFit" />
         </view>
       </view>
 
@@ -160,37 +154,17 @@
 
   <!-- 新词学习页面 -->
   <view wx:elif="{{learningMode === 'newLearning' && !showGroupCompletePage && !showCustomMixPanel}}" class="new-learning-page">
-    <!-- 顶部信息 -->
-    <view class="top-info">
-      <!-- 进度显示 -->
-      <view class="progress-info">
-        <text class="progress-text">{{currentGroupIndex + 1}}/{{totalGroups}}</text>
+    <!-- 顶部工具栏 -->
+    <view class="toolbar">
+      <view class="toolbar-batch">{{currentGroupIndex + 1}}/{{totalGroups}}</view>
+      <view class="toolbar-divider"></view>
+      <view class="toolbar-btn phonetic-btn {{phoneticModeEnabled ? 'active' : ''}}" bindtap="togglePhoneticMode" data-enabled="{{phoneticModeEnabled ? false : true}}">
+        <image wx:if="{{phoneticModeEnabled}}" src="/images/icons/volume.svg" class="toolbar-icon" mode="aspectFit" />
+        <image wx:else src="/images/icons/volume-off.svg" class="toolbar-icon" mode="aspectFit" />
       </view>
-      <!-- 打乱顺序按钮 -->
-      <view class="shuffle-button" bindtap="shuffleCurrentWords">
-        <text class="shuffle-icon">🔄</text>
-        <text class="shuffle-text">打乱顺序</text>
-      </view>
-    </view>
-
-    <!-- 全局音标开关 -->
-    <view class="top-batch-info">
-      <view class="batch-meta">
-        <view class="phonetic-mode-switch">
-          <text class="phonetic-mode-label">音标：</text>
-          <view class="phonetic-mode-options">
-            <view
-              class="phonetic-mode-option {{phoneticModeEnabled ? 'active' : ''}}"
-              data-enabled="true"
-              bindtap="togglePhoneticMode"
-            >开</view>
-            <view
-              class="phonetic-mode-option {{!phoneticModeEnabled ? 'active' : ''}}"
-              data-enabled="false"
-              bindtap="togglePhoneticMode"
-            >关</view>
-          </view>
-        </view>
+      <view class="toolbar-spacer"></view>
+      <view class="toolbar-btn shuffle-btn" bindtap="shuffleCurrentWords">
+        <image src="/images/icons/shuffle.svg" class="toolbar-icon" mode="aspectFit" />
       </view>
     </view>
 
@@ -356,23 +330,10 @@
   <!-- 混组检测页面 -->
   <view wx:elif="{{learningMode === 'mixReview'}}" class="mix-review-page">
     <!-- 顶部音标开关 -->
-    <view class="top-batch-info">
-      <view class="batch-meta">
-        <view class="phonetic-mode-switch">
-          <text class="phonetic-mode-label">音标：</text>
-          <view class="phonetic-mode-options">
-            <view
-              class="phonetic-mode-option {{phoneticModeEnabled ? 'active' : ''}}"
-              data-enabled="true"
-              bindtap="togglePhoneticMode"
-            >开</view>
-            <view
-              class="phonetic-mode-option {{!phoneticModeEnabled ? 'active' : ''}}"
-              data-enabled="false"
-              bindtap="togglePhoneticMode"
-            >关</view>
-          </view>
-        </view>
+    <view class="toolbar">
+      <view class="toolbar-btn phonetic-btn {{phoneticModeEnabled ? 'active' : ''}}" bindtap="togglePhoneticMode" data-enabled="{{phoneticModeEnabled ? false : true}}">
+        <image wx:if="{{phoneticModeEnabled}}" src="/images/icons/volume.svg" class="toolbar-icon" mode="aspectFit" />
+        <image wx:else src="/images/icons/volume-off.svg" class="toolbar-icon" mode="aspectFit" />
       </view>
     </view>
 
@@ -430,20 +391,9 @@
         <text class="progress-label">正确率：</text>
         <text class="progress-value">{{testProgress}}%</text>
       </view>
-      <view class="phonetic-mode-switch">
-        <text class="phonetic-mode-label">音标：</text>
-        <view class="phonetic-mode-options">
-          <view
-            class="phonetic-mode-option {{phoneticModeEnabled ? 'active' : ''}}"
-            data-enabled="true"
-            bindtap="togglePhoneticMode"
-          >开</view>
-          <view
-            class="phonetic-mode-option {{!phoneticModeEnabled ? 'active' : ''}}"
-            data-enabled="false"
-            bindtap="togglePhoneticMode"
-          >关</view>
-        </view>
+      <view class="toolbar-btn phonetic-btn {{phoneticModeEnabled ? 'active' : ''}}" bindtap="togglePhoneticMode" data-enabled="{{phoneticModeEnabled ? false : true}}">
+        <image wx:if="{{phoneticModeEnabled}}" src="/images/icons/volume.svg" class="toolbar-icon" mode="aspectFit" />
+        <image wx:else src="/images/icons/volume-off.svg" class="toolbar-icon" mode="aspectFit" />
       </view>
     </view>
 
@@ -512,37 +462,17 @@
   
   <!-- 九宫格复习页面 -->
   <view wx:elif="{{learningMode === 'gridReview'}}" class="grid-review-page">
-    <!-- 顶部信息 -->
-    <view class="top-info">
-      <!-- 进度显示 -->
-      <view class="progress-info">
-        <text class="progress-text">第 {{currentBatchIndex + 1}} 组 / 共 {{totalBatches}} 组</text>
+    <!-- 顶部工具栏 -->
+    <view class="toolbar">
+      <view class="toolbar-batch">{{currentBatchIndex + 1}}/{{totalBatches}}</view>
+      <view class="toolbar-divider"></view>
+      <view class="toolbar-btn phonetic-btn {{phoneticModeEnabled ? 'active' : ''}}" bindtap="togglePhoneticMode" data-enabled="{{phoneticModeEnabled ? false : true}}">
+        <image wx:if="{{phoneticModeEnabled}}" src="/images/icons/volume.svg" class="toolbar-icon" mode="aspectFit" />
+        <image wx:else src="/images/icons/volume-off.svg" class="toolbar-icon" mode="aspectFit" />
       </view>
-      <!-- 打乱顺序按钮 -->
-      <view class="shuffle-button" bindtap="shuffleCurrentWords">
-        <text class="shuffle-icon">🔄</text>
-        <text class="shuffle-text">打乱顺序</text>
-      </view>
-    </view>
-
-    <!-- 全局音标开关 -->
-    <view class="top-batch-info">
-      <view class="batch-meta">
-        <view class="phonetic-mode-switch">
-          <text class="phonetic-mode-label">音标：</text>
-          <view class="phonetic-mode-options">
-            <view
-              class="phonetic-mode-option {{phoneticModeEnabled ? 'active' : ''}}"
-              data-enabled="true"
-              bindtap="togglePhoneticMode"
-            >开</view>
-            <view
-              class="phonetic-mode-option {{!phoneticModeEnabled ? 'active' : ''}}"
-              data-enabled="false"
-              bindtap="togglePhoneticMode"
-            >关</view>
-          </view>
-        </view>
+      <view class="toolbar-spacer"></view>
+      <view class="toolbar-btn shuffle-btn" bindtap="shuffleCurrentWords">
+        <image src="/images/icons/shuffle.svg" class="toolbar-icon" mode="aspectFit" />
       </view>
     </view>
 

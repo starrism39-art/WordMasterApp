@@ -4,6 +4,7 @@ const app = getApp();
 Page({
   data: {
     currentUser: null,
+    isLoggedIn: false,
     isLoggingOut: false,
     storageUsage: '未知',
     isEditingNickname: false,
@@ -148,6 +149,116 @@ Page({
           }
         } catch (cascadeError) {
           console.error('[Nickname] 级联更新学生失败（非阻塞）:', cascadeError);
+        }
+
+        // ★ 5. 级联更新 word_mastery（分批查+批量写，防超限）
+        try {
+          const masteryRef = db.collection('word_mastery');
+          let masteryProcessed = 0;
+          let masteryOffset = 0;
+          const BATCH = 100;
+          while (true) {
+            const res = await masteryRef
+              .where({ teacher_id: openid })
+              .limit(BATCH)
+              .skip(masteryOffset)
+              .get();
+            if (!res || !Array.isArray(res.data) || res.data.length === 0) break;
+            const nowTs = Date.now();
+            await Promise.all(res.data.map(doc =>
+              masteryRef.doc(doc._id).update({
+                data: { teacher_name: newName, updatedAt: nowTs }
+              })
+            ));
+            masteryProcessed += res.data.length;
+            masteryOffset += BATCH;
+            if (res.data.length < BATCH) break;
+          }
+          console.log('[Nickname] word_mastery 级联更新完成, 受影响数:', masteryProcessed);
+        } catch (cascadeError) {
+          console.error('[Nickname] 级联更新 word_mastery 失败（非阻塞）:', cascadeError);
+        }
+
+        // ★ 6. 级联更新 learning_records
+        try {
+          const recordsRef = db.collection('learning_records');
+          let recordsProcessed = 0;
+          let recordsOffset = 0;
+          const BATCH = 100;
+          while (true) {
+            const res = await recordsRef
+              .where({ teacher_id: openid })
+              .limit(BATCH)
+              .skip(recordsOffset)
+              .get();
+            if (!res || !Array.isArray(res.data) || res.data.length === 0) break;
+            const nowTs = Date.now();
+            await Promise.all(res.data.map(doc =>
+              recordsRef.doc(doc._id).update({
+                data: { teacher_name: newName, updatedAt: nowTs }
+              })
+            ));
+            recordsProcessed += res.data.length;
+            recordsOffset += BATCH;
+            if (res.data.length < BATCH) break;
+          }
+          console.log('[Nickname] learning_records 级联更新完成, 受影响数:', recordsProcessed);
+        } catch (cascadeError) {
+          console.error('[Nickname] 级联更新 learning_records 失败（非阻塞）:', cascadeError);
+        }
+
+        // ★ 7. 级联更新 learning_progress
+        try {
+          const progressRef = db.collection('learning_progress');
+          let progressProcessed = 0;
+          let progressOffset = 0;
+          while (true) {
+            const res = await progressRef
+              .where({ teacher_id: openid })
+              .limit(100)
+              .skip(progressOffset)
+              .get();
+            if (!res || !Array.isArray(res.data) || res.data.length === 0) break;
+            const nowTs = Date.now();
+            await Promise.all(res.data.map(doc =>
+              progressRef.doc(doc._id).update({
+                data: { teacher_name: newName, updatedAt: nowTs }
+              })
+            ));
+            progressProcessed += res.data.length;
+            progressOffset += 100;
+            if (res.data.length < 100) break;
+          }
+          console.log('[Nickname] learning_progress 级联更新完成, 受影响数:', progressProcessed);
+        } catch (cascadeError) {
+          console.error('[Nickname] 级联更新 learning_progress 失败（非阻塞）:', cascadeError);
+        }
+
+        // ★ 8. 级联更新 student_statistics
+        try {
+          const statsRef = db.collection('student_statistics');
+          let statsProcessed = 0;
+          let statsOffset = 0;
+          while (true) {
+            const res = await statsRef
+              .where({ teacher_id: openid })
+              .limit(100)
+              .skip(statsOffset)
+              .get();
+            if (!res || !Array.isArray(res.data) || res.data.length === 0) break;
+            const nowTs = Date.now();
+            await Promise.all(res.data.map(doc =>
+              statsRef.doc(doc._id).update({
+                data: { teacher_name: newName, updatedAt: nowTs }
+              })
+            ));
+            statsProcessed += res.data.length;
+            statsOffset += 100;
+            if (res.data.length < 100) break;
+          }
+          console.log('[Nickname] student_statistics 级联更新完成, 受影响数:', statsProcessed);
+        } catch (cascadeError) {
+          console.error('[Nickname] 级联更新 student_statistics 失败（非阻塞）:', cascadeError);
         }
       }
 
@@ -360,6 +471,7 @@ Page({
   },
 
   onLoad: function() {
+    this.checkLoginStatus();
     this.loadTeacherProfile();
     this.loadData();
   },
@@ -374,7 +486,8 @@ Page({
       }
     }
 
-    // 每次页面显示时刷新教师名称
+    // 每次页面显示时检查登录状态和刷新教师名称
+    this.checkLoginStatus();
     this.loadTeacherProfile();
     this.loadData();
     
@@ -386,6 +499,28 @@ Page({
       // 立即跳转到学生列表页面
       this.navigateToStudentList();
     }
+  },
+
+  // 检查登录状态
+  checkLoginStatus: function() {
+    const openid = wx.getStorageSync('openid');
+    const currentUser = wx.getStorageSync('currentUser');
+    const isLoggedIn = !!(openid && currentUser);
+    this.setData({
+      isLoggedIn: isLoggedIn,
+      currentUser: currentUser || null
+    });
+  },
+
+  // 跳转到登录页（用户自愿点击）
+  goToLogin: function() {
+    wx.navigateTo({
+      url: '/pages/login/login',
+      fail: (err) => {
+        console.error('跳转到登录页失败:', err);
+        wx.showToast({ title: '跳转失败', icon: 'none' });
+      }
+    });
   },
   
   // 加载所有数据
@@ -410,59 +545,11 @@ Page({
     });
   },
   
-  // 上传头像功能
-  uploadAvatar: function() {
-    const that = this;
-    wx.chooseImage({
-      count: 1,
-      sizeType: ['compressed'],
-      sourceType: ['album', 'camera'],
-      success: function(res) {
-        const tempFilePath = res.tempFilePaths[0];
-        
-        // 在实际应用中，这里应该上传到服务器
-        // 这里简单地将头像路径保存到本地和全局数据中
-        wx.showLoading({ title: '保存中...' });
-        
-        try {
-          // 更新本地用户信息
-          const updatedUser = {
-            ...that.data.currentUser,
-            avatar: tempFilePath
-          };
-          that.setData({ currentUser: updatedUser });
-          
-          // 更新全局用户信息
-          if (app.globalData.currentUser) {
-            app.globalData.currentUser.avatar = tempFilePath;
-            // 同时更新本地存储中的currentUser
-            wx.setStorageSync('currentUser', app.globalData.currentUser);
-          }
-          
-          // 更新用户列表中的头像信息，这样下次登录时也能保持头像
-          const users = wx.getStorageSync('wordMasterUsers') || [];
-          const userIndex = users.findIndex(u => u.username === updatedUser.username);
-          if (userIndex !== -1) {
-            users[userIndex].avatar = tempFilePath;
-            wx.setStorageSync('wordMasterUsers', users);
-          }
-          
-          wx.hideLoading();
-          wx.showToast({ title: '头像更新成功' });
-        } catch (error) {
-          console.error('保存头像失败:', error);
-          wx.hideLoading();
-          wx.showToast({ title: '保存失败', icon: 'none' });
-        }
-      }
-    });
-  },
-  
   // 退出登录功能
   logout: function() {
     wx.showModal({
       title: '确认退出',
-      content: '确定要退出登录吗？',
+      content: '确定要退出登录吗？退出后仍可使用本地功能。',
       success: (res) => {
         if (res.confirm) {
           // 设置退出中状态
@@ -478,17 +565,17 @@ Page({
           wx.removeStorageSync('openid');
           wx.removeStorageSync('currentUser');
           
-          // 添加一个短暂延迟，让用户看到加载状态
-          setTimeout(() => {
-            // 跳转到登录页面
-            wx.redirectTo({
-              url: '/pages/login/login',
-              complete: () => {
-                // 重置退出状态
-                this.setData({ isLoggingOut: false });
-              }
-            });
-          }, 300);
+          // 更新页面状态为未登录
+          this.setData({
+            isLoggingOut: false,
+            isLoggedIn: false,
+            currentUser: null
+          });
+
+          // 退回到首页（不强制跳转登录页）
+          wx.switchTab({
+            url: '/pages/index/index'
+          });
         }
       }
     });

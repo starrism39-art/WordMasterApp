@@ -1,4 +1,97 @@
 /* pages/learning/learning.wxss */
+
+/* ===== 自定义加载弹窗 ===== */
+.loading-modal-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  backdrop-filter: blur(4px);
+  animation: fadeInMask 0.3s ease;
+}
+
+@keyframes fadeInMask {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.loading-modal-card {
+  width: 480rpx;
+  padding: 50rpx 40rpx 44rpx;
+  background: linear-gradient(145deg, #ffffff, #f8f9ff);
+  border-radius: 32rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-shadow: 0 20rpx 60rpx rgba(56, 121, 217, 0.2);
+  animation: scaleInCard 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes scaleInCard {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* 加载消息文字 */
+.loading-modal-message {
+  font-size: 32rpx;
+  color: #333;
+  font-weight: 500;
+  text-align: center;
+  margin-bottom: 32rpx;
+  line-height: 1.4;
+  animation: messagePulse 2s ease-in-out infinite;
+}
+
+@keyframes messagePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* 加载点点动画 */
+.loading-dots-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14rpx;
+  height: 24rpx;
+}
+
+.loading-dot {
+  width: 16rpx;
+  height: 16rpx;
+  border-radius: 50%;
+  background: #3879d9;
+  animation: dotBounce 1.4s ease-in-out infinite;
+}
+
+.loading-dot-1 { animation-delay: 0s; }
+.loading-dot-2 { animation-delay: 0.2s; }
+.loading-dot-3 { animation-delay: 0.4s; }
+
+@keyframes dotBounce {
+  0%, 80%, 100% {
+    transform: scale(0.6);
+    opacity: 0.4;
+  }
+  40% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+}
+
 .container {
   padding: 40rpx;
   padding-bottom: 140rpx;
@@ -644,105 +737,66 @@
   gap: 20rpx;
 }
 
-/* 顶部批次信息容器 */
-.top-batch-info {
+/* ===== 紧凑工具栏 ===== */
+.toolbar {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 8rpx;
+  padding: 12rpx 16rpx;
   margin-bottom: 20rpx;
-}
-
-.batch-meta {
-  display: flex;
-  align-items: center;
-  gap: 18rpx;
-}
-
-/* 批次编号显示 */
-.batch-number {
-  font-weight: bold;
-}
-
-.batch-number-text {
-  font-size: 32rpx;
-  color: #333;
-  font-weight: 600;
-}
-
-.phonetic-mode-switch {
-  display: flex;
-  align-items: center;
-  gap: 8rpx;
   background: #f5f7fb;
-  border: 1rpx solid #dbe3ef;
-  border-radius: 28rpx;
-  padding: 6rpx 8rpx 6rpx 14rpx;
+  border: 1rpx solid #e8ecf3;
+  border-radius: 20rpx;
 }
 
-.phonetic-mode-label {
-  font-size: 24rpx;
-  color: #4a5568;
-}
-
-.phonetic-mode-options {
-  display: flex;
-  align-items: center;
-  gap: 8rpx;
-}
-
-.phonetic-mode-option {
-  min-width: 50rpx;
-  height: 44rpx;
-  line-height: 44rpx;
-  text-align: center;
-  font-size: 24rpx;
-  color: #5b667a;
-  border-radius: 22rpx;
-  padding: 0 10rpx;
-  background: transparent;
-}
-
-.phonetic-mode-option.active {
-  color: #fff;
-  background: #2f6df6;
-  box-shadow: 0 2rpx 8rpx rgba(47, 109, 246, 0.3);
-}
-
-/* 批次导航按钮容器 - 小尺寸 */
-.batch-nav-buttons.small {
-  display: flex;
-  gap: 15rpx;
-}
-
-/* 批次导航按钮 - 微型样式 */
-.batch-nav-buttons.small .prev-batch-button.tiny,
-.batch-nav-buttons.small .next-batch-button.tiny {
-  width: 60rpx;
-  height: 60rpx;
-  border-radius: 30rpx;
+.toolbar-batch {
   font-size: 28rpx;
-  padding: 0;
+  font-weight: 600;
+  color: #333;
+  min-width: 60rpx;
+  text-align: center;
+}
+
+.toolbar-divider {
+  width: 1rpx;
+  height: 28rpx;
+  background: #dce0e8;
+}
+
+.toolbar-btn {
+  width: 56rpx;
+  height: 56rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: none;
-  box-shadow: 0 3rpx 10rpx rgba(102, 126, 234, 0.4);
-  font-weight: bold;
+  border-radius: 12rpx;
+  transition: background 0.2s;
 }
 
-.batch-nav-buttons.small .prev-batch-button.tiny:disabled,
-.batch-nav-buttons.small .next-batch-button.tiny:disabled {
-  background: linear-gradient(135deg, #cccccc 0%, #999999 100%);
-  box-shadow: none;
-  cursor: not-allowed;
+.toolbar-btn:active {
+  background: #e8ecf3;
 }
 
-.batch-nav-buttons.small .prev-batch-button.tiny:active,
-.batch-nav-buttons.small .next-batch-button.tiny:active {
-  transform: scale(0.9);
-  box-shadow: 0 2rpx 6rpx rgba(102, 126, 234, 0.3);
+.toolbar-btn.disabled {
+  opacity: 0.3;
+}
+
+.toolbar-btn.phonetic-btn.active {
+  background: #e8f0fe;
+}
+
+.toolbar-btn.shuffle-btn {
+  margin-left: 4rpx;
+}
+
+.toolbar-icon {
+  width: 24rpx;
+  height: 24rpx;
+  display: block;
+}
+
+.toolbar-spacer {
+  flex: 1;
 }
 
 .next-batch-button {
@@ -796,30 +850,6 @@
   font-size: 32rpx;
   font-weight: 500;
   color: #333;
-}
-
-.shuffle-button {
-  display: flex;
-  align-items: center;
-  gap: 10rpx;
-  background-color: #fff;
-  padding: 15rpx 30rpx;
-  border-radius: 60rpx;
-  box-shadow: 0 2rpx 10rpx rgba(0, 0, 0, 0.1);
-  transition: all 0.2s ease;
-}
-
-.shuffle-button:active {
-  transform: scale(0.95);
-}
-
-.shuffle-icon {
-  font-size: 32rpx;
-}
-
-.shuffle-text {
-  font-size: 28rpx;
-  color: #666;
 }
 
 /* 完成组操作页面 */
@@ -2092,33 +2122,6 @@
 }
 
 /* ===== 预习页按钮简洁化覆盖 ===== */
-.top-batch-info .batch-nav-buttons.small .prev-batch-button.tiny,
-.top-batch-info .batch-nav-buttons.small .next-batch-button.tiny {
-  width: 56rpx;
-  height: 56rpx;
-  border-radius: 50%;
-  background: #ffffff;
-  color: #4b5563;
-  border: 2rpx solid #d9e1ea;
-  box-shadow: none;
-  font-size: 26rpx;
-  font-weight: 600;
-}
-
-.top-batch-info .batch-nav-buttons.small .prev-batch-button.tiny:disabled,
-.top-batch-info .batch-nav-buttons.small .next-batch-button.tiny:disabled {
-  background: #f5f7fa;
-  color: #a3acb8;
-  border-color: #e5eaf1;
-  box-shadow: none;
-}
-
-.top-batch-info .batch-nav-buttons.small .prev-batch-button.tiny:active,
-.top-batch-info .batch-nav-buttons.small .next-batch-button.tiny:active {
-  transform: scale(0.96);
-  box-shadow: none;
-}
-
 .preview-content .word-item-preview .word-actions {
   gap: 10rpx;
   right: 18rpx;
@@ -2198,17 +2201,6 @@
   border-radius: 18rpx;
   padding: 18rpx;
   box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.06);
-}
-
-.preview-page .top-batch-info {
-  margin-bottom: 14rpx;
-  padding: 4rpx 2rpx;
-}
-
-.preview-page .batch-number-text {
-  font-size: 36rpx;
-  color: #2f3a46;
-  letter-spacing: 1rpx;
 }
 
 .preview-page .words-list {

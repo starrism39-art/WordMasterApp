@@ -137,24 +137,6 @@
   line-height: 1.3;
 }
 
-.favorite-icon {
-  width: 56rpx;
-  height: 56rpx;
-  margin-left: 20rpx;
-  transition: all 0.3s ease;
-  position: relative;
-  z-index: 2;
-}
-
-.favorite-icon:hover {
-  transform: scale(1.1);
-}
-
-.favorite-icon.favorited {
-  color: #ffd700;
-  filter: drop-shadow(0 2rpx 4rpx rgba(255, 215, 0, 0.4));
-}
-
 .wordbook-meta {
   font-size: 28rpx;
   color: #666;

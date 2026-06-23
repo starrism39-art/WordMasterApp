@@ -66,11 +66,19 @@ Page({
     startLearningSourceWordsDetailed: [],
     // 学习时长统计
     studyStartTime: null,
-    studyDuration: 0
+    studyDuration: 0,
+    // 加载弹窗
+    showLoadingModal: false,
+    loadingMessage: '正在准备...',
+    loadingStep: 0,
+    loadingDots: ''
   },
 
   onLoad: function(options) {
     console.log('Learning page loaded with options:', options);
+
+    // 初始化加载弹窗定时器
+    this._loadingTimers = [];
 
     this.applyInnerAudioOption();
 
@@ -138,6 +146,8 @@ Page({
     // 页面卸载时停止学习时长统计
     this.stopStudyTimer();
     this._destroyCurrentAudioContext();
+    // 清理加载弹窗定时器
+    this._stopLoadingSteps();
   },
 
   applyInnerAudioOption: function() {
@@ -253,6 +263,55 @@ Page({
     }
   },
 
+  // 更新加载弹窗消息
+  updateLoadingMessage: function(msg, step) {
+    this.setData({
+      loadingMessage: msg || '正在准备...',
+      loadingStep: step || 0
+    });
+  },
+
+  // 启动加载步骤：用 setTimeout 链逐条更新消息（保证每条都能显示）
+  _startLoadingSteps: function(callback) {
+    const steps = [
+      { msg: '正在准备学习环境...', delay: 0 },
+      { msg: '正在加载词书数据...', delay: 300 },
+      { msg: '正在整理单词列表...', delay: 700 },
+      { msg: '正在加载学习记录...', delay: 1100 },
+      { msg: '即将准备就绪...', delay: 1500 }
+    ];
+    var self = this;
+    // 记录最后一个 timer，方便清理
+    this._loadingTimers = [];
+
+    steps.forEach(function(step) {
+      var timer = setTimeout(function() {
+        self.setData({
+          loadingMessage: step.msg,
+          loadingStep: step.delay > 0 ? Math.floor(step.delay / 400) : 0
+        });
+      }, step.delay);
+      self._loadingTimers.push(timer);
+    });
+
+    // 最后一步完成后执行回调（初始化学习）
+    var finalTimer = setTimeout(function() {
+      self._loadingTimers = [];
+      if (typeof callback === 'function') {
+        callback();
+      }
+    }, 1900);
+    this._loadingTimers.push(finalTimer);
+  },
+
+  // 停止加载步骤
+  _stopLoadingSteps: function() {
+    if (this._loadingTimers && this._loadingTimers.length > 0) {
+      this._loadingTimers.forEach(function(t) { clearTimeout(t); });
+      this._loadingTimers = [];
+    }
+  },
+
   // 检查是否已选择学生和词书
   checkSelectedStudentAndWordbook: function() {
     try {
@@ -313,12 +372,16 @@ Page({
 
   // 初始化学习过程
   initStudyProcess: function() {
-    // 显示加载动画
-    wx.showLoading({
-      title: '准备学习材料...',
-    });
+    // 清除可能残留的旧定时器（如重试场景）
+    this._stopLoadingSteps();
 
-    // 确保数据已经从globalData同步
+    // 显示自定义加载弹窗
+    this.setData({
+      showLoadingModal: true,
+      loadingMessage: '正在准备学习环境...',
+      loadingStep: 0
+    });
+    // 先做轻量同步：globalData 和本地缓存
     this.syncFromGlobalData();
 
     // 如果仍然没有学生或词书信息，尝试获取默认数据
@@ -384,25 +447,10 @@ Page({
     }
     
     // 检查是否成功获取到学生和词书信息
-    if (this.data.currentStudent && this.data.currentWordbook) {
-      console.log('成功获取学生和词书信息，开始初始化学习模式:', this.data.learningMode);
-      this.setData({
-        loading: true,
-        hasError: false
-      });
-
-      // 根据不同的学习模式初始化
-      if (this.data.learningMode === 'review' || this.data.learningMode === 'gridReview' || !this.data.learningMode) {
-        // 只有在复习模式、网格复习模式或未设置学习模式时，才初始化预习模式
-        this.initializePreviewMode();
-      } else {
-        // 其他模式（如newLearning、finalTest）保持当前状态，不重新初始化
-        console.log('保持当前学习模式:', this.data.learningMode);
-        wx.hideLoading();
-      }
-    } else {
-      // 否则显示错误信息
-      wx.hideLoading();
+    if (!this.data.currentStudent || !this.data.currentWordbook) {
+      // 没有数据时直接提示，不启动轮播
+      this._stopLoadingSteps();
+      this.setData({ showLoadingModal: false });
       wx.showToast({
         title: '请先选择学生和词书',
         icon: 'none'
@@ -412,7 +460,27 @@ Page({
         hasError: true,
         errorMessage: '无法获取学生或词书信息，请先选择学生和词书'
       });
+      return;
     }
+
+    // 启动步骤消息，步骤结束后自动执行初始化
+    console.log('成功获取学生和词书信息，开始初始化学习模式:', this.data.learningMode);
+    this.setData({
+      loading: true,
+      hasError: false
+    });
+
+    const self = this;
+    this._startLoadingSteps(function() {
+      // 步骤结束后，根据不同的学习模式初始化
+      if (self.data.learningMode === 'review' || self.data.learningMode === 'gridReview' || !self.data.learningMode) {
+        self.initializePreviewMode();
+      } else {
+        console.log('保持当前学习模式:', self.data.learningMode);
+        self._stopLoadingSteps();
+        self.setData({ showLoadingModal: false });
+      }
+    });
   },
 
   // 初始化预习模式
@@ -487,11 +555,24 @@ Page({
           return ai - bi;
         });
       } else {
-        // 首次进入执行一次随机，并持久化该顺序
-        for (let i = allWords.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [allWords[i], allWords[j]] = [allWords[j], allWords[i]];
+        // 首次进入：判断该词书是否需要随机打乱（考纲类词书打乱，课本类保持单元顺序）
+        var wordbookId = this.data.currentWordbook && this.data.currentWordbook.id;
+        var shuffleOnEnter = false;
+        
+        // 需要随机打乱的词书ID列表（考纲/词汇表类，非课本类）
+        var shuffleWordbookIds = ['junior_exam_words', 'senior_textbook_real', 'new_curriculum_senior', 'gaokao_reading_words'];
+        if (shuffleWordbookIds.indexOf(wordbookId) !== -1) {
+          shuffleOnEnter = true;
         }
+        
+        if (shuffleOnEnter) {
+          // 考纲类词书：首次进入随机打乱
+          for (let i = allWords.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [allWords[i], allWords[j]] = [allWords[j], allWords[i]];
+          }
+        }
+        // 课本类词书：保持原始顺序（按课本单元排列）
 
         try {
           wx.setStorageSync(previewOrderKey, allWords.map(word => String(word.id)));
@@ -890,7 +971,8 @@ Page({
         errorMessage: '初始化预习模式失败，请重试'
       });
     } finally {
-      wx.hideLoading();
+      this._stopLoadingSteps();
+      this.setData({ showLoadingModal: false });
     }
   },
 
@@ -1979,6 +2061,38 @@ Page({
       });
     } catch (error) {
       console.error('打乱单词顺序失败:', error);
+      wx.showToast({
+        title: '操作失败，请重试',
+        icon: 'none'
+      });
+    }
+  },
+
+  // 预习模式打乱全部单词
+  shufflePreviewWords: function() {
+    try {
+      const words = [...this.data.currentBatchWords];
+      // Fisher-Yates 洗牌
+      for (let i = words.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [words[i], words[j]] = [words[j], words[i]];
+      }
+      
+      this.setData({
+        currentBatchWords: words,
+        showMeaning: {},
+        clickCounts: {},
+        showPhonetic: {},
+        wordDisplayState: {},
+        activeWordId: ''
+      });
+      
+      wx.showToast({
+        title: '顺序已打乱',
+        icon: 'success'
+      });
+    } catch (error) {
+      console.error('打乱预习单词失败:', error);
       wx.showToast({
         title: '操作失败，请重试',
         icon: 'none'
