@@ -108,6 +108,7 @@ Page({
   },
 
   onLoad: function(options) {
+    this._isPageUnloaded = false;
     console.log('Learning page loaded with options:', options);
 
     // 读取全局音标显示模式（默认关闭，兼容历史预习键）
@@ -173,6 +174,7 @@ Page({
   },
 
   onUnload: function() {
+    this._isPageUnloaded = true;
     console.log('Learning page unloaded');
     // 页面卸载时停止学习时长统计
     this.stopStudyTimer();
@@ -356,6 +358,34 @@ Page({
 
   // 初始化学习过程
   initStudyProcess: function() {
+    if (this._studyInitializationPromise) {
+      return this._studyInitializationPromise;
+    }
+
+    const initializationPromise = this._initializeStudyProcess().catch((error) => {
+      console.error('初始化学习过程失败:', error);
+      if (!this._isPageUnloaded) {
+        this.setData({
+          showLoadingModal: false,
+          loading: false,
+          hasError: true,
+          errorMessage: '学习材料加载失败，请稍后重试'
+        });
+      }
+      return null;
+    });
+
+    this._studyInitializationPromise = initializationPromise;
+    const clearInitialization = () => {
+      if (this._studyInitializationPromise === initializationPromise) {
+        this._studyInitializationPromise = null;
+      }
+    };
+    initializationPromise.then(clearInitialization, clearInitialization);
+    return initializationPromise;
+  },
+
+  _initializeStudyProcess: async function() {
     // 显示自定义加载弹窗
     this.setData({
       showLoadingModal: true,
@@ -437,6 +467,35 @@ Page({
 
       // 根据不同的学习模式初始化
       if (this.data.learningMode === 'review' || this.data.learningMode === 'gridReview' || !this.data.learningMode) {
+        const requestedWordbookId = String(this.data.currentWordbook.id || '');
+        if (cloudWordbookLoader.isCloudWordbook(requestedWordbookId)) {
+          this.setData({ loadingMessage: '正在下载完整词书…' });
+          const loadedWords = await cloudWordbookLoader.ensureWordsLoaded(requestedWordbookId);
+
+          if (this._isPageUnloaded) {
+            return;
+          }
+
+          const currentWordbookId = String((this.data.currentWordbook && this.data.currentWordbook.id) || '');
+          if (currentWordbookId !== requestedWordbookId) {
+            return this._initializeStudyProcess();
+          }
+
+          if (!cloudWordbookLoader.isCompleteWordList(requestedWordbookId, loadedWords)) {
+            this.setData({
+              showLoadingModal: false,
+              loading: false,
+              hasError: true,
+              errorMessage: '完整词书下载失败，请检查网络后重试'
+            });
+            wx.showToast({
+              title: '完整词书下载失败，请重试',
+              icon: 'none'
+            });
+            return;
+          }
+        }
+
         // 只有在复习模式、网格复习模式或未设置学习模式时，才初始化预习模式
         this.initializePreviewMode();
       } else {

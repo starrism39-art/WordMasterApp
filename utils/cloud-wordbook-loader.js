@@ -9,6 +9,7 @@
 const CACHE_PREFIX = 'cloud_wb_';
 const CLOUD_ENV_ID = 'cloudbase-4gafzdch60ad597b';
 const CLOUD_BUCKET = '636c-cloudbase-4gafzdch60ad597b-1390590336';
+const pendingDownloads = Object.create(null);
 
 // 词书 ID → 云存储文件路径映射
 const CLOUD_WORDBOOK_MAP = {
@@ -36,15 +37,28 @@ const getCloudFileID = (bookId) => {
 };
 
 /**
+ * 只把达到配置数量的词书视为完整数据，避免半包缓存被当成整本词书。
+ */
+const isCompleteWordList = (bookId, words) => {
+  if (!Array.isArray(words) || words.length === 0) return false;
+  const info = CLOUD_WORDBOOK_MAP[bookId];
+  const expectedTotal = info ? Number(info.totalWords || 0) : 0;
+  return expectedTotal <= 0 || words.length >= expectedTotal;
+};
+
+/**
  * 从本地缓存读取词书数据
  */
 const getCachedWords = (bookId) => {
   try {
     const cacheKey = CACHE_PREFIX + bookId;
     const cached = wx.getStorageSync(cacheKey);
-    if (cached && Array.isArray(cached)) {
+    if (isCompleteWordList(bookId, cached)) {
       console.log(`[cloud-wordbook] 命中本地缓存: ${bookId}, ${cached.length} 词`);
       return cached;
+    }
+    if (Array.isArray(cached) && cached.length > 0) {
+      console.warn(`[cloud-wordbook] 忽略不完整缓存: ${bookId}, ${cached.length} 词`);
     }
   } catch (e) {
     console.warn('[cloud-wordbook] 读取缓存失败:', e);
@@ -56,12 +70,19 @@ const getCachedWords = (bookId) => {
  * 保存词书数据到本地缓存
  */
 const setCachedWords = (bookId, words) => {
+  if (!isCompleteWordList(bookId, words)) {
+    console.warn(`[cloud-wordbook] 拒绝缓存不完整词书: ${bookId}, ${Array.isArray(words) ? words.length : 0} 词`);
+    return false;
+  }
+
   try {
     const cacheKey = CACHE_PREFIX + bookId;
     wx.setStorageSync(cacheKey, words);
     console.log(`[cloud-wordbook] 缓存已保存: ${bookId}, ${words.length} 词`);
+    return true;
   } catch (e) {
     console.warn('[cloud-wordbook] 保存缓存失败（可能超出存储上限）:', e);
+    return false;
   }
 };
 
@@ -71,7 +92,12 @@ const setCachedWords = (bookId, words) => {
  * 返回 words 数组，失败时返回 null
  */
 const downloadWordsFromCloud = (bookId) => {
-  return new Promise((resolve) => {
+  if (pendingDownloads[bookId]) {
+    console.log(`[cloud-wordbook] 复用进行中的下载: ${bookId}`);
+    return pendingDownloads[bookId];
+  }
+
+  const downloadPromise = new Promise((resolve) => {
     const cloudFileID = getCloudFileID(bookId);
     if (!cloudFileID) {
       console.warn(`[cloud-wordbook] 未知词书: ${bookId}`);
@@ -113,12 +139,13 @@ const downloadWordsFromCloud = (bookId) => {
           if (!Array.isArray(words) && words && Array.isArray(words.data)) {
             words = words.data;
           }
-          if (Array.isArray(words) && words.length > 0) {
+          if (isCompleteWordList(bookId, words)) {
             console.log(`[cloud-wordbook] 下载成功: ${bookId}, ${words.length} 词`);
             setCachedWords(bookId, words);
             resolve(words);
           } else {
-            console.warn('[cloud-wordbook] 下载数据格式异常（非数组或为空）');
+            const expectedTotal = CLOUD_WORDBOOK_MAP[bookId] && CLOUD_WORDBOOK_MAP[bookId].totalWords;
+            console.warn(`[cloud-wordbook] 下载数据不完整: ${bookId}, 实际 ${Array.isArray(words) ? words.length : 0}, 预期 ${expectedTotal || '未知'}`);
             resolve(null);
           }
         } catch (readErr) {
@@ -132,6 +159,15 @@ const downloadWordsFromCloud = (bookId) => {
       }
     });
   });
+
+  pendingDownloads[bookId] = downloadPromise;
+  const clearPending = () => {
+    if (pendingDownloads[bookId] === downloadPromise) {
+      delete pendingDownloads[bookId];
+    }
+  };
+  downloadPromise.then(clearPending, clearPending);
+  return downloadPromise;
 };
 
 /**
@@ -163,6 +199,7 @@ const isCloudWordbook = (bookId) => {
 module.exports = {
   CLOUD_WORDBOOK_MAP,
   getCloudFileID,
+  isCompleteWordList,
   getCachedWords,
   setCachedWords,
   downloadWordsFromCloud,
