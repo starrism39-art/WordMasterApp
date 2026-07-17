@@ -7,7 +7,11 @@
     "test": "test"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node test/run-tests.js",
+    "test:pages": "node test/page-contract.test.js",
+    "test:smoke": "node test/devtools-smoke.js",
+    "test:smoke:core": "node test/devtools-smoke.js --profile=core",
+    "test:all": "npm test && npm run test:smoke"
   },
   "repository": {
     "type": "git",
@@ -20,5 +24,8 @@
   "bugs": {
     "url": "https://github.com/starrism39-art/WordMasterApp/issues"
   },
-  "homepage": "https://github.com/starrism39-art/WordMasterApp#readme"
+  "homepage": "https://github.com/starrism39-art/WordMasterApp#readme",
+  "devDependencies": {
+    "miniprogram-automator": "0.12.1"
+  }
 }

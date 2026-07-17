@@ -1,10 +1,21 @@
 'use strict';
 
-const path = require('path');
 const childProcess = require('child_process');
+const fs = require('fs');
 const net = require('net');
+const path = require('path');
+const {
+  collectPageRoutes,
+  normalizeRoute,
+  readJson,
+  resolveMiniProgramRoot
+} = require('./page-manifest');
+const smokeConfig = require('./page-smoke.config');
 
 const projectPath = path.resolve(__dirname, '..');
+const { miniProgramRoot } = resolveMiniProgramRoot(projectPath);
+const appConfig = readJson(path.join(miniProgramRoot, 'app.json'));
+const registeredRoutes = new Set(collectPageRoutes(appConfig));
 const cliPath = process.env.WECHAT_DEVTOOLS_CLI || [
   'D:',
   '__01_\u5f00\u53d1\u5de5\u5177',
@@ -13,23 +24,11 @@ const cliPath = process.env.WECHAT_DEVTOOLS_CLI || [
   'cli.bat'
 ].join('\\');
 const autoPort = Number(process.env.WECHAT_DEVTOOLS_AUTO_PORT || 9420);
-const appConfig = require(path.join(projectPath, 'app.json'));
-const tabPagePaths = new Set(((appConfig.tabBar && appConfig.tabBar.list) || [])
-  .map(item => item && item.pagePath)
-  .filter(Boolean));
-
-const routes = (process.env.WECHAT_SMOKE_ROUTES || [
-  '/pages/index/index',
-  '/pages/students/students',
-  '/pages/learning/learning',
-  '/pages/review/review',
-  '/subpages/wordbook/wordbook',
-  '/subpages/stats/stats',
-  '/subpages/records/records'
-].join(','))
-  .split(',')
-  .map(route => route.trim())
-  .filter(Boolean);
+const options = parseOptions(process.argv.slice(2));
+const artifactPath = path.resolve(
+  projectPath,
+  options.artifacts || process.env.WECHAT_SMOKE_ARTIFACTS || 'test-results/page-smoke'
+);
 
 function loadAutomator() {
   const tempInstallPath = path.join(process.env.TEMP || '', 'wordmaster-automator-check');
@@ -65,11 +64,18 @@ function installAutomator(targetPath) {
     throw result.error;
   }
   if (result.status !== 0) {
-    throw new Error(`Failed to install miniprogram-automator, exit code ${result.status}`);
+    throw new Error(`安装 miniprogram-automator 失败，退出码 ${result.status}`);
   }
 }
 
 function enableAutomation() {
+  if (!fs.existsSync(cliPath)) {
+    throw new Error(
+      `找不到微信开发者工具 CLI: ${cliPath}\n` +
+      '请设置 WECHAT_DEVTOOLS_CLI 为 cli.bat（Windows）或 cli（macOS）的完整路径。'
+    );
+  }
+
   const args = [
     'auto',
     '--project',
@@ -90,7 +96,7 @@ function enableAutomation() {
     throw result.error;
   }
   if (result.status !== 0) {
-    throw new Error(`Failed to enable WeChat DevTools automation, exit code ${result.status}`);
+    throw new Error(`启动微信开发者工具自动化失败，退出码 ${result.status}`);
   }
 }
 
@@ -126,7 +132,7 @@ function waitForPort(port, timeoutMs) {
 
     function retry() {
       if (Date.now() - startedAt > timeoutMs) {
-        reject(new Error(`Timed out waiting for WeChat DevTools automation port ${port}`));
+        reject(new Error(`等待微信开发者工具自动化端口 ${port} 超时`));
         return;
       }
       setTimeout(tryConnect, 500);
@@ -137,66 +143,231 @@ function waitForPort(port, timeoutMs) {
 }
 
 async function run() {
+  const scenarios = resolveScenarios(options);
+  validateScenarios(scenarios);
   const automator = loadAutomator();
+
   enableAutomation();
-  await waitForPort(autoPort, 15000);
+  await waitForPort(autoPort, 30000);
 
   const miniProgram = await automator.connect({
     wsEndpoint: `ws://127.0.0.1:${autoPort}`
   });
   await new Promise(resolve => setTimeout(resolve, 3000));
 
+  const runtimeEvents = [];
+  let activeScenario = null;
+  miniProgram.on('console', event => {
+    const level = getConsoleLevel(event);
+    if (activeScenario && ['error', 'assert'].includes(level)) {
+      runtimeEvents.push(normalizeRuntimeEvent('console', activeScenario.name, event));
+    }
+  });
+  miniProgram.on('exception', event => {
+    if (activeScenario) {
+      runtimeEvents.push(normalizeRuntimeEvent('exception', activeScenario.name, event));
+    }
+  });
+
   const results = [];
   try {
-    for (const route of routes) {
-      const expectedPath = route.replace(/^\//, '');
-      try {
-        const preferredMethod = tabPagePaths.has(expectedPath) ? 'switchTab' : 'reLaunch';
-        const methods = preferredMethod === 'switchTab'
-          ? ['switchTab', 'reLaunch']
-          : ['reLaunch'];
-        const result = await openRoute(miniProgram, route, expectedPath, methods);
-        results.push({
-          route,
-          method: result.method,
-          actual: result.actual,
-          ok: result.ok
-        });
-      } catch (error) {
-        results.push({
-          route,
-          ok: false,
-          error: error && error.message ? error.message : String(error)
-        });
+    for (let index = 0; index < scenarios.length; index += 1) {
+      const scenario = scenarios[index];
+      activeScenario = scenario;
+      process.stdout.write(`[${index + 1}/${scenarios.length}] ${scenario.name} ... `);
+      const eventStart = runtimeEvents.length;
+      const result = await checkScenario(miniProgram, scenario);
+      const scenarioEvents = runtimeEvents.slice(eventStart);
+      result.runtimeErrors = findRuntimeErrors(scenarioEvents, scenario.ignoreConsoleErrors || []);
+      result.ok = result.pathOk && result.renderOk && result.runtimeErrors.length === 0;
+
+      if (!result.ok) {
+        result.screenshot = await captureFailure(miniProgram, scenario);
       }
+      results.push(result);
+      process.stdout.write(`${result.ok ? 'PASS' : 'FAIL'}\n`);
     }
   } finally {
+    activeScenario = null;
     await miniProgram.disconnect();
   }
 
-  console.log(JSON.stringify(results, null, 2));
-
+  printResults(results, options.profile);
   const failed = results.filter(item => !item.ok);
   if (failed.length > 0) {
-    throw new Error(`${failed.length} route smoke check(s) failed`);
+    throw new Error(`${failed.length} 个页面烟测失败`);
   }
 }
 
-async function openRoute(miniProgram, route, expectedPath, methods) {
-  let last = { method: methods[0], actual: '' };
+async function checkScenario(miniProgram, scenario) {
+  const expectedPath = normalizeRoute(scenario.expectedPath || scenario.route);
+  const methods = scenario.navigation || ['reLaunch'];
+  let page = null;
+  let method = methods[0];
+  let navigationError = null;
 
-  for (const method of methods) {
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      const page = await miniProgram[method](route);
-      await page.waitFor(1800);
-      last = { method, actual: page.path };
-      if (page.path === expectedPath) {
-        return { ...last, ok: true };
+  for (const candidate of methods) {
+    method = candidate;
+    try {
+      page = await miniProgram[candidate](scenario.route);
+      if (page && page.path === expectedPath) {
+        break;
       }
+    } catch (error) {
+      navigationError = error;
     }
   }
 
-  return { ...last, ok: false };
+  if (page) {
+    await page.waitFor(scenario.settleMs || smokeConfig.settleMs || 1000);
+  }
+
+  const actualPath = page ? page.path : '';
+  const pathOk = actualPath === expectedPath;
+  const selectorResults = [];
+
+  if (pathOk) {
+    for (const selector of scenario.selectors || []) {
+      const elements = await page.$$(selector);
+      selectorResults.push({ selector, count: elements.length });
+    }
+  }
+
+  const minimumElements = Number(scenario.minimumElements || 1);
+  const renderOk = pathOk && selectorResults.every(item => item.count >= minimumElements);
+
+  return {
+    name: scenario.name,
+    route: scenario.route,
+    method,
+    expected: expectedPath,
+    actual: actualPath,
+    pathOk,
+    renderOk,
+    selectors: selectorResults,
+    navigationError: navigationError ? formatValue(navigationError) : null
+  };
+}
+
+function findRuntimeErrors(events, ignorePatterns) {
+  const patterns = ignorePatterns.map(pattern => pattern instanceof RegExp ? pattern : new RegExp(pattern));
+
+  return events.filter(event => {
+    const isError = event.kind === 'exception' ||
+      (event.kind === 'console' && ['error', 'assert'].includes(event.level));
+    return isError && !patterns.some(pattern => pattern.test(event.message));
+  });
+}
+
+function normalizeRuntimeEvent(kind, scenarioName, event) {
+  const level = getConsoleLevel(event);
+  const messageSource = event && Object.prototype.hasOwnProperty.call(event, 'args')
+    ? event.args
+    : event;
+
+  return {
+    kind,
+    scenario: scenarioName,
+    level,
+    message: formatValue(messageSource)
+  };
+}
+
+function getConsoleLevel(event) {
+  return String(event && (event.type || event.level) || '').toLowerCase();
+}
+
+function formatValue(value) {
+  if (value instanceof Error) {
+    return value.stack || value.message;
+  }
+  if (typeof value === 'string') {
+    return value;
+  }
+  try {
+    return JSON.stringify(value);
+  } catch (error) {
+    return String(value);
+  }
+}
+
+async function captureFailure(miniProgram, scenario) {
+  fs.mkdirSync(artifactPath, { recursive: true });
+  const safeName = scenario.name.replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]+/g, '-');
+  const screenshotPath = path.join(artifactPath, `${safeName}.png`);
+
+  try {
+    await miniProgram.screenshot({ path: screenshotPath });
+    return path.relative(projectPath, screenshotPath).replace(/\\/g, '/');
+  } catch (error) {
+    return `截图失败: ${formatValue(error)}`;
+  }
+}
+
+function resolveScenarios(parsedOptions) {
+  if (parsedOptions.routes.length > 0) {
+    return parsedOptions.routes.map(route => ({
+      name: normalizeRoute(route),
+      route: route.startsWith('/') ? route : `/${route}`,
+      navigation: ['reLaunch'],
+      selectors: ['.container'],
+      minimumElements: 1
+    }));
+  }
+
+  const scenarios = smokeConfig.profiles[parsedOptions.profile];
+  if (!scenarios) {
+    throw new Error(
+      `未知烟测配置 ${parsedOptions.profile}，可选值: ${Object.keys(smokeConfig.profiles).join(', ')}`
+    );
+  }
+  return scenarios;
+}
+
+function validateScenarios(scenarios) {
+  for (const scenario of scenarios) {
+    const route = normalizeRoute(scenario.route);
+    if (!registeredRoutes.has(route)) {
+      throw new Error(`烟测页面未在 app.json 注册: ${route}`);
+    }
+    for (const method of scenario.navigation || []) {
+      if (!['navigateTo', 'redirectTo', 'reLaunch', 'switchTab'].includes(method)) {
+        throw new Error(`不支持的页面跳转方式: ${method}`);
+      }
+    }
+  }
+}
+
+function parseOptions(args) {
+  const parsed = {
+    profile: process.env.WECHAT_SMOKE_PROFILE || smokeConfig.defaultProfile,
+    routes: (process.env.WECHAT_SMOKE_ROUTES || '').split(',').map(item => item.trim()).filter(Boolean),
+    artifacts: ''
+  };
+
+  for (const argument of args) {
+    if (argument.startsWith('--profile=')) {
+      parsed.profile = argument.slice('--profile='.length);
+    } else if (argument.startsWith('--routes=')) {
+      parsed.routes = argument.slice('--routes='.length).split(',').map(item => item.trim()).filter(Boolean);
+    } else if (argument.startsWith('--artifacts=')) {
+      parsed.artifacts = argument.slice('--artifacts='.length);
+    } else {
+      throw new Error(`未知参数: ${argument}`);
+    }
+  }
+
+  return parsed;
+}
+
+function printResults(results, profile) {
+  const summary = {
+    profile,
+    passed: results.filter(item => item.ok).length,
+    failed: results.filter(item => !item.ok).length,
+    results
+  };
+  process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
 }
 
 run().catch(error => {

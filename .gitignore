@@ -35,3 +35,4 @@ storage/
 *.pyc
 *.tgz
 *.zip
+test-results/
