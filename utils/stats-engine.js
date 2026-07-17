@@ -367,7 +367,7 @@ const refreshStudentStats = async (studentId) => {
 
 // ===== 读取缓存统计（若缓存为空或过期则静默重算） =====
 const getStudentStats = async (studentId, options = {}) => {
-  const { forceRecalculate = false, maxAgeMs = 5 * 60 * 1000 } = options;
+  const { forceRecalculate = false, maxAgeMs = 30 * 1000 } = options;
 
   if (!studentId) {
     return { masteredCount: 0, notMasteredCount: 0, checkinDays: 0 };

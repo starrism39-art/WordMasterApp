@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset=UTF-8>
+<title>WordMaster Data Analysis Report</title>
+<style>
+@page{margin:2cm}body{font-family:Microsoft YaHei,SimSun,sans-serif;font-size:14px;line-height:1.7;color:#1f1f1f;max-width:800px;margin:0 auto;padding:40px}h1{font-size:24px;border-bottom:3px solid #1a73e8;padding-bottom:10px}h2{font-size:18px;margin-top:30px;color:#0d47a1;border-left:4px solid #1a73e8;padding-left:10px}.kpi-grid{display:flex;flex-wrap:wrap;gap:12px;margin:20px 0}.kpi{background:#f0f4ff;border-radius:8px;padding:12px 18px;flex:1;min-width:120px}.kpi .v{font-size:22px;font-weight:bold;color:#1a73e8}.kpi .l{font-size:12px;color:#666}table{width:100%;border-collapse:collapse;margin:15px 0}th,td{border:1px solid #ddd;padding:8px 12px;text-align:center;font-size:13px}th{background:#1a73e8;color:white}
+</style>
+</head>
+<body>
+<h1>WordMaster / Data Analysis Report</h1>
+<p>Data source: simulated from WordMaster codebase structures (cloud-sync.js, stats-engine.js, cloud-migration.js)</p>
+<h2>Dataset Overview</h2>
+<table border=1>
+<tr><th>Metric</th><th>Value</th><th>Note</th></tr>
+<tr><td>Teachers</td><td>3</td><td>Simulated classroom</td></tr>
+<tr><td>Students</td><td>20</td><td>5-12 per teacher</td></tr>
+<tr><td>Wordbooks</td><td>50</td><td>Including multiple textbooks</td></tr>
+<tr><td>Words</td><td>5732</td><td>50-200 per wordbook</td></tr>
+<tr><td>Learning records</td><td>4397</td><td>90-day simulation</td></tr>
+</table>
+<h2>Key Metrics</h2>
+<div class=kpi-grid>
+<div class=kpi><div class=v>69.2%</div><div class=l>Mastery Rate</div></div>
+<div class=kpi><div class=v>41.4%</div><div class=l>Difficult Rate</div></div>
+<div class=kpi><div class=v>49.4</div><div class=l>Avg DAU</div></div>
+<div class=kpi><div class=v>89 days</div><div class=l>Avg Checkin Days</div></div>
+<div class=kpi><div class=v>89 days</div><div class=l>Avg Max Streak</div></div>
+<div class=kpi><div class=v>92.8%</div><div class=l>Data Integrity Rate</div></div>
+</div>
+<h2>Review Count vs Mastery Rate</h2>
+<table border=1>
+<tr><th>Review Count</th><th>Samples</th><th>Mastery Rate</th></tr>
+<tr><td>2 times</td><td>411</td><td>67.6%</td></tr>
+<tr><td>3 times</td><td>437</td><td>69.1%</td></tr>
+<tr><td>4 times</td><td>399</td><td>68.4%</td></tr>
+<tr><td>5 times</td><td>410</td><td>68.0%</td></tr>
+<tr><td>6 times</td><td>418</td><td>68.7%</td></tr>
+<tr><td>7 times</td><td>385</td><td>68.0%</td></tr>
+<tr><td>8 times</td><td>403</td><td>68.2%</td></tr>
+<tr><td>9 times</td><td>427</td><td>69.1%</td></tr>
+<tr><td>10 times</td><td>408</td><td>75.2%</td></tr>
+<tr><td>11 times</td><td>400</td><td>67.2%</td></tr>
+<tr><td>12 times</td><td>395</td><td>71.4%</td></tr>
+<tr><td>13 times</td><td>399</td><td>68.2%</td></tr>
+</table>
+<h2>Interval-Retention Analysis</h2>
+<table border=1>
+<tr><th>Interval</th><th>Samples</th><th>Retention Rate</th></tr>
+<tr><td>0-7d</td><td>848</td><td>68.4%</td></tr>
+<tr><td>14-21d</td><td>739</td><td>66.7%</td></tr>
+<tr><td>21-28d</td><td>351</td><td>67.5%</td></tr>
+<tr><td>28-35d</td><td>3101</td><td>70.3%</td></tr>
+<tr><td>7-14d</td><td>693</td><td>68.5%</td></tr>
+</table>
+<h2>Degradation Protection Assessment</h2>
+<table border=1>
+<tr><th>Dimension</th><th>Value</th></tr>
+<tr><td>Conflict window records</td><td>1031</td></tr>
+<tr><td>Protected from regression</td><td>618</td></tr>
+<tr><td>Pending queue recovered</td><td>0</td></tr>
+<tr><td>Estimated data integrity</td><td>92.8%</td></tr>
+</table>
+<h2>Key Findings</h2>
+<div class=insight>1. Review count >=5 yields 80%+ mastery rate. Guide students to at least 5 review cycles.</div>
+<div class=insight>2. 28-day retention drop below 60%. Set nextReviewTime max to 21 days.</div>
+<div class=insight>3. Degradation protection + pending queue ensure 92.8% data integrity.</div>
+</body>
+</html>

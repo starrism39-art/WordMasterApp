@@ -30,25 +30,28 @@ Page({
     const currentWordbook = app.globalData.currentWordbook || app.globalData.selectedWordbook || wx.getStorageSync('selectedWordbook');
     const mode = options && options.mode === 'wordbook' ? 'wordbook' : 'core';
 
+    // 优先用 URL 参数中的 wordbookId，兼容两种入口
+    const wordbookId = (options && options.wordbookId)
+      ? decodeURIComponent(options.wordbookId)
+      : (currentWordbook ? currentWordbook.id : null);
+    const resolvedWordbook = (wordbookId && currentWordbook && currentWordbook.id === wordbookId)
+      ? currentWordbook
+      : { id: wordbookId };
+
     if (!currentStudent || !currentStudent.id) {
       wx.showToast({ title: '请先选择学生', icon: 'none' });
       return;
     }
 
-    if (mode === 'wordbook' && (!currentWordbook || !currentWordbook.id)) {
+    // 两个模式都要求词书（首页核心统计和详细统计都是词书维度）
+    if (!wordbookId) {
       wx.showToast({ title: '请先选择词书', icon: 'none' });
       return;
     }
 
-    const currentStats = mode === 'wordbook'
-      ? statsEngine.calculateWordbookStats(currentStudent.id, currentWordbook.id)
-      : statsEngine.calculateWordbookStats(currentStudent.id, currentWordbook ? currentWordbook.id : null);
+    const currentStats = statsEngine.calculateWordbookStats(currentStudent.id, wordbookId);
 
-    const overrideKey = mode === 'wordbook'
-      ? `wordbook_stats_${currentStudent.id}_${currentWordbook.id}`
-      : (currentWordbook && currentWordbook.id
-        ? `wordbook_stats_${currentStudent.id}_${currentWordbook.id}`
-        : `stats_${currentStudent.id}`);
+    const overrideKey = `wordbook_stats_${currentStudent.id}_${wordbookId}`;
 
     const override = wx.getStorageSync(overrideKey) || null;
     const hasManualOverride = !!(override && override.isManualOverride);
@@ -64,7 +67,7 @@ Page({
     this.setData({
       mode,
       currentStudent,
-      currentWordbook,
+      currentWordbook: resolvedWordbook,
       currentStats,
       editStats: {
         masteredCount: String(manualStats.masteredCount),
@@ -92,7 +95,8 @@ Page({
       return;
     }
 
-    if (mode === 'wordbook' && (!currentWordbook || !currentWordbook.id)) {
+    // 两个模式都要求词书（首页核心统计和详细统计都是词书维度）
+    if (!currentWordbook || !currentWordbook.id) {
       wx.showToast({ title: '请先选择词书', icon: 'none' });
       return;
     }
@@ -110,7 +114,8 @@ Page({
       baseCheckinDays: Number(currentStats.checkinDays || 0)
     };
 
-    const action = mode === 'wordbook' ? 'setWordbook' : 'setWordbook';
+    // 两个模式统一用词书级 action
+    const action = 'setWordbook';
     const data = {
       action,
       studentId: currentStudent.id,
@@ -186,12 +191,14 @@ Page({
       return;
     }
 
-    if (mode === 'wordbook' && (!currentWordbook || !currentWordbook.id)) {
+    // 两个模式都要求词书
+    if (!currentWordbook || !currentWordbook.id) {
       wx.showToast({ title: '请先选择词书', icon: 'none' });
       return;
     }
 
-    const action = mode === 'wordbook' ? 'resetWordbook' : 'resetWordbook';
+    // 两个模式统一用词书级 action
+    const action = 'resetWordbook';
     const data = { action, studentId: currentStudent.id, wordbookId: currentWordbook ? currentWordbook.id : '' };
 
     this.setData({ isSaving: true });

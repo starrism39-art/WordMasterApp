@@ -189,12 +189,12 @@ Page({
   repairCloudStudentNames: async function() {
     if (this.data.repairingCloudNames) return;
     if (!wx.cloud) {
-      wx.showToast({ title: '浜戣兘鍔涗笉鍙敤', icon: 'none' });
+      wx.showToast({ title: '云能力不可用', icon: 'none' });
       return;
     }
 
     this.setData({ repairingCloudNames: true });
-    wx.showLoading({ title: '浜戠淇涓?..', mask: true });
+    wx.showLoading({ title: '云端修复中...', mask: true });
 
     const isPlaceholderTeacherName = (value) => {
       const text = String(value || '').trim();
@@ -253,11 +253,11 @@ Page({
         }
       }
 
-      this.addLog(`浜戠濮撳悕淇瀹屾垚: patched=${patched}, skipped=${skipped}`);
-      wx.showToast({ title: `淇瀹屾垚 ${patched} 鏉?`, icon: 'success' });
+      this.addLog(`云端姓名修复完成: patched=${patched}, skipped=${skipped}`);
+      wx.showToast({ title: `修复完成 ${patched} 条`, icon: 'success' });
     } catch (error) {
       console.error('repairCloudStudentNames failed:', error);
-      this.addLog('浜戠濮撳悕淇澶辫触: ' + (error.message || 'unknown'));
+      this.addLog('云端姓名修复失败: ' + (error.message || 'unknown'));
       wx.showToast({ title: '淇澶辫触', icon: 'none' });
     } finally {
       wx.hideLoading();

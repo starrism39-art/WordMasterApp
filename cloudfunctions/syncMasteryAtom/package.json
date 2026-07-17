@@ -1,0 +1,8 @@
+{
+  "name": "syncMasteryAtom",
+  "version": "1.0.0",
+  "description": "原子化合并 wordMastery 数据到云端 word_mastery 集合",
+  "dependencies": {
+    "wx-server-sdk": "^2.7.2"
+  }
+}

@@ -23,7 +23,8 @@ class WordbookLoader {
       junior_8th_yi_lin_second: './yi_lin_8th_grade_second.js',
       junior_9th_yi_lin_first: './yi_lin_9th_grade_first.js',
       junior_9th_yi_lin_second: './yi_lin_9th_grade_second.js',
-      senior: './senior_real_words.js',
+      // 【云端迁移】senior_real_words.js 已迁移至云端，保留映射但允许加载失败时静默降级
+      senior: '',
       senior_book_1_ren_jiao: './ren_jiao_senior_book_1.js',
       senior_book_2_ren_jiao: './ren_jiao_senior_book_2.js',
       senior_book_3_ren_jiao: './ren_jiao_senior_book_3.js'
@@ -211,8 +212,43 @@ class WordbookLoader {
 
     let allWords = [];
     
-    // 首先检查是否是人教版词书
-    if (wordbookId.includes('ren_jiao')) {
+    // 首先检查是否是人教版重录版（v2）
+    if (wordbookId === 'junior_7th_ren_jiao_v2') {
+      try {
+        allWords = require('./ren_jiao_7th_grade_first_v2.js');
+        console.log('成功加载人教版七年级上册 v2（重录版），数量:', allWords.length);
+      } catch (e) {
+        console.error('加载人教版七年级上册 v2 失败:', e);
+      }
+    } else if (wordbookId === 'junior_7th_ren_jiao_second_v2') {
+      try {
+        allWords = require('./ren_jiao_7th_grade_second_v2.js');
+        console.log('成功加载人教版七年级下册 v2（重录版），数量:', allWords.length);
+      } catch (e) {
+        console.error('加载人教版七年级下册 v2 失败:', e);
+      }
+    } else if (wordbookId === 'junior_8th_ren_jiao_v2') {
+      try {
+        allWords = require('./ren_jiao_8th_grade_first_v2.js');
+        console.log('成功加载人教版八年级上册 v2（重录版），数量:', allWords.length);
+      } catch (e) {
+        console.error('加载人教版八年级上册 v2 失败:', e);
+      }
+    } else if (wordbookId === 'junior_8th_ren_jiao_second_v2') {
+      try {
+        allWords = require('./ren_jiao_8th_grade_second_v2.js');
+        console.log('成功加载人教版八年级下册 v2（重录版），数量:', allWords.length);
+      } catch (e) {
+        console.error('加载人教版八年级下册 v2 失败:', e);
+      }
+    } else if (wordbookId === 'junior_9th_ren_jiao_v2') {
+      try {
+        allWords = require('./ren_jiao_9th_grade_v2.js');
+        console.log('成功加载人教版九年级全一册 v2（重录版），数量:', allWords.length);
+      } catch (e) {
+        console.error('加载人教版九年级全一册 v2 失败:', e);
+      }
+    } else if (wordbookId.includes('ren_jiao')) {
       // 加载人教版单词
       try {
         let renJiaoWords = [];
@@ -401,7 +437,19 @@ class WordbookLoader {
         }
       } else if (wordbookCategory === 'senior') {
         // 加载高中单词
-        allWords = this.getWordsByLevel('senior') || [];
+        // 【云端迁移】优先检查云端缓存
+        try {
+          const cloudLoader = require('../utils/cloud-wordbook-loader.js');
+          const cloudWords = cloudLoader.getWordsSync(wordbookId);
+          if (cloudWords && cloudWords.length > 0) {
+            allWords = cloudWords;
+            console.log('成功从云端缓存加载高中词书，数量:', allWords.length);
+          } else {
+            allWords = this.getWordsByLevel('senior') || [];
+          }
+        } catch (e) {
+          allWords = this.getWordsByLevel('senior') || [];
+        }
       }
     }
 

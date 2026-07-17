@@ -181,25 +181,6 @@ Page({
           const recordId = record.id || `${record.studentId || 'unknown'}-${record.timestamp || Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
           
           if (!recordMap.has(recordId)) {
-            // 计算学习时长（秒）
-            let studyTime = 0;
-            console.log('计算学习时长:', record.wordbookTitle);
-            console.log('原始studyTime:', record.studyTime, 'type:', typeof record.studyTime);
-            console.log('原始duration:', record.duration, 'type:', typeof record.duration);
-            
-            // 直接使用studyTime字段（秒）
-            if (record.studyTime !== undefined && record.studyTime !== null) {
-              studyTime = typeof record.studyTime === 'number' ? record.studyTime : Math.floor(parseFloat(record.studyTime) || 0);
-              console.log('使用studyTime:', studyTime);
-            } 
-            // 或者使用duration字段（分钟转换为秒）
-            else if (record.duration) {
-              studyTime = typeof record.duration === 'number' ? Math.floor(record.duration * 60) : Math.floor(parseFloat(record.duration) * 60 || 0);
-              console.log('使用duration:', studyTime);
-            }
-            
-            console.log('最终studyTime:', studyTime);
-            
             // 只保留必要字段，减少内存占用
             recordMap.set(recordId, {
               id: recordId,
@@ -210,7 +191,6 @@ Page({
               isAntiForgettingReview: !!record.isAntiForgettingReview,
               totalWords: that.getRecordWordCount(record),
               duration: record.duration || 0,
-              studyTime: studyTime,
               timestamp: record.timestamp || (record.studyDate ? that.getTimestampFromDate(record.studyDate) : Date.now()),
               studyDate: record.studyDate,
               formattedDate: that.formatDate(record.studyDate || record.timestamp || Date.now()),
@@ -315,35 +295,9 @@ Page({
         // 使用slice获取下一页数据，这是高效的数组操作
         const nextPageRecords = filteredRecords.slice(startIndex, endIndex);
         
-        // 确保下一页记录都有studyTime字段
-        const processedNextPageRecords = nextPageRecords.map(record => {
-          // 正确处理studyTime字段，确保使用秒格式
-          const studyTime = typeof record.studyTime === 'number' && record.studyTime >= 0 ? record.studyTime : 
-                           (record.duration ? (typeof record.duration === 'number' ? Math.floor(record.duration * 60) : Math.floor(parseFloat(record.duration) * 60 || 0)) : 0);
-          console.log('加载更多处理记录:', record.wordbookTitle, 'studyTime:', studyTime);
-          
-          // 计算格式化后的学习时长
-          let formattedStudyTime;
-          if (studyTime < 60) {
-            formattedStudyTime = `${Math.floor(studyTime)}秒`;
-          } else {
-            const minutes = (studyTime / 60).toFixed(1);
-            formattedStudyTime = `${minutes}分钟`;
-          }
-          console.log('加载更多格式化后的学习时长:', formattedStudyTime);
-          
-          return {
-            ...record,
-            studyTime: studyTime,
-            formattedStudyTime: formattedStudyTime
-          };
-        });
-        
-        console.log('下一页处理后的记录:', processedNextPageRecords);
-        
-        if (processedNextPageRecords.length > 0) {
+        if (nextPageRecords.length > 0) {
           // 使用concat替代push.apply或展开运算符，减少内存消耗
-          const updatedRecords = this.data.displayedRecords.concat(processedNextPageRecords);
+          const updatedRecords = this.data.displayedRecords.concat(nextPageRecords);
           
           // 批量更新UI状态
           this.setData({
@@ -445,36 +399,10 @@ Page({
       console.log('第一页显示记录数量:', firstPageRecords.length);
         console.log('第一页记录详细信息:', firstPageRecords);
         
-        // 确保displayedRecords中的每个记录都有studyTime字段
-        const processedRecords = firstPageRecords.map(record => {
-          // 正确处理studyTime字段，确保使用秒格式
-          const studyTime = typeof record.studyTime === 'number' && record.studyTime >= 0 ? record.studyTime : 
-                           (record.duration ? (typeof record.duration === 'number' ? Math.floor(record.duration * 60) : Math.floor(parseFloat(record.duration) * 60 || 0)) : 0);
-          console.log('处理记录:', record.wordbookTitle, 'studyTime:', studyTime);
-          
-          // 计算格式化后的学习时长
-          let formattedStudyTime;
-          if (studyTime < 60) {
-            formattedStudyTime = `${Math.floor(studyTime)}秒`;
-          } else {
-            const minutes = (studyTime / 60).toFixed(1);
-            formattedStudyTime = `${minutes}分钟`;
-          }
-          console.log('格式化后的学习时长:', formattedStudyTime);
-          
-          return {
-            ...record,
-            studyTime: studyTime,
-            formattedStudyTime: formattedStudyTime
-          };
-        });
-        
-        console.log('处理后的记录:', processedRecords);
-        
         this.setData({
           filteredRecords: filteredRecords,
-          displayedRecords: processedRecords,
-          currentDisplayCount: processedRecords.length,
+          displayedRecords: firstPageRecords,
+          currentDisplayCount: firstPageRecords.length,
           currentPage: 0,
           hasMoreData: filteredRecords.length > pageSize
         }, () => {
@@ -1617,30 +1545,6 @@ Page({
     }
   },
   
-  // 优化的时间格式化函数 - 添加缓存机制
-  formatStudyTime: function(seconds) {
-    // 添加参数验证
-    console.log('formatStudyTime called with:', seconds, 'type:', typeof seconds);
-    if (!seconds || seconds < 0) return '0秒';
-    
-    // 确保seconds是数字
-    const numSeconds = typeof seconds === 'number' ? seconds : parseFloat(seconds) || 0;
-    
-    let result;
-    if (numSeconds < 60) {
-      // 不足60秒，按秒显示
-      result = `${Math.floor(numSeconds)}秒`;
-    } else {
-      // 超过60秒，换算成分钟，保留一位小数
-      const minutes = (numSeconds / 60).toFixed(1);
-      result = `${minutes}分钟`;
-    }
-    
-    console.log('formatStudyTime result:', result);
-    
-    return result;
-  },
-  
   // 格式化日期为年月日时分格式
   formatDate: function(dateStr) {
     // 添加参数验证和类型转换
@@ -1841,7 +1745,6 @@ Page({
       filteredRecords: null,
       lastUpdateTime: 0
     };
-    this._timeFormatCache = null;
     this._openedItemId = null;
     
     // 清理数据引用
@@ -2045,7 +1948,6 @@ Page({
             totalWords: 0,
             masteredCount: 0,
             notMasteredCount: 0,
-            totalStudyTime: 0,
             wordbooks: new Set(),
             earliestTimestamp: Infinity,
             latestTimestamp: 0
@@ -2055,7 +1957,6 @@ Page({
         // 添加到分组
         recordsByDay[groupKey].records.push(record);
         recordsByDay[groupKey].totalWords += Number(record.totalWords || record.wordCount || 0) || 0;
-        recordsByDay[groupKey].totalStudyTime += record.studyTime || 0;
         recordsByDay[groupKey].wordbooks.add(record.wordbookTitle || '未知词书');
 
         // 更新时间戳范围
@@ -2105,7 +2006,6 @@ Page({
           totalWords: computedTotalWords,
           masteredCount: masteredCount,
           notMasteredCount: notMasteredCount,
-          studyTime: group.totalStudyTime,
           timestamp: group.latestTimestamp,
           studyDate: new Date(group.latestTimestamp).toISOString(),
           formattedDate: this.formatDate(group.latestTimestamp),

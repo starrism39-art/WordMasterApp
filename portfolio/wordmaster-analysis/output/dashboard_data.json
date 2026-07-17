@@ -1,0 +1,639 @@
+{
+  "summary": {
+    "teachers": 3,
+    "students": 20,
+    "wordbooks": 50,
+    "words": 5732,
+    "learning_records": 4397,
+    "checkin_days": 90
+  },
+  "mastery": {
+    "mastery_rate": 0.6919,
+    "difficult_rate": 0.4138,
+    "anti_forgetting_coverage": 0.7519,
+    "review_accuracy_by_count": {
+      "2": {
+        "count": 411,
+        "mastered_rate": 0.6764
+      },
+      "3": {
+        "count": 437,
+        "mastered_rate": 0.6911
+      },
+      "4": {
+        "count": 399,
+        "mastered_rate": 0.6842
+      },
+      "5": {
+        "count": 410,
+        "mastered_rate": 0.6805
+      },
+      "6": {
+        "count": 418,
+        "mastered_rate": 0.6866
+      },
+      "7": {
+        "count": 385,
+        "mastered_rate": 0.6805
+      },
+      "8": {
+        "count": 403,
+        "mastered_rate": 0.6824
+      },
+      "9": {
+        "count": 427,
+        "mastered_rate": 0.6909
+      },
+      "10": {
+        "count": 408,
+        "mastered_rate": 0.7525
+      },
+      "11": {
+        "count": 400,
+        "mastered_rate": 0.6725
+      },
+      "12": {
+        "count": 395,
+        "mastered_rate": 0.7139
+      },
+      "13": {
+        "count": 399,
+        "mastered_rate": 0.6817
+      },
+      "14": {
+        "count": 425,
+        "mastered_rate": 0.7247
+      },
+      "15": {
+        "count": 415,
+        "mastered_rate": 0.6675
+      }
+    }
+  },
+  "temporal": {
+    "interval_retention": {
+      "0-7d": {
+        "count": 848,
+        "retention_rate": 0.684
+      },
+      "14-21d": {
+        "count": 739,
+        "retention_rate": 0.6671
+      },
+      "21-28d": {
+        "count": 351,
+        "retention_rate": 0.6752
+      },
+      "28-35d": {
+        "count": 3101,
+        "retention_rate": 0.7033
+      },
+      "7-14d": {
+        "count": 693,
+        "retention_rate": 0.6854
+      }
+    },
+    "dau": {
+      "dates": [
+        "2026-03-02",
+        "2026-03-03",
+        "2026-03-04",
+        "2026-03-05",
+        "2026-03-06",
+        "2026-03-07",
+        "2026-03-08",
+        "2026-03-09",
+        "2026-03-10",
+        "2026-03-11",
+        "2026-03-12",
+        "2026-03-13",
+        "2026-03-14",
+        "2026-03-15",
+        "2026-03-16",
+        "2026-03-17",
+        "2026-03-18",
+        "2026-03-19",
+        "2026-03-20",
+        "2026-03-21",
+        "2026-03-22",
+        "2026-03-23",
+        "2026-03-24",
+        "2026-03-25",
+        "2026-03-26",
+        "2026-03-27",
+        "2026-03-28",
+        "2026-03-29",
+        "2026-03-30",
+        "2026-03-31",
+        "2026-04-01",
+        "2026-04-02",
+        "2026-04-03",
+        "2026-04-04",
+        "2026-04-05",
+        "2026-04-06",
+        "2026-04-07",
+        "2026-04-08",
+        "2026-04-09",
+        "2026-04-10",
+        "2026-04-11",
+        "2026-04-12",
+        "2026-04-13",
+        "2026-04-14",
+        "2026-04-15",
+        "2026-04-16",
+        "2026-04-17",
+        "2026-04-18",
+        "2026-04-19",
+        "2026-04-20",
+        "2026-04-21",
+        "2026-04-22",
+        "2026-04-23",
+        "2026-04-24",
+        "2026-04-25",
+        "2026-04-26",
+        "2026-04-27",
+        "2026-04-28",
+        "2026-04-29",
+        "2026-04-30",
+        "2026-05-01",
+        "2026-05-02",
+        "2026-05-03",
+        "2026-05-04",
+        "2026-05-05",
+        "2026-05-06",
+        "2026-05-07",
+        "2026-05-08",
+        "2026-05-09",
+        "2026-05-10",
+        "2026-05-11",
+        "2026-05-12",
+        "2026-05-13",
+        "2026-05-14",
+        "2026-05-15",
+        "2026-05-16",
+        "2026-05-17",
+        "2026-05-18",
+        "2026-05-19",
+        "2026-05-20",
+        "2026-05-21",
+        "2026-05-22",
+        "2026-05-23",
+        "2026-05-24",
+        "2026-05-25",
+        "2026-05-26",
+        "2026-05-27",
+        "2026-05-28",
+        "2026-05-29"
+      ],
+      "values": [
+        37,
+        48,
+        48,
+        49,
+        49,
+        48,
+        48,
+        50,
+        49,
+        50,
+        50,
+        49,
+        50,
+        50,
+        50,
+        50,
+        50,
+        50,
+        49,
+        50,
+        49,
+        50,
+        50,
+        50,
+        50,
+        49,
+        50,
+        50,
+        50,
+        50,
+        49,
+        50,
+        50,
+        50,
+        50,
+        50,
+        50,
+        49,
+        50,
+        50,
+        50,
+        50,
+        50,
+        50,
+        50,
+        50,
+        49,
+        50,
+        50,
+        50,
+        49,
+        50,
+        50,
+        50,
+        50,
+        50,
+        50,
+        50,
+        49,
+        50,
+        50,
+        50,
+        50,
+        50,
+        50,
+        50,
+        50,
+        49,
+        49,
+        50,
+        50,
+        50,
+        50,
+        50,
+        50,
+        50,
+        50,
+        50,
+        50,
+        50,
+        50,
+        49,
+        48,
+        47,
+        46,
+        50,
+        46,
+        46,
+        50
+      ],
+      "avg": 49.4,
+      "max": 50
+    },
+    "wau": {
+      "weeks": [
+        "2026-W10",
+        "2026-W11",
+        "2026-W12",
+        "2026-W13",
+        "2026-W14",
+        "2026-W15",
+        "2026-W16",
+        "2026-W17",
+        "2026-W18",
+        "2026-W19",
+        "2026-W20",
+        "2026-W21",
+        "2026-W22"
+      ],
+      "values": [
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20
+      ],
+      "avg": 20.0
+    }
+  },
+  "checkin": {
+    "avg_checkin_days": 88.8,
+    "avg_max_streak": 88.6,
+    "checkin_distribution": {
+      "80-90d": 20
+    },
+    "students_with_high_streak": 20
+  },
+  "wordbook_comparison": {
+    "wb_renjiao_8_1": {
+      "total_words": 107,
+      "mastered": 69,
+      "mastery_rate": 0.6449,
+      "avg_review_count": 8.44
+    },
+    "wb_yilin_8_2": {
+      "total_words": 189,
+      "mastered": 124,
+      "mastery_rate": 0.6561,
+      "avg_review_count": 8.48
+    },
+    "wb_beishi_1_3": {
+      "total_words": 76,
+      "mastered": 55,
+      "mastery_rate": 0.7237,
+      "avg_review_count": 9.09
+    },
+    "wb_renjiao_8_4": {
+      "total_words": 185,
+      "mastered": 125,
+      "mastery_rate": 0.6757,
+      "avg_review_count": 8.09
+    },
+    "wb_renjiao_8_5": {
+      "total_words": 65,
+      "mastered": 49,
+      "mastery_rate": 0.7538,
+      "avg_review_count": 9.11
+    },
+    "wb_renjiao_8_6": {
+      "total_words": 66,
+      "mastered": 48,
+      "mastery_rate": 0.7273,
+      "avg_review_count": 8.47
+    },
+    "wb_renjiao_7_7": {
+      "total_words": 81,
+      "mastered": 54,
+      "mastery_rate": 0.6667,
+      "avg_review_count": 7.91
+    },
+    "wb_yilin_8_8": {
+      "total_words": 121,
+      "mastered": 85,
+      "mastery_rate": 0.7025,
+      "avg_review_count": 8.32
+    },
+    "wb_renjiao_7_9": {
+      "total_words": 125,
+      "mastered": 88,
+      "mastery_rate": 0.704,
+      "avg_review_count": 9.18
+    },
+    "wb_renjiao_8_10": {
+      "total_words": 133,
+      "mastered": 100,
+      "mastery_rate": 0.7519,
+      "avg_review_count": 8.34
+    },
+    "wb_beishi_1_11": {
+      "total_words": 85,
+      "mastered": 65,
+      "mastery_rate": 0.7647,
+      "avg_review_count": 7.55
+    },
+    "wb_renjiao_7_12": {
+      "total_words": 70,
+      "mastered": 51,
+      "mastery_rate": 0.7286,
+      "avg_review_count": 9.27
+    },
+    "wb_beishi_1_13": {
+      "total_words": 99,
+      "mastered": 69,
+      "mastery_rate": 0.697,
+      "avg_review_count": 8.82
+    },
+    "wb_renjiao_7_14": {
+      "total_words": 104,
+      "mastered": 64,
+      "mastery_rate": 0.6154,
+      "avg_review_count": 8.57
+    },
+    "wb_yilin_8_15": {
+      "total_words": 84,
+      "mastered": 60,
+      "mastery_rate": 0.7143,
+      "avg_review_count": 7.86
+    },
+    "wb_yilin_7_16": {
+      "total_words": 112,
+      "mastered": 79,
+      "mastery_rate": 0.7054,
+      "avg_review_count": 8.27
+    },
+    "wb_renjiao_7_17": {
+      "total_words": 111,
+      "mastered": 70,
+      "mastery_rate": 0.6306,
+      "avg_review_count": 8.91
+    },
+    "wb_yilin_7_18": {
+      "total_words": 153,
+      "mastered": 96,
+      "mastery_rate": 0.6275,
+      "avg_review_count": 8.14
+    },
+    "wb_renjiao_8_19": {
+      "total_words": 119,
+      "mastered": 93,
+      "mastery_rate": 0.7815,
+      "avg_review_count": 8.63
+    },
+    "wb_yilin_7_20": {
+      "total_words": 193,
+      "mastered": 135,
+      "mastery_rate": 0.6995,
+      "avg_review_count": 8.55
+    },
+    "wb_renjiao_7_21": {
+      "total_words": 115,
+      "mastered": 79,
+      "mastery_rate": 0.687,
+      "avg_review_count": 9.23
+    },
+    "wb_renjiao_8_22": {
+      "total_words": 180,
+      "mastered": 125,
+      "mastery_rate": 0.6944,
+      "avg_review_count": 8.19
+    },
+    "wb_renjiao_8_23": {
+      "total_words": 138,
+      "mastered": 89,
+      "mastery_rate": 0.6449,
+      "avg_review_count": 8.42
+    },
+    "wb_beishi_1_24": {
+      "total_words": 136,
+      "mastered": 88,
+      "mastery_rate": 0.6471,
+      "avg_review_count": 8.22
+    },
+    "wb_yilin_8_25": {
+      "total_words": 92,
+      "mastered": 65,
+      "mastery_rate": 0.7065,
+      "avg_review_count": 9.23
+    },
+    "wb_renjiao_8_26": {
+      "total_words": 86,
+      "mastered": 60,
+      "mastery_rate": 0.6977,
+      "avg_review_count": 8.63
+    },
+    "wb_renjiao_7_27": {
+      "total_words": 96,
+      "mastered": 74,
+      "mastery_rate": 0.7708,
+      "avg_review_count": 7.69
+    },
+    "wb_yilin_8_28": {
+      "total_words": 186,
+      "mastered": 129,
+      "mastery_rate": 0.6935,
+      "avg_review_count": 8.28
+    },
+    "wb_renjiao_8_29": {
+      "total_words": 96,
+      "mastered": 66,
+      "mastery_rate": 0.6875,
+      "avg_review_count": 8.51
+    },
+    "wb_renjiao_8_30": {
+      "total_words": 84,
+      "mastered": 47,
+      "mastery_rate": 0.5595,
+      "avg_review_count": 8.7
+    },
+    "wb_yilin_8_31": {
+      "total_words": 102,
+      "mastered": 72,
+      "mastery_rate": 0.7059,
+      "avg_review_count": 8.52
+    },
+    "wb_renjiao_7_32": {
+      "total_words": 52,
+      "mastered": 40,
+      "mastery_rate": 0.7692,
+      "avg_review_count": 8.77
+    },
+    "wb_beishi_1_33": {
+      "total_words": 124,
+      "mastered": 89,
+      "mastery_rate": 0.7177,
+      "avg_review_count": 8.52
+    },
+    "wb_renjiao_8_34": {
+      "total_words": 90,
+      "mastered": 72,
+      "mastery_rate": 0.8,
+      "avg_review_count": 8.43
+    },
+    "wb_yilin_7_35": {
+      "total_words": 91,
+      "mastered": 53,
+      "mastery_rate": 0.5824,
+      "avg_review_count": 8.56
+    },
+    "wb_yilin_7_36": {
+      "total_words": 108,
+      "mastered": 79,
+      "mastery_rate": 0.7315,
+      "avg_review_count": 8.56
+    },
+    "wb_beishi_1_37": {
+      "total_words": 53,
+      "mastered": 39,
+      "mastery_rate": 0.7358,
+      "avg_review_count": 8.17
+    },
+    "wb_beishi_1_38": {
+      "total_words": 122,
+      "mastered": 77,
+      "mastery_rate": 0.6311,
+      "avg_review_count": 8.44
+    },
+    "wb_yilin_8_39": {
+      "total_words": 73,
+      "mastered": 53,
+      "mastery_rate": 0.726,
+      "avg_review_count": 8.75
+    },
+    "wb_renjiao_7_40": {
+      "total_words": 130,
+      "mastered": 91,
+      "mastery_rate": 0.7,
+      "avg_review_count": 8.42
+    },
+    "wb_yilin_7_41": {
+      "total_words": 89,
+      "mastered": 53,
+      "mastery_rate": 0.5955,
+      "avg_review_count": 8.52
+    },
+    "wb_beishi_1_42": {
+      "total_words": 117,
+      "mastered": 83,
+      "mastery_rate": 0.7094,
+      "avg_review_count": 8.38
+    },
+    "wb_beishi_1_43": {
+      "total_words": 67,
+      "mastered": 42,
+      "mastery_rate": 0.6269,
+      "avg_review_count": 8.4
+    },
+    "wb_yilin_8_44": {
+      "total_words": 97,
+      "mastered": 75,
+      "mastery_rate": 0.7732,
+      "avg_review_count": 8.72
+    },
+    "wb_beishi_1_45": {
+      "total_words": 141,
+      "mastered": 99,
+      "mastery_rate": 0.7021,
+      "avg_review_count": 8.93
+    },
+    "wb_yilin_8_46": {
+      "total_words": 91,
+      "mastered": 66,
+      "mastery_rate": 0.7253,
+      "avg_review_count": 8.36
+    },
+    "wb_beishi_1_47": {
+      "total_words": 181,
+      "mastered": 120,
+      "mastery_rate": 0.663,
+      "avg_review_count": 8.54
+    },
+    "wb_renjiao_7_48": {
+      "total_words": 186,
+      "mastered": 133,
+      "mastery_rate": 0.7151,
+      "avg_review_count": 8.7
+    },
+    "wb_yilin_7_49": {
+      "total_words": 159,
+      "mastered": 111,
+      "mastery_rate": 0.6981,
+      "avg_review_count": 7.94
+    },
+    "wb_yilin_8_50": {
+      "total_words": 172,
+      "mastered": 118,
+      "mastery_rate": 0.686,
+      "avg_review_count": 8.48
+    }
+  },
+  "sync_reliability": {
+    "total_words": 5732,
+    "estimated_conflict_window_records": 1031,
+    "anti_degradation_protection_rate": 0.6,
+    "protected_from_regression": 618,
+    "pending_queue": {
+      "current_pending_count": 0,
+      "estimated_recovery_rate": 0.92,
+      "estimated_recovered": 0
+    },
+    "manual_override_protected_students": 0,
+    "estimated_data_integrity_rate": 0.9281
+  }
+}

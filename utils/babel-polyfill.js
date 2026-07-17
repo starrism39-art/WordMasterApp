@@ -108,20 +108,6 @@ if (typeof window !== 'undefined') {
   window._objectWithoutPropertiesLoose = _objectWithoutPropertiesLoose;
 }
 
-// 为了兼容性，也将常用函数添加到Array和Object原型上
-if (typeof Array.prototype.arrayWithoutHoles === 'undefined') {
-  Array.prototype.arrayWithoutHoles = function() {
-    return _arrayWithoutHoles(this);
-  };
-}
-
-if (typeof Object.prototype.objectSpread === 'undefined') {
-  Object.prototype.objectSpread = function() {
-    var args = [this].concat(Array.prototype.slice.call(arguments));
-    return _objectSpread.apply(null, args);
-  };
-}
-
 // 以微信小程序可以识别的方式导出这些Babel运行时帮助函数
 // 解决 "module '@babel/runtime/helpers/arrayWithoutHoles.js' is not defined" 错误
 module.exports = {

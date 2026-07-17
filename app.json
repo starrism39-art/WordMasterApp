@@ -33,8 +33,6 @@
   },
   "style": "v2",
   "sitemapLocation": "sitemap.json",
-  "cloudfunctionRoot": "cloudfunctions/",
-  "lazyCodeLoading": "requiredComponents",
   "subpackages": [
     {
       "root": "subpages",
@@ -48,7 +46,8 @@
         "word-view/word-view",
         "grid-review/grid-review",
         "data-backup/data-backup",
-        "data-repair/data-repair"
+        "data-repair/data-repair",
+        "ui-test/ui-test"
       ],
       "independent": false
     },

@@ -60,7 +60,7 @@
       </view>
       
       <!-- 记录列表渲染 -->
-      <view wx:for="{{displayedRecords}}" wx:key="item.id">
+      <view wx:for="{{displayedRecords}}" wx:key="id">
         <!-- 简化的记录项 -->
         <view class="record-item" data-id="{{item.id}}" bindtap="onRecordTap">
           <!-- 记录头部信息 -->

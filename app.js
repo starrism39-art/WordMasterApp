@@ -1,37 +1,38 @@
 //app.js
-// 引入Babel polyfill以解决编译错�?
+// 引入Babel polyfill以解决编译错误
 require('./utils/babel-polyfill');
 
-// 引入词书加载�?
+// 引入词书加载器
 const WordbookLoader = require('./data/wordbook-loader.js');
 
 // 引入数据版本管理模块
 const DataMigration = require('./utils/data-migration.js');
 
+// 引入云同步模块
+const { syncLearningRecord, syncLearningProgress, syncAllLocalLearningProgress, retryPendingSyncs } = require('./utils/cloud-sync.js');
+
+// 引入云端词书加载器
+const cloudWordbookLoader = require('./utils/cloud-wordbook-loader.js');
+
 App({
   onLaunch: function () {
+    // 初始化云开发环境
     try {
-      // --- 云环境初始化（仅初始化，不自动调用云函数，由登录页手动触发） ---
+      // 【V1.0.1 云环境初始化】确保 wx.cloud 在任何页面使用前已就绪
       if (wx.cloud) {
         try {
           wx.cloud.init({
             env: 'cloudbase-4gafzdch60ad597b',
             traceUser: true
           });
-          console.log('wx.cloud 已初始化 (traceUser: true)');
-        } catch (e) {
-          console.error('wx.cloud.init failed:', e);
+          console.log('[app] wx.cloud.init() 成功');
+        } catch (cloudInitError) {
+          console.warn('[app] wx.cloud.init() 失败（非阻塞）:', cloudInitError);
         }
       } else {
-        console.warn('当前基础库不支持 wx.cloud，请使用 2.2.3 或更高基库');
+        console.warn('[app] wx.cloud 不可用，云同步功能将不可用');
       }
-      // --- 结束：云环境初始�?---
-    } catch (initErr) {
-      console.error("云环境初始化失败:", initErr);
-    }
 
-    // 初始化云开发环�?
-    try {
       try {
         wx.setInnerAudioOption({
           obeyMuteSwitch: false
@@ -41,115 +42,122 @@ App({
         console.error('设置全局音频选项失败:', audioOptionError);
       }
 
-      // 【版本升级】首先检查数据版本，进行备份和迁�?
+      // 【版本升级】首先检查数据版本，进行备份和迁移
       const versionInfo = this.initializeVersion();
       if (versionInfo.upgraded) {
-        console.log('version upgraded, data backed up and migrated');
+        console.log('检测到版本升级，数据已自动备份和迁移');
         wx.showToast({
           title: '已备份升级前数据',
           duration: 2000
         });
       }
       
-      // 初始化数据存�?
+      // 初始化数据存储
       this.initData();
-      // 将历�?learningProgress 扁平键迁移为嵌套结构
+      // 将历史 learningProgress 扁平键迁移为嵌套结构
       this.migrateLearningProgress();
-      // 一次性洗刷历史新词统计缓存（按新口径重算�?
-      const newWordsMigrationResult = this.migrateHistoricalNewWordsData();
-      if (newWordsMigrationResult && newWordsMigrationResult.migrated) {
-        console.log('历史新词统计迁移完成:', newWordsMigrationResult);
-      }
-      // 历史未掌握单词召回（补齐�?wordMastery，避免统计偏少）
-      const historicalRecoverResult = this.recoverHistoricalUnmasteredWords({ force: true });
-      if (historicalRecoverResult && historicalRecoverResult.migrated) {
-        console.log('历史未掌握单词召回完�?', historicalRecoverResult);
-      }
-      // 清理历史遗留的模拟学生数据（小明/小红/小李�?
+      // 清理历史遗留的模拟学生数据（小明/小红/小李）
       this.normalizeStudentsStorage();
-      // 初始化事件系�?
+      // 初始化事件系统
       this.initEventSystem();
       // 初始化词书加载器
       this.initWordbookLoader();
-      // 启动阶段做静默检查，避免真机启动期弹�?重任务触�?timeout
+      // 启动阶段做静默检查，避免真机启动期弹窗/重任务触发 timeout
       setTimeout(() => {
         this.checkStorageRegularly(true);
       }, 3000);
       
-      // 从本地存储加载当前学生信�?
+      // 【V1.0.1 重试失败的云同步】延迟重试之前失败的同步任务
+      setTimeout(() => {
+        retryPendingSyncs();
+      }, 5000);
+
+      // 【V1.0.2 历史数据补推】将本地所有 learningProgress 一次性推到云端（幂等）
+      setTimeout(() => {
+        syncAllLocalLearningProgress();
+      }, 8000);
+
+      // 【云端词书预下载】启动后在后台预下载配置为云端的词书数据
+      setTimeout(() => {
+        this.preloadCloudWordbooks();
+      }, 10000);
+      
+      // 从本地存储加载当前学生信息
       try {
         const currentStudent = wx.getStorageSync('currentStudent');
         if (currentStudent) {
           this.globalData.currentStudent = currentStudent;
-          console.log('从本地存储加载当前学生信�?', currentStudent);
+          console.log('从本地存储加载当前学生信息:', currentStudent);
         }
       } catch (error) {
         console.error('加载当前学生信息失败:', error);
       }
+
+      // 【Splash 导航】由 app 层统一控制从 splash 到首页的跳转。
+      // 不在 splash 页面内做任何导航，避免真机调试冷启动阶段
+      // 的框架竞态（pageId/webviewId not exists）。
+      // 延迟 2s（> splash 动画 1.5s），确保框架完全就绪。
+      var app = this;
+      this._splashNavTimer = setTimeout(function() {
+        console.log('[app] splash 导航定时器触发，准备跳转首页');
+        wx.reLaunch({
+          url: '/pages/index/index',
+          fail: function(err) {
+            console.error('[app] splash→index reLaunch 失败:', err);
+            // 兜底：再延迟 500ms 后重试
+            setTimeout(function() {
+              wx.reLaunch({
+                url: '/pages/index/index',
+                fail: function(err2) {
+                  console.error('[app] splash→index 重试 reLaunch 也失败:', err2);
+                }
+              });
+            }, 500);
+          }
+        });
+      }, 2000);
+
     } catch (error) {
-      const errInfo = (error && typeof error === 'object')
-        ? (error.message || error.errMsg || JSON.stringify(error))
-        : String(error || 'unknown');
-      console.error('初始化时出错:', errInfo);
-      try {
-        wx.showModal({ title: '启动失败', content: errInfo.slice(0, 200), showCancel: false });
-      } catch (e) { /* ignore */ }
+      console.error('初始化时出错:', error);
     }
-  },
-
-  onError: function (message) {
-    const errMsg = (message && typeof message === 'object')
-      ? (message.message || message.errMsg || JSON.stringify(message))
-      : String(message || '');
-    console.error('App onError:', errMsg);
-    wx.showToast({ title: '启动异常: ' + errMsg.slice(0, 30), icon: 'none', duration: 3000 });
-  },
-
-  onUnhandledRejection: function (res) {
-    const reason = res && res.reason ? res.reason : res;
-    const msg = (reason && typeof reason === 'object')
-      ? (reason.message || reason.errMsg || JSON.stringify(reason))
-      : String(reason || '');
-    console.error('App onUnhandledRejection:', msg);
-    // 不弹窗，仅日志，避免打断用户体验
   },
 
   // 【新增】初始化数据版本，处理升级逻辑
   initializeVersion: function () {
     try {
       const versionResult = DataMigration.initializeDataVersion();
-      console.log('数据版本初始化结�?', versionResult);
+      console.log('数据版本初始化结果:', versionResult);
       return versionResult;
     } catch (error) {
-      console.error('版本初始化失�?', error);
+      console.error('版本初始化失败:', error);
       return { error: true, message: error.message };
     }
   },
 
-  // 初始化数�?
+  // 初始化数据
   initData: function () {
     try {
-      // 初始化学生列�?
+      // 初始化学生列表
       if (!wx.getStorageSync('students')) {
         wx.setStorageSync('students', []);
       }
       
-      // 初始化学习记�?
+      // 初始化学习记录
       if (!wx.getStorageSync('learningRecords')) {
         wx.setStorageSync('learningRecords', []);
       }
       
-      // 初始化学习进度数�?
+      // 初始化学习进度数据
       if (!wx.getStorageSync('learningProgress')) {
         wx.setStorageSync('learningProgress', {});
       }
       
-      // 初始化单词掌握状�?
+      // 初始化单词掌握状态
       if (!wx.getStorageSync('wordMastery')) {
         wx.setStorageSync('wordMastery', {});
       }
       
-      // 初始化完�?
+      // 初始化完成;
     } catch (error) {
       console.error('初始化数据存储时出错:', error);
     }
@@ -207,7 +215,7 @@ App({
         return normalizedProgress[studentId];
       };
 
-      // 第一轮：收集已有的嵌套结构与学生级数�?
+      // 第一轮：收集已有的嵌套结构与学生级数据
       Object.keys(source).forEach((key) => {
         const value = source[key];
         if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -242,7 +250,7 @@ App({
         }
       });
 
-      // 收集已知学生ID，帮助从历史扁平键中准确切分 studentId �?wordbookId
+      // 收集已知学生ID，帮助从历史扁平键中准确切分 studentId 与 wordbookId
       const knownStudentIds = new Set(Object.keys(normalizedProgress));
       const students = wx.getStorageSync('students') || [];
       if (Array.isArray(students)) {
@@ -258,7 +266,7 @@ App({
       }
       const sortedKnownStudentIds = Array.from(knownStudentIds).sort((a, b) => b.length - a.length);
 
-      // 第二轮：迁移历史扁平�?
+      // 第二轮：迁移历史扁平键
       Object.keys(source).forEach((key) => {
         const value = source[key];
         if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -333,7 +341,7 @@ App({
         migratedFlatCount += 1;
       });
 
-      // 统一学生级统计字�?
+      // 统一学生级统计字段
       Object.keys(normalizedProgress).forEach((studentId) => {
         const studentProgress = ensureStudentProgress(studentId);
         if (!studentProgress) {
@@ -387,760 +395,7 @@ App({
     }
   },
 
-  // 一次性迁移历史“已学新词”缓存：�?learningRecords 重算每天 newWords
-  migrateHistoricalNewWordsData: function(options) {
-    try {
-      const opts = options || {};
-      const force = !!opts.force;
-      const migrationVersion = 'historical_new_words_v1';
-      const migrationFlagKey = 'migration_historical_new_words_v1_done';
-      const migrationBackupKey = 'migration_historical_new_words_v1_backup';
-
-      if (!force) {
-        const doneInfo = wx.getStorageSync(migrationFlagKey);
-        if (doneInfo && doneInfo.version === migrationVersion) {
-          return {
-            migrated: false,
-            skipped: true,
-            reason: 'already_done',
-            version: migrationVersion,
-            doneAt: doneInfo.timestamp || ''
-          };
-        }
-      }
-
-      const learningRecords = wx.getStorageSync('learningRecords') || [];
-      if (!Array.isArray(learningRecords)) {
-        wx.setStorageSync(migrationFlagKey, {
-          version: migrationVersion,
-          timestamp: new Date().toISOString(),
-          scannedRecords: 0,
-          migratedGroups: 0
-        });
-        return {
-          migrated: true,
-          skipped: false,
-          version: migrationVersion,
-          scannedRecords: 0,
-          migratedGroups: 0,
-          note: 'learningRecords_not_array'
-        };
-      }
-
-      const normalizeWordIdForStats = function(rawId) {
-        if (rawId === undefined || rawId === null) {
-          return '';
-        }
-
-        let candidate = rawId;
-        if (typeof rawId === 'object') {
-          candidate = rawId.sourceWordId || rawId.id || rawId.word || '';
-        }
-
-        return String(candidate)
-          .trim()
-          .toLowerCase()
-          .replace(/\s+/g, ' ')
-          .replace(/(_\d+)$/, '');
-      };
-
-      const getLocalDateKey = function(value) {
-        const date = (value !== undefined && value !== null) ? new Date(value) : new Date();
-        if (isNaN(date.getTime())) {
-          return '';
-        }
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-      };
-
-      const appendWordIds = function(wordIds, targetSet) {
-        if (!Array.isArray(wordIds)) {
-          return;
-        }
-        wordIds.forEach(function(wordId) {
-          const normalizedId = normalizeWordIdForStats(wordId);
-          if (normalizedId) {
-            targetSet.add(normalizedId);
-          }
-        });
-      };
-
-      const groupedByStudentBookDate = {};
-      let scannedRecords = 0;
-
-      learningRecords.forEach(function(record) {
-        if (!record || typeof record !== 'object') {
-          return;
-        }
-
-        // 仅统计预�?学习记录，不统计抗遗忘复习回写记�?
-        const isAntiForgettingRecord =
-          record.recordType === 'anti_forgetting_review' ||
-          record.isAntiForgettingReview === true;
-        if (isAntiForgettingRecord) {
-          return;
-        }
-
-        const studentId = String(record.studentId || '').trim();
-        const wordbookId = String(record.wordbookId || '').trim();
-        if (!studentId || !wordbookId) {
-          return;
-        }
-
-        const dateKey = getLocalDateKey(record.timestamp || record.studyDate || record.learningDate || record.date);
-        if (!dateKey) {
-          return;
-        }
-
-        scannedRecords += 1;
-
-        const groupKey = `${dateKey}__${studentId}__${wordbookId}`;
-        if (!groupedByStudentBookDate[groupKey]) {
-          groupedByStudentBookDate[groupKey] = {
-            date: dateKey,
-            studentId: studentId,
-            wordbookId: wordbookId,
-            wordbookTitle: record.wordbookTitle || '',
-            recordCount: 0,
-            newWordIdSet: new Set()
-          };
-        }
-
-        const group = groupedByStudentBookDate[groupKey];
-        group.recordCount += 1;
-        if (!group.wordbookTitle && record.wordbookTitle) {
-          group.wordbookTitle = record.wordbookTitle;
-        }
-
-        // 新口径来�?：未掌握�?
-        appendWordIds(record.notMasteredWordIds, group.newWordIdSet);
-        // 新口径来�?：困难词�?
-        appendWordIds(record.difficultWordIds, group.newWordIdSet);
-
-        // 新口径来�?：详细学习记录中的未掌握�?
-        if (Array.isArray(record.studyWordsDetailed)) {
-          record.studyWordsDetailed.forEach(function(item) {
-            if (!item || typeof item !== 'object') {
-              return;
-            }
-
-            if (item.masteryStatus === 'notMastered' || item.masteryStatus === 'difficult') {
-              const normalizedId = normalizeWordIdForStats(item);
-              if (normalizedId) {
-                group.newWordIdSet.add(normalizedId);
-              }
-            }
-          });
-        }
-      });
-
-      const migratedAtIso = new Date().toISOString();
-      const nextDailyStats = {};
-      const nextDailyStatsFlat = [];
-
-      Object.keys(groupedByStudentBookDate).forEach(function(groupKey) {
-        const group = groupedByStudentBookDate[groupKey];
-        const newWordIds = Array.from(group.newWordIdSet);
-        const entry = {
-          date: group.date,
-          studentId: group.studentId,
-          wordbookId: group.wordbookId,
-          wordbookTitle: group.wordbookTitle || '',
-          newWords: newWordIds.length,
-          newWordIds: newWordIds,
-          recordCount: group.recordCount,
-          migratedBy: migrationVersion,
-          migratedAt: migratedAtIso
-        };
-
-        if (!nextDailyStats[group.studentId]) {
-          nextDailyStats[group.studentId] = {};
-        }
-        if (!nextDailyStats[group.studentId][group.wordbookId]) {
-          nextDailyStats[group.studentId][group.wordbookId] = {};
-        }
-        nextDailyStats[group.studentId][group.wordbookId][group.date] = entry;
-        nextDailyStatsFlat.push(entry);
-      });
-
-      nextDailyStatsFlat.sort(function(a, b) {
-        if (a.date === b.date) {
-          if (a.studentId === b.studentId) {
-            return String(a.wordbookId).localeCompare(String(b.wordbookId));
-          }
-          return String(a.studentId).localeCompare(String(b.studentId));
-        }
-        return String(a.date).localeCompare(String(b.date));
-      });
-
-      // 首次迁移自动备份旧缓存，便于必要时回�?
-      const oldBackup = wx.getStorageSync(migrationBackupKey);
-      if (!oldBackup || force) {
-        wx.setStorageSync(migrationBackupKey, {
-          version: migrationVersion,
-          timestamp: migratedAtIso,
-          dailyStats: wx.getStorageSync('dailyStats') || null,
-          dailyStatsFlat: wx.getStorageSync('dailyStatsFlat') || null,
-          learningProgress: wx.getStorageSync('learningProgress') || {}
-        });
-      }
-
-      // 覆盖历史统计缓存�?
-      wx.setStorageSync('dailyStats', nextDailyStats);
-      wx.setStorageSync('dailyStatsFlat', nextDailyStatsFlat);
-
-      // 同步回填 learningProgress 下的按天统计，兼容历史读取路�?
-      let learningProgress = wx.getStorageSync('learningProgress') || {};
-      if (!learningProgress || typeof learningProgress !== 'object' || Array.isArray(learningProgress)) {
-        learningProgress = {};
-      }
-
-      Object.keys(nextDailyStats).forEach(function(studentId) {
-        if (!learningProgress[studentId] || typeof learningProgress[studentId] !== 'object' || Array.isArray(learningProgress[studentId])) {
-          learningProgress[studentId] = {
-            learnedWords: 0,
-            totalWords: 0,
-            wordbooks: {}
-          };
-        }
-
-        const studentProgress = learningProgress[studentId];
-        if (!studentProgress.wordbooks || typeof studentProgress.wordbooks !== 'object' || Array.isArray(studentProgress.wordbooks)) {
-          studentProgress.wordbooks = {};
-        }
-
-        const studentBookStats = nextDailyStats[studentId] || {};
-        Object.keys(studentBookStats).forEach(function(wordbookId) {
-          if (!studentProgress.wordbooks[wordbookId] || typeof studentProgress.wordbooks[wordbookId] !== 'object' || Array.isArray(studentProgress.wordbooks[wordbookId])) {
-            studentProgress.wordbooks[wordbookId] = {
-              completedCount: 0,
-              learnedWords: 0,
-              totalCount: 0,
-              lastStudyTime: '',
-              lastStudied: ''
-            };
-          }
-
-          const bookProgress = studentProgress.wordbooks[wordbookId];
-          const dailyStatsMap = studentBookStats[wordbookId] || {};
-
-          bookProgress.dailyStats = dailyStatsMap;
-          bookProgress.dailyNewWordsTotal = Object.keys(dailyStatsMap).reduce(function(sum, dayKey) {
-            const dayEntry = dailyStatsMap[dayKey] || {};
-            return sum + (Number(dayEntry.newWords || 0) || 0);
-          }, 0);
-        });
-      });
-
-      wx.setStorageSync('learningProgress', learningProgress);
-
-      const migrationResult = {
-        migrated: true,
-        skipped: false,
-        version: migrationVersion,
-        scannedRecords: scannedRecords,
-        migratedGroups: nextDailyStatsFlat.length,
-        updatedKeys: ['dailyStats', 'dailyStatsFlat', 'learningProgress']
-      };
-
-      wx.setStorageSync(migrationFlagKey, {
-        version: migrationVersion,
-        timestamp: migratedAtIso,
-        scannedRecords: scannedRecords,
-        migratedGroups: nextDailyStatsFlat.length
-      });
-
-      return migrationResult;
-    } catch (error) {
-      console.error('迁移历史新词统计失败:', error);
-      return {
-        migrated: false,
-        skipped: false,
-        reason: 'error',
-        error: error.message
-      };
-    }
-  },
-
-  // 历史未掌握单词召回：�?learningRecords 回填 wordMastery
-  recoverHistoricalUnmasteredWords: function(options) {
-    try {
-      const recallVersion = 'v1';
-      const force = !!(options && options.force === true);
-      const recallFlagKey = `recoverHistoricalUnmasteredWords_${recallVersion}`;
-
-      const previousRecall = wx.getStorageSync(recallFlagKey);
-      if (previousRecall && !force) {
-        return {
-          migrated: false,
-          skipped: true,
-          reason: 'already_done',
-          version: recallVersion
-        };
-      }
-
-      const learningRecords = wx.getStorageSync('learningRecords') || [];
-      if (!Array.isArray(learningRecords) || learningRecords.length === 0) {
-        return {
-          migrated: false,
-          skipped: true,
-          reason: 'no_records',
-          version: recallVersion
-        };
-      }
-
-      const getRecordTime = function(record) {
-        const raw = record && (record.timestamp || record.studyDate || record.learningDate || record.date);
-        const timestamp = raw !== undefined && raw !== null ? new Date(raw).getTime() : 0;
-        return isNaN(timestamp) ? 0 : timestamp;
-      };
-
-      const normalizeWordId = function(rawId) {
-        if (rawId === undefined || rawId === null) {
-          return '';
-        }
-
-        let candidate = rawId;
-        if (typeof rawId === 'object') {
-          candidate = rawId.sourceWordId || rawId.id || rawId.word || '';
-        }
-
-        return String(candidate).trim();
-      };
-
-      const normalizeStatusToken = function(statusValue) {
-        if (statusValue === undefined || statusValue === null) {
-          return '';
-        }
-
-        return String(statusValue).trim().toLowerCase().replace(/[^a-z]/g, '');
-      };
-
-      const isUnmasteredStatus = function(statusValue) {
-        const token = normalizeStatusToken(statusValue);
-        return token === 'notmastered' || token === 'unmastered' || token === 'difficult';
-      };
-
-      const normalizeBoolean = function(value) {
-        if (value === true || value === false) {
-          return value;
-        }
-
-        if (value === 1) {
-          return true;
-        }
-        if (value === 0) {
-          return false;
-        }
-
-        if (typeof value === 'string') {
-          const token = value.trim().toLowerCase();
-          if (token === 'true' || token === '1') {
-            return true;
-          }
-          if (token === 'false' || token === '0') {
-            return false;
-          }
-        }
-
-        return null;
-      };
-
-      const isMasteredRecord = function(record) {
-        if (!record || typeof record !== 'object') {
-          return false;
-        }
-
-        const masteredValue = normalizeBoolean(record.mastered);
-        if (masteredValue === true) {
-          return true;
-        }
-
-        const statusToken = normalizeStatusToken(record.status || record.masteryStatus);
-        return statusToken === 'mastered';
-      };
-
-      const historicalUnmasteredMap = {};
-      let scannedRecords = 0;
-      let collectedWordCount = 0;
-
-      const markHistoricalWord = function(studentId, wordbookId, wordId) {
-        if (!historicalUnmasteredMap[studentId]) {
-          historicalUnmasteredMap[studentId] = {};
-        }
-        if (!historicalUnmasteredMap[studentId][wordbookId]) {
-          historicalUnmasteredMap[studentId][wordbookId] = {};
-        }
-
-        if (!historicalUnmasteredMap[studentId][wordbookId][wordId]) {
-          collectedWordCount += 1;
-        }
-        historicalUnmasteredMap[studentId][wordbookId][wordId] = true;
-      };
-
-      const sortedRecords = learningRecords.slice().sort(function(a, b) {
-        return getRecordTime(a) - getRecordTime(b);
-      });
-
-      sortedRecords.forEach(function(record) {
-        if (!record || typeof record !== 'object') {
-          return;
-        }
-
-        const isAntiForgettingRecord =
-          record.recordType === 'anti_forgetting_review' ||
-          record.isAntiForgettingReview === true;
-        if (isAntiForgettingRecord) {
-          return;
-        }
-
-        const studentId = String(record.studentId || '').trim();
-        const wordbookId = String(record.wordbookId || '').trim();
-        if (!studentId || !wordbookId) {
-          return;
-        }
-
-        scannedRecords += 1;
-
-        const markByRawWordId = function(rawWordId) {
-          const normalizedId = normalizeWordId(rawWordId);
-          if (!normalizedId) {
-            return;
-          }
-          markHistoricalWord(studentId, wordbookId, normalizedId);
-        };
-
-        if (Array.isArray(record.notMasteredWordIds)) {
-          record.notMasteredWordIds.forEach(markByRawWordId);
-        }
-
-        if (Array.isArray(record.difficultWordIds)) {
-          record.difficultWordIds.forEach(markByRawWordId);
-        }
-
-        if (Array.isArray(record.studyWordsDetailed)) {
-          record.studyWordsDetailed.forEach(function(item) {
-            if (!item || typeof item !== 'object') {
-              return;
-            }
-
-            const statusToken = item.masteryStatus || item.status;
-            if (!isUnmasteredStatus(statusToken)) {
-              return;
-            }
-
-            markByRawWordId(item);
-          });
-        }
-      });
-
-      let wordMastery = wx.getStorageSync('wordMastery') || {};
-      if (!wordMastery || typeof wordMastery !== 'object' || Array.isArray(wordMastery)) {
-        wordMastery = {};
-      }
-
-      let updatedWords = 0;
-      let skippedMastered = 0;
-
-      Object.keys(historicalUnmasteredMap).forEach(function(studentId) {
-        if (!wordMastery[studentId] || typeof wordMastery[studentId] !== 'object' || Array.isArray(wordMastery[studentId])) {
-          wordMastery[studentId] = {};
-        }
-
-        const studentWordbookMap = historicalUnmasteredMap[studentId] || {};
-        Object.keys(studentWordbookMap).forEach(function(wordbookId) {
-          let wordbookMastery = wordMastery[studentId][wordbookId];
-
-          if (Array.isArray(wordbookMastery)) {
-            const converted = {};
-            wordbookMastery.forEach(function(storedId) {
-              const key = String(storedId || '').trim();
-              if (key) {
-                converted[key] = {
-                  mastered: true,
-                  difficult: false,
-                  status: 'mastered',
-                  masteryStatus: 'mastered'
-                };
-              }
-            });
-            wordbookMastery = converted;
-            wordMastery[studentId][wordbookId] = wordbookMastery;
-          } else if (!wordbookMastery || typeof wordbookMastery !== 'object') {
-            wordbookMastery = {};
-            wordMastery[studentId][wordbookId] = wordbookMastery;
-          }
-
-          const wordIdMap = studentWordbookMap[wordbookId] || {};
-          Object.keys(wordIdMap).forEach(function(wordId) {
-            const currentRecord = wordbookMastery[wordId];
-            if (isMasteredRecord(currentRecord)) {
-              skippedMastered += 1;
-              return;
-            }
-
-            wordbookMastery[wordId] = {
-              ...(currentRecord && typeof currentRecord === 'object' ? currentRecord : {}),
-              mastered: false,
-              difficult: true,
-              status: 'notMastered',
-              masteryStatus: 'notMastered'
-            };
-
-            updatedWords += 1;
-          });
-
-          wordMastery[studentId][wordbookId] = wordbookMastery;
-        });
-      });
-
-      wx.setStorageSync('wordMastery', wordMastery);
-
-      const result = {
-        migrated: true,
-        skipped: false,
-        version: recallVersion,
-        scannedRecords: scannedRecords,
-        collectedWordCount: collectedWordCount,
-        updatedWords: updatedWords,
-        skippedMastered: skippedMastered
-      };
-
-      wx.setStorageSync(recallFlagKey, {
-        version: recallVersion,
-        timestamp: Date.now(),
-        scannedRecords: scannedRecords,
-        collectedWordCount: collectedWordCount,
-        updatedWords: updatedWords,
-        skippedMastered: skippedMastered
-      });
-
-      return result;
-    } catch (error) {
-      console.error('召回历史未掌握单词失�?', error);
-      return {
-        migrated: false,
-        skipped: false,
-        reason: 'error',
-        error: error.message
-      };
-    }
-  },
-
-  // 一次性补全：将历史学习记录中的未掌握词同步到 wordMastery
-  syncHistoricalUnmasteredToWordMastery: function(options) {
-    try {
-      const syncVersion = 'v1';
-      const force = !!(options && options.force === true);
-      const syncFlagKey = `syncHistoricalUnmasteredToWordMastery_${syncVersion}`;
-      const syncBackupKey = `wordMastery_backup_${syncFlagKey}`;
-
-      const previousSync = wx.getStorageSync(syncFlagKey);
-      if (previousSync && !force) {
-        return { migrated: false, skipped: true, reason: 'already_done', version: syncVersion };
-      }
-
-      const learningRecords = wx.getStorageSync('learningRecords') || [];
-      if (!Array.isArray(learningRecords) || learningRecords.length === 0) {
-        return { migrated: false, skipped: true, reason: 'no_records', version: syncVersion };
-      }
-
-      const getRecordTime = (record) => {
-        const raw = record && (record.timestamp || record.studyDate || record.learningDate || record.date);
-        const ts = raw !== undefined && raw !== null ? new Date(raw).getTime() : 0;
-        return isNaN(ts) ? 0 : ts;
-      };
-
-      const normalizeWordId = (rawId) => {
-        if (rawId === undefined || rawId === null) return '';
-        let candidate = rawId;
-        if (typeof rawId === 'object') {
-          candidate = rawId.sourceWordId || rawId.id || rawId.word || '';
-        }
-        return String(candidate).trim();
-      };
-
-      const normalizeBoolean = (value) => {
-        if (value === true || value === false) return value;
-        if (value === 1) return true;
-        if (value === 0) return false;
-        if (typeof value === 'string') {
-          const normalized = value.trim().toLowerCase();
-          if (normalized === 'true' || normalized === '1') return true;
-          if (normalized === 'false' || normalized === '0') return false;
-        }
-        return null;
-      };
-
-      const isMasteredRecord = (record) => {
-        if (!record || typeof record !== 'object') return false;
-        const masteredValue = normalizeBoolean(record.mastered);
-        if (masteredValue === true) return true;
-        const status = record.status || record.masteryStatus;
-        if (typeof status === 'string' && status.trim().toLowerCase() === 'mastered') {
-          return true;
-        }
-        return false;
-      };
-
-      const normalizedRecords = learningRecords.slice().sort((a, b) => getRecordTime(a) - getRecordTime(b));
-      const latestStatusMap = {};
-      let scannedRecords = 0;
-
-      const ensureStatusMap = (studentId, wordbookId) => {
-        if (!latestStatusMap[studentId]) {
-          latestStatusMap[studentId] = {};
-        }
-        if (!latestStatusMap[studentId][wordbookId]) {
-          latestStatusMap[studentId][wordbookId] = {};
-        }
-        return latestStatusMap[studentId][wordbookId];
-      };
-
-      const applyStatusList = (recordMap, wordIds, status) => {
-        if (!Array.isArray(wordIds)) return;
-        wordIds.forEach((wordId) => {
-          const normalizedId = normalizeWordId(wordId);
-          if (!normalizedId) return;
-          recordMap[normalizedId] = status;
-        });
-      };
-
-      normalizedRecords.forEach((record) => {
-        if (!record || typeof record !== 'object') {
-          return;
-        }
-
-        const isAntiForgettingRecord =
-          record.recordType === 'anti_forgetting_review' ||
-          record.isAntiForgettingReview === true;
-        if (isAntiForgettingRecord) {
-          return;
-        }
-
-        const studentId = String(record.studentId || '').trim();
-        const wordbookId = String(record.wordbookId || '').trim();
-        if (!studentId || !wordbookId) {
-          return;
-        }
-
-        scannedRecords += 1;
-        const recordMap = ensureStatusMap(studentId, wordbookId);
-
-        applyStatusList(recordMap, record.masteredWordIds, 'mastered');
-        applyStatusList(recordMap, record.notMasteredWordIds, 'notMastered');
-        applyStatusList(recordMap, record.difficultWordIds, 'notMastered');
-
-        if (Array.isArray(record.studyWordsDetailed)) {
-          record.studyWordsDetailed.forEach((item) => {
-            if (!item || typeof item !== 'object') return;
-            const status = item.masteryStatus;
-            const normalizedId = normalizeWordId(item);
-            if (!normalizedId) return;
-            if (status === 'mastered') {
-              recordMap[normalizedId] = 'mastered';
-            } else if (status === 'notMastered' || status === 'difficult') {
-              recordMap[normalizedId] = 'notMastered';
-            }
-          });
-        }
-      });
-
-      let wordMastery = wx.getStorageSync('wordMastery') || {};
-      if (!wordMastery || typeof wordMastery !== 'object' || Array.isArray(wordMastery)) {
-        wordMastery = {};
-      }
-
-      const existingBackup = wx.getStorageSync(syncBackupKey);
-      if (!existingBackup || force) {
-        wx.setStorageSync(syncBackupKey, {
-          version: syncVersion,
-          timestamp: Date.now(),
-          wordMastery: wordMastery
-        });
-      }
-
-      let updatedWords = 0;
-      let skippedMastered = 0;
-
-      Object.keys(latestStatusMap).forEach((studentId) => {
-        if (!wordMastery[studentId] || typeof wordMastery[studentId] !== 'object' || Array.isArray(wordMastery[studentId])) {
-          wordMastery[studentId] = {};
-        }
-
-        const studentMap = latestStatusMap[studentId] || {};
-        Object.keys(studentMap).forEach((wordbookId) => {
-          let wordbookMastery = wordMastery[studentId][wordbookId];
-          if (Array.isArray(wordbookMastery)) {
-            const converted = {};
-            wordbookMastery.forEach((storedId) => {
-              const key = String(storedId || '').trim();
-              if (key) {
-                converted[key] = { mastered: true, difficult: false };
-              }
-            });
-            wordbookMastery = converted;
-            wordMastery[studentId][wordbookId] = wordbookMastery;
-          } else if (!wordbookMastery || typeof wordbookMastery !== 'object') {
-            wordbookMastery = {};
-            wordMastery[studentId][wordbookId] = wordbookMastery;
-          }
-
-          const statusMap = studentMap[wordbookId] || {};
-          Object.keys(statusMap).forEach((wordId) => {
-            if (statusMap[wordId] !== 'notMastered') {
-              return;
-            }
-
-            const currentRecord = wordbookMastery[wordId];
-            if (currentRecord && isMasteredRecord(currentRecord)) {
-              skippedMastered += 1;
-              return;
-            }
-
-            const nextRecord = {
-              ...(currentRecord && typeof currentRecord === 'object' ? currentRecord : {}),
-              mastered: false,
-              difficult: true,
-              status: 'notMastered',
-              masteryStatus: 'notMastered'
-            };
-
-            wordbookMastery[wordId] = nextRecord;
-            updatedWords += 1;
-          });
-        });
-      });
-
-      wx.setStorageSync('wordMastery', wordMastery);
-
-      const result = {
-        migrated: true,
-        skipped: false,
-        version: syncVersion,
-        scannedRecords: scannedRecords,
-        updatedWords: updatedWords,
-        skippedMastered: skippedMastered
-      };
-
-      wx.setStorageSync(syncFlagKey, {
-        version: syncVersion,
-        timestamp: Date.now(),
-        scannedRecords: scannedRecords,
-        updatedWords: updatedWords,
-        skippedMastered: skippedMastered
-      });
-
-      return result;
-    } catch (error) {
-      console.error('补全历史未掌握词失败:', error);
-      return { migrated: false, skipped: false, reason: 'error', error: error.message };
-    }
-  },
-
-  // 学生数据安全备份（用于自动迁�?兼容修复前兜底）
+  // 学生数据安全备份（用于自动迁移/兼容修复前兜底）
   backupStudentsSafetySnapshot: function(scene) {
     try {
       const students = wx.getStorageSync('students') || [];
@@ -1163,7 +418,7 @@ App({
     }
   },
 
-  // 非破坏式规范化：仅识别历史模拟数据，不自动删�?
+  // 非破坏式规范化：仅识别历史模拟数据，不自动删除
   normalizeStudentsStorage: function() {
     try {
       const students = wx.getStorageSync('students') || [];
@@ -1180,7 +435,7 @@ App({
       });
 
       if (legacyMocks.length > 0) {
-        console.log('检测到历史模拟学生数据（未自动删除�?', legacyMocks.length);
+        console.log('检测到历史模拟学生数据（未自动删除）:', legacyMocks.length);
       }
     } catch (error) {
       console.error('清理学生存储失败:', error);
@@ -1236,7 +491,7 @@ App({
         this.globalData.currentStudent = migratedCurrentStudent;
       }
 
-      console.log('已迁移历史无归属学生数据，数�?', legacyUnownedStudents.length);
+      console.log('已迁移历史无归属学生数据，数量:', legacyUnownedStudents.length);
       return { migrated: legacyUnownedStudents.length, reason: 'migrated' };
     } catch (error) {
       console.error('迁移历史学生数据失败:', error);
@@ -1244,7 +499,7 @@ App({
     }
   },
 
-  // 从最近一次安全备份恢复学生数据（手动调用�?
+  // 从最近一次安全备份恢复学生数据（手动调用）
   restoreStudentsFromSafetyBackup: function() {
     try {
       const snapshot = wx.getStorageSync('students_safety_backup_latest') || null;
@@ -1253,10 +508,10 @@ App({
       }
 
       wx.setStorageSync('students', snapshot.students);
-      console.log('已从安全备份恢复学生数据，数�?', snapshot.students.length);
+      console.log('已从安全备份恢复学生数据，数量:', snapshot.students.length);
       return { restored: true, count: snapshot.students.length, timestamp: snapshot.timestamp };
     } catch (error) {
-      console.error('从安全备份恢复学生失�?', error);
+      console.error('从安全备份恢复学生失败:', error);
       return { restored: false, reason: 'error', error: error.message };
     }
   },
@@ -1264,22 +519,45 @@ App({
   // 初始化词书加载器
   initWordbookLoader: function() {
     try {
-      // 词书加载器已经在模块内部初始�?
+      // 词书加载器已经在模块内部初始化
       console.log('词书加载器初始化完成');
     } catch (error) {
-      console.error('初始化词书加载器时出�?', error);
+      console.error('初始化词书加载器时出错:', error);
     }
   },
-  
-  // 初始化事件系�?
+
+  /** 后台预下载云端词书数据 */
+  preloadCloudWordbooks: function() {
+    // 遍历学习进度，找出已启用的云端词书并预下载
+    try {
+      const learningProgress = wx.getStorageSync('learningProgress') || {};
+      const cloudBooks = cloudWordbookLoader.CLOUD_WORDBOOK_MAP;
+      
+      Object.keys(learningProgress).forEach((studentId) => {
+        const studentProgress = learningProgress[studentId];
+        if (!studentProgress || !studentProgress.wordbooks) return;
+        
+        Object.keys(studentProgress.wordbooks).forEach((bookId) => {
+          if (cloudBooks[bookId] && !cloudWordbookLoader.getWordsSync(bookId)) {
+            console.log('[app] 后台预下载云端词书:', bookId);
+            cloudWordbookLoader.downloadWordsFromCloud(bookId);
+          }
+        });
+      });
+    } catch (e) {
+      console.warn('[app] preloadCloudWordbooks 异常:', e);
+    }
+  },
+
+  // 初始化事件系统
   initEventSystem: function() {
-    // 事件监听器存储对�?
+    // 事件监听器存储对象
     this.eventListeners = {};
     
-    console.log('event system initialized');
+    console.log('事件系统初始化完成');
   },
   
-  // 注册事件监听�?
+  // 注册事件监听器
   on: function(eventName, callback) {
     if (!this.eventListeners[eventName]) {
       this.eventListeners[eventName] = [];
@@ -1300,7 +578,7 @@ App({
     }
   },
   
-  // 移除事件监听�?
+  // 移除事件监听器
   off: function(eventName, callback) {
     if (this.eventListeners[eventName]) {
       if (callback) {
@@ -1312,15 +590,27 @@ App({
     }
   },
 
-    globalData: {
+  globalData: {
     userInfo: null,
     currentUser: null,
     currentStudent: null,
     currentWordbook: null,
     selectedWordbook: null,
-    isLoggedIn: false, // 初始化登录状态标志为未登�?
+    isLoggedIn: false, // 初始化登录状态标志为未登录
     // 启用在线词典音频：优先有道，失败后走 dictionaryapi 兜底
     enableOnlineDictAudio: true
+  },
+
+  // 【权限基座】规范化用户权限字段，确保 userRole/memberLevel 始终有合法默认值
+  ensureUserPermissions: function(user) {
+    if (!user || typeof user !== 'object') {
+      return { userRole: 'external', memberLevel: 'free' };
+    }
+    return {
+      ...user,
+      userRole: user.userRole || 'external',
+      memberLevel: user.memberLevel || 'free'
+    };
   },
   
   // 获取学习记录
@@ -1328,11 +618,11 @@ App({
     try {
       console.log('getLearningRecords被调用，参数:', studentId, wordbookId);
       
-      // 从本地存储读取实时数�?
+      // 从本地存储读取实时数据
       const records = wx.getStorageSync('learningRecords') || [];
       console.log('从本地存储读取的学习记录:', records);
       
-      // 兼容无参数调用的情况，返回所有记�?
+      // 兼容无参数调用的情况，返回所有记录
       if (studentId === undefined && wordbookId === undefined) {
         // 确保所有记录都包含必要字段
         const processedRecords = records.map(record => ({
@@ -1346,10 +636,10 @@ App({
         return processedRecords;
       }
       
-      // 有参数时进行过滤，确保只有在参数有有效值时才进行过�?
+      // 有参数时进行过滤，使用 String() 转换比较避免类型不匹配
       const filteredRecords = records.filter(record =>
-        (studentId === undefined || studentId === null || record.studentId === studentId) &&
-        (wordbookId === undefined || wordbookId === null || record.wordbookId === wordbookId)
+        (studentId === undefined || studentId === null || String(record.studentId) === String(studentId)) &&
+        (wordbookId === undefined || wordbookId === null || String(record.wordbookId) === String(wordbookId))
       );
       
       // 确保所有记录都包含必要字段
@@ -1368,25 +658,25 @@ App({
     }
   },
   
-  // 添加学习记录 - 增强�?
+  // 添加学习记录 - 增强版
   addLearningRecord: function(record) {
     try {
-      // 确保记录包含完整的时间信�?
+      // 确保记录包含完整的时间信息
       const now = new Date();
       const nowISO = now.toISOString();
       const nowTimestamp = now.getTime();
       
-      // 创建包含完整时间信息的记录对�?
+      // 创建包含完整时间信息的记录对象
       const recordWithTime = {
         ...record,
         // 确保有多个时间字段以兼容不同页面
-        timestamp: nowTimestamp,           // 数字时间�?
+        timestamp: nowTimestamp,           // 数字时间戳
         studyDate: nowISO,           // 学习日期
         learningDate: nowISO,        // 学习日期(别名)
         date: nowISO,                // 日期(别名)
         // 添加唯一ID如果没有
         id: record.id || `record-${now.getTime()}-${Math.random().toString(36).substr(2, 9)}`,
-        // 确保有学习时长字�?
+        // 确保有学习时长字段
         studyTime: record.studyTime || 0,
         duration: record.duration || 0
       };
@@ -1395,7 +685,7 @@ App({
       const records = wx.getStorageSync('learningRecords') || [];
       records.push(recordWithTime);
       
-      // 保存到本地存�?
+      // 保存到本地存储
       wx.setStorageSync('learningRecords', records);
       
       // 立即更新学习进度数据（抗遗忘复习记录不参与学习进度累计）
@@ -1407,11 +697,15 @@ App({
         this.updateLearningProgress(recordWithTime);
       }
       
-      // 立即触发学习记录更新事件，确保统计数据实时更�?
+      // 立即触发学习记录更新事件，确保统计数据实时更新
       console.log('准备触发学习记录更新事件:', recordWithTime);
       this.emit('learningRecordAdded', recordWithTime);
       
-      console.log('学习记录添加成功并触发更新事�?', recordWithTime);
+      // 【V1.0.1 云同步】异步同步学习记录到云端
+      // 修复：原 addLearningRecord 缺少云同步，导致学习记录仅存本地
+      syncLearningRecord(recordWithTime);
+      
+      console.log('学习记录添加成功并触发更新事件:', recordWithTime);
       return true;
     } catch (error) {
       console.error('添加学习记录失败:', error);
@@ -1440,7 +734,7 @@ App({
       }
       const wordsLearned = record.totalWords || record.wordCount || record.wordsLearned || 0;
       
-      // 更新全局学习单词�?
+      // 更新全局学习单词数
       studentProgress.learnedWords = (studentProgress.learnedWords || 0) + wordsLearned;
       
       // 如果提供了词书ID，更新特定词书的进度
@@ -1466,7 +760,12 @@ App({
       
       // 保存更新后的进度数据
       wx.setStorageSync('learningProgress', learningProgress);
-      console.log('学习进度已更�?', studentId, studentProgress.learnedWords);
+      console.log('学习进度已更新:', studentId, studentProgress.learnedWords);
+      
+      // 云同步：学习进度同步到云端，确保与 wordMastery 数据一致
+      syncLearningProgress(studentId, studentProgress).catch(function(err) {
+        console.warn('[app] learningProgress 云同步失败:', err);
+      });
       
       return true;
     } catch (error) {
@@ -1534,20 +833,20 @@ App({
     if (usageInfo.isOverLimit) {
       wx.showModal({
         title: '存储已满',
-        content: 'storage nearly full. Clean up old data to continue',
+        content: '本地存储已接近上限，请清理旧数据以继续使用',
         showCancel: false,
-        confirmText: 'got it'
+        confirmText: '知道了'
       });
     } else if (usageInfo.isNearLimit) {
       wx.showModal({
         title: '存储警告',
-        content: `本地存储已使�?{usageInfo.percent.toFixed(1)}%，建议清理旧数据`,
+        content: `本地存储已使用${usageInfo.percent.toFixed(1)}%，建议清理旧数据`,
         showCancel: true,
         cancelText: '稍后',
-        confirmText: 'clean up',
+        confirmText: '去清理',
         success: (res) => {
           if (res.confirm) {
-            // 跳转到记录页面进行清�?
+            // 跳转到记录页面进行清理
             wx.navigateTo({
               url: '/subpages/records/records'
             });
@@ -1557,29 +856,29 @@ App({
     }
   },
 
-  // 定期检查存储使用情�?
+  // 定期检查存储使用情况
   checkStorageRegularly: function(silent = false) {
     this.checkStorageUsage().then(usageInfo => {
       if (!silent && (usageInfo.isNearLimit || usageInfo.isOverLimit)) {
         this.showStorageWarning(usageInfo);
       } else if (silent) {
-        console.log('启动阶段静默存储检�?', {
+        console.log('启动阶段静默存储检查:', {
           used: usageInfo.used,
           total: usageInfo.total,
           percent: usageInfo.percent
         });
       }
     }).catch(error => {
-      console.error('检查存储使用情况失�?', error);
+      console.error('检查存储使用情况失败:', error);
     });
   },
 
-  // 清理旧数�?
+  // 清理旧数据
   cleanupOldData: function(options = {}) {
     try {
       const { 
-        days = 30, // 默认清理30天前的数�?
-        types = ['learningRecords'] // 默认只清理学习记�?
+        days = 30, // 默认清理30天前的数据
+        types = ['learningRecords'] // 默认只清理学习记录
       } = options;
 
       const cutoffTime = Date.now() - (days * 24 * 60 * 60 * 1000);
@@ -1594,7 +893,7 @@ App({
         });
         deletedCount = records.length - filteredRecords.length;
         wx.setStorageSync('learningRecords', filteredRecords);
-        console.log(`清理�?{deletedCount}�?{days}天前的学习记录`);
+        console.log(`清理了${deletedCount}条${days}天前的学习记录`);
       }
 
       return {
@@ -1602,7 +901,7 @@ App({
         deletedCount
       };
     } catch (error) {
-      console.error('清理旧数据失�?', error);
+      console.error('清理旧数据失败:', error);
       return {
         success: false,
         error: error.message

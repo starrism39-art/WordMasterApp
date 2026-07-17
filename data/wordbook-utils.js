@@ -32,10 +32,20 @@ function mergeWordbooks() {
   try {
     // 加载不同级别的词书数据
     const primaryWords = require('./primary_real_words.js') || [];
-    const seniorWords = require('./senior_real_words.js') || [];
+    // 【云端迁移】senior_real_words.js 已迁移至云端存储，本地文件已移除
+    let seniorWords = [];
+    try {
+      const cloudWordbookLoader = require('../utils/cloud-wordbook-loader.js');
+      const cachedSeniorWords = cloudWordbookLoader.getWordsSync('senior_textbook_real');
+      seniorWords = (cachedSeniorWords && cachedSeniorWords.length > 0) ? cachedSeniorWords : [];
+    } catch (e) {
+      console.warn('加载云端高中词书数据失败:', e);
+      seniorWords = [];
+    }
     const juniorExamWords = require('./初中中考词汇.js') || [];
     const newCurriculumSeniorWords = require('./new_curriculum_senior_words.js') || [];
-    const gaokaoReadingWords = require('./高考英语阅读高频词汇.js') || [];
+    // 高考英语阅读高频词汇已迁移至云端缓存，本地文件已移除
+    const gaokaoReadingWords = [];
     
     // 加载冀教版词书数据
     let ji7thWords = [];

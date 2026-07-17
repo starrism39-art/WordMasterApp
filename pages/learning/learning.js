@@ -3,7 +3,8 @@
 const wordbooksModule = require('../../data/wordbooks.js');
 const { generateWordsForBook } = wordbooksModule;
 const { resolveDictionaryApiAudioUrl, buildYoudaoAudioUrl } = require('../../utils/audio-fallback.js');
-const { syncWordMasteryBatch, syncLearningRecord } = require('../../utils/cloud-sync.js');
+const { syncPreviewState, loadPreviewStateFromCloud, syncWordMasteryBatch } = require('../../utils/cloud-sync.js');
+const cloudWordbookLoader = require('../../utils/cloud-wordbook-loader.js');
 
 const ENABLE_VERBOSE_LOG = false;
 const debugLog = (...args) => {
@@ -12,9 +13,46 @@ const debugLog = (...args) => {
   }
 };
 
+// ===== 种子随机与词书分类工具函数 =====
+// 字符串哈希函数，用于生成种子
+function hashString(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash |= 0;
+  }
+  return hash >>> 0;
+}
+
+// Mulberry32 种子随机数生成器
+function mulberry32(seed) {
+  let state = seed | 0;
+  return function() {
+    state = state + 0x6D2B79F5 | 0;
+    let t = Math.imul(state ^ state >>> 15, 1 | state);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+// 判断词书是否为课本类（官方教材同步，保持录入顺序）
+function isTextbookWordbook(bookId) {
+  const NON_TEXTBOOK_IDS = new Set([
+    'junior_exam_words',
+    'new_curriculum_senior',
+    'gaokao_reading_words',
+    'primary_textbook_real',
+    'senior_textbook_real',
+  ]);
+  return !NON_TEXTBOOK_IDS.has(bookId);
+}
+
 Page({
   data: {
     pageTitle: '单词学习',
+    showLoadingModal: false,
+    loadingMessage: '',
     loading: false,
     hasError: false,
     errorMessage: '',
@@ -66,21 +104,11 @@ Page({
     startLearningSourceWordsDetailed: [],
     // 学习时长统计
     studyStartTime: null,
-    studyDuration: 0,
-    // 加载弹窗
-    showLoadingModal: false,
-    loadingMessage: '正在准备...',
-    loadingStep: 0,
-    loadingDots: ''
+    studyDuration: 0
   },
 
   onLoad: function(options) {
     console.log('Learning page loaded with options:', options);
-
-    // 初始化加载弹窗定时器
-    this._loadingTimers = [];
-
-    this.applyInnerAudioOption();
 
     // 读取全局音标显示模式（默认关闭，兼容历史预习键）
     this.loadPhoneticModePreference();
@@ -127,6 +155,9 @@ Page({
     
     // 然后检查本地存储中的选择
     this.checkSelectedStudentAndWordbook();
+
+    // 【云端词书】非阻塞预下载
+    this._preloadCloudWordbook();
     
     // 如果已经有学生和词书信息，确保学习过程已初始化
     if (this.data.currentStudent && this.data.currentWordbook && !this.data.learningMode && this.data.currentBatchWords.length === 0) {
@@ -146,18 +177,6 @@ Page({
     // 页面卸载时停止学习时长统计
     this.stopStudyTimer();
     this._destroyCurrentAudioContext();
-    // 清理加载弹窗定时器
-    this._stopLoadingSteps();
-  },
-
-  applyInnerAudioOption: function() {
-    try {
-      wx.setInnerAudioOption({
-        obeyMuteSwitch: false
-      });
-    } catch (error) {
-      console.error('设置学习页音频选项失败:', error);
-    }
   },
 
   // 加载全局音标模式偏好（默认关闭，兼容旧键）
@@ -231,9 +250,10 @@ Page({
       if (studentChanged) {
         debugLog('从globalData同步学生信息:', currentStudent.name);
         patch.currentStudent = currentStudent;
-        // 同时保存到本地存储
+        // 同时保存到本地存储和 globalData，确保返回首页时学生上下文一致
         wx.setStorageSync('selectedStudent', currentStudent);
         wx.setStorageSync('currentStudent', currentStudent);
+        app.globalData.currentStudent = currentStudent;
       }
       
       // 同步词书信息
@@ -260,55 +280,6 @@ Page({
       }
     } catch (error) {
       console.error('从globalData同步数据失败:', error);
-    }
-  },
-
-  // 更新加载弹窗消息
-  updateLoadingMessage: function(msg, step) {
-    this.setData({
-      loadingMessage: msg || '正在准备...',
-      loadingStep: step || 0
-    });
-  },
-
-  // 启动加载步骤：用 setTimeout 链逐条更新消息（保证每条都能显示）
-  _startLoadingSteps: function(callback) {
-    const steps = [
-      { msg: '正在准备学习环境...', delay: 0 },
-      { msg: '正在加载词书数据...', delay: 300 },
-      { msg: '正在整理单词列表...', delay: 700 },
-      { msg: '正在加载学习记录...', delay: 1100 },
-      { msg: '即将准备就绪...', delay: 1500 }
-    ];
-    var self = this;
-    // 记录最后一个 timer，方便清理
-    this._loadingTimers = [];
-
-    steps.forEach(function(step) {
-      var timer = setTimeout(function() {
-        self.setData({
-          loadingMessage: step.msg,
-          loadingStep: step.delay > 0 ? Math.floor(step.delay / 400) : 0
-        });
-      }, step.delay);
-      self._loadingTimers.push(timer);
-    });
-
-    // 最后一步完成后执行回调（初始化学习）
-    var finalTimer = setTimeout(function() {
-      self._loadingTimers = [];
-      if (typeof callback === 'function') {
-        callback();
-      }
-    }, 1900);
-    this._loadingTimers.push(finalTimer);
-  },
-
-  // 停止加载步骤
-  _stopLoadingSteps: function() {
-    if (this._loadingTimers && this._loadingTimers.length > 0) {
-      this._loadingTimers.forEach(function(t) { clearTimeout(t); });
-      this._loadingTimers = [];
     }
   },
 
@@ -348,6 +319,19 @@ Page({
     }
   },
 
+  /** 云端词书预下载（非阻塞） */
+  _preloadCloudWordbook: function() {
+    const wb = this.data.currentWordbook;
+    if (!wb || !wb.id) return;
+    if (cloudWordbookLoader.isCloudWordbook(wb.id)) {
+      cloudWordbookLoader.downloadWordsFromCloud(wb.id).then((words) => {
+        if (words) {
+          console.log('[cloud-wordbook] 学习页预下载完成:', wb.id);
+        }
+      });
+    }
+  },
+
   // 选择学生
   chooseStudent: function() {
     wx.navigateTo({
@@ -372,16 +356,13 @@ Page({
 
   // 初始化学习过程
   initStudyProcess: function() {
-    // 清除可能残留的旧定时器（如重试场景）
-    this._stopLoadingSteps();
-
     // 显示自定义加载弹窗
     this.setData({
       showLoadingModal: true,
-      loadingMessage: '正在准备学习环境...',
-      loadingStep: 0
+      loadingMessage: '准备学习材料…'
     });
-    // 先做轻量同步：globalData 和本地缓存
+
+    // 确保数据已经从globalData同步
     this.syncFromGlobalData();
 
     // 如果仍然没有学生或词书信息，尝试获取默认数据
@@ -447,9 +428,24 @@ Page({
     }
     
     // 检查是否成功获取到学生和词书信息
-    if (!this.data.currentStudent || !this.data.currentWordbook) {
-      // 没有数据时直接提示，不启动轮播
-      this._stopLoadingSteps();
+    if (this.data.currentStudent && this.data.currentWordbook) {
+      console.log('成功获取学生和词书信息，开始初始化学习模式:', this.data.learningMode);
+      this.setData({
+        loading: true,
+        hasError: false
+      });
+
+      // 根据不同的学习模式初始化
+      if (this.data.learningMode === 'review' || this.data.learningMode === 'gridReview' || !this.data.learningMode) {
+        // 只有在复习模式、网格复习模式或未设置学习模式时，才初始化预习模式
+        this.initializePreviewMode();
+      } else {
+        // 其他模式（如newLearning、finalTest）保持当前状态，不重新初始化
+        console.log('保持当前学习模式:', this.data.learningMode);
+        this.setData({ showLoadingModal: false });
+      }
+    } else {
+      // 否则显示错误信息
       this.setData({ showLoadingModal: false });
       wx.showToast({
         title: '请先选择学生和词书',
@@ -460,27 +456,7 @@ Page({
         hasError: true,
         errorMessage: '无法获取学生或词书信息，请先选择学生和词书'
       });
-      return;
     }
-
-    // 启动步骤消息，步骤结束后自动执行初始化
-    console.log('成功获取学生和词书信息，开始初始化学习模式:', this.data.learningMode);
-    this.setData({
-      loading: true,
-      hasError: false
-    });
-
-    const self = this;
-    this._startLoadingSteps(function() {
-      // 步骤结束后，根据不同的学习模式初始化
-      if (self.data.learningMode === 'review' || self.data.learningMode === 'gridReview' || !self.data.learningMode) {
-        self.initializePreviewMode();
-      } else {
-        console.log('保持当前学习模式:', self.data.learningMode);
-        self._stopLoadingSteps();
-        self.setData({ showLoadingModal: false });
-      }
-    });
   },
 
   // 初始化预习模式
@@ -502,23 +478,34 @@ Page({
       // 使用真实词书数据
       const batchSize = 15;
       console.log('开始生成单词数据，词书类别:', wordbookCategory, '词书ID:', this.data.currentWordbook.id);
-      const firstBatch = generateWordsForBook(wordbookCategory, this.data.currentWordbook.id, 0, batchSize);
-      console.log('第一批单词:', firstBatch);
-      const totalCount = firstBatch._totalCount || 100;
+      
+      // 一次性加载全部单词（generateWordsForBook 内部会 require 完整词书再切片；
+      // 此前用 batchSize=15 循环调用导致上百次重复 require 和 sanitize，
+      // 大词书下极其缓慢。改为一次加载 + 进度提示。）
+      this.setData({
+        loadingMessage: '正在加载词书数据…'
+      });
+      const loadStartTime = Date.now();
+      const allWordsRaw = generateWordsForBook(wordbookCategory, this.data.currentWordbook.id, 0, 99999);
+      const totalCount = allWordsRaw._totalCount || allWordsRaw.length || 100;
       console.log('词书总单词数:', totalCount);
+      
+      // 分批组装 + 进度提示：虽然数据已全部返回，但 setData 刷新视图需要分段进行
+      let allWords = [];
+      const CHUNK_SIZE = 200;
+      for (let i = 0; i < totalCount; i += CHUNK_SIZE) {
+        allWords.push(...allWordsRaw.slice(i, i + CHUNK_SIZE));
+        const loaded = Math.min(i + CHUNK_SIZE, totalCount);
+        const progress = Math.min(100, Math.round(loaded / totalCount * 100));
+        this.setData({
+          loadingMessage: `正在加载词书数据… ${loaded}/${totalCount}（${progress}%）`
+        });
+      }
+      const loadElapsed = Date.now() - loadStartTime;
+      console.log('加载完成，总单词数:', allWords.length, '耗时:', loadElapsed, 'ms');
+      
       // 初始计算totalBatches（后面会根据过滤结果重新计算）
       let totalBatches = Math.ceil(totalCount / batchSize);
-      
-      // 获取更多单词来填充allWords数组
-      let allWords = [];
-      // 移除所有加载限制，允许所有词书加载全部单词
-      const maxWordsToLoad = totalCount; // 加载所有单词
-      debugLog('开始加载单词，计划加载:', maxWordsToLoad, '个');
-      for (let i = 0; i < maxWordsToLoad; i += batchSize) {
-        const batch = generateWordsForBook(wordbookCategory, this.data.currentWordbook.id, i, batchSize);
-        allWords.push(...batch);
-      }
-      console.log('加载完成，总单词数:', allWords.length);
 
       // 为每个单词添加id属性，确保唯一标识
       allWords = allWords.map((word, index) => {
@@ -531,53 +518,20 @@ Page({
         };
       });
 
-      // 预习顺序策略：首次进入随机一次，后续保持固定顺序，便于核验“已处理单词不再出现”
-      const previewOrderKey = `previewWordOrder_${studentId}_${wordbookId}`;
-      let savedPreviewOrder = [];
-      try {
-        const orderFromStorage = wx.getStorageSync(previewOrderKey) || [];
-        savedPreviewOrder = Array.isArray(orderFromStorage) ? orderFromStorage.map(id => String(id)) : [];
-      } catch (orderReadError) {
-        console.error('读取预习顺序失败:', orderReadError);
-        savedPreviewOrder = [];
-      }
-
-      if (savedPreviewOrder.length > 0) {
-        const orderIndexMap = {};
-        savedPreviewOrder.forEach((id, idx) => {
-          orderIndexMap[id] = idx;
-        });
-
-        // 按已保存顺序排序；新增单词（不在旧顺序里）自动排到末尾
-        allWords.sort((a, b) => {
-          const ai = Object.prototype.hasOwnProperty.call(orderIndexMap, String(a.id)) ? orderIndexMap[String(a.id)] : Number.MAX_SAFE_INTEGER;
-          const bi = Object.prototype.hasOwnProperty.call(orderIndexMap, String(b.id)) ? orderIndexMap[String(b.id)] : Number.MAX_SAFE_INTEGER;
-          return ai - bi;
-        });
+      // ===== 预习顺序策略 =====
+      // 课本类：保持数据文件的录入顺序（不随机）
+      // 非课本类：基于 studentId 的确定性随机（跨客户端顺序一致）
+      const isTextbook = isTextbookWordbook(wordbookId);
+      if (isTextbook) {
+        console.log('课本类词书，保持录入顺序');
+        // 不做任何打乱，保持数据文件原始顺序
       } else {
-        // 首次进入：判断该词书是否需要随机打乱（考纲类词书打乱，课本类保持单元顺序）
-        var wordbookId = this.data.currentWordbook && this.data.currentWordbook.id;
-        var shuffleOnEnter = false;
-        
-        // 需要随机打乱的词书ID列表（考纲/词汇表类，非课本类）
-        var shuffleWordbookIds = ['junior_exam_words', 'senior_textbook_real', 'new_curriculum_senior', 'gaokao_reading_words'];
-        if (shuffleWordbookIds.indexOf(wordbookId) !== -1) {
-          shuffleOnEnter = true;
-        }
-        
-        if (shuffleOnEnter) {
-          // 考纲类词书：首次进入随机打乱
-          for (let i = allWords.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [allWords[i], allWords[j]] = [allWords[j], allWords[i]];
-          }
-        }
-        // 课本类词书：保持原始顺序（按课本单元排列）
-
-        try {
-          wx.setStorageSync(previewOrderKey, allWords.map(word => String(word.id)));
-        } catch (orderWriteError) {
-          console.error('保存预习顺序失败:', orderWriteError);
+        console.log('非课本类词书，使用种子随机（studentId:', studentId, '）');
+        const seed = hashString(String(studentId));
+        const rng = mulberry32(seed);
+        for (let i = allWords.length - 1; i > 0; i--) {
+          const j = Math.floor(rng() * (i + 1));
+          [allWords[i], allWords[j]] = [allWords[j], allWords[i]];
         }
       }
       
@@ -678,10 +632,10 @@ Page({
           debugLog('处理单词:', wordId, word);
           // 确保只处理当前词书的单词
           if (wordId.includes(wordbookId)) {
-            // 已掌握的单词添加到已掌握列表
-            if (word.mastered) {
-              masteredWordIdArray.push(wordId);
-            }
+            // ★ 修复：所有在wordMastery中的单词（无论掌握与否）都应加入过滤列表
+            // 预习模式仅针对全新未学单词，已处理过的单词通过复习/抗遗忘模式处理
+            // 之前只过滤 mastered=true 的词，导致 marked=false 的词反复出现在预习中
+            masteredWordIdArray.push(wordId);
             // 抗遗忘复习只收集：复习到期 + 未掌握（difficult）单词
             const isTodayReview = word.nextReviewTime && isToday(word.nextReviewTime);
             const isDueForReview = word.nextReviewTime && (word.nextReviewTime <= now || isTodayReview);
@@ -921,6 +875,7 @@ Page({
           currentPage: 0,
           totalPages: 1,
           loading: false,
+          showLoadingModal: false,
           // 开始学习时长统计
           studyStartTime: new Date().getTime(),
           studyDuration: 0
@@ -949,6 +904,7 @@ Page({
           currentPage: 0,
           totalPages: totalBatches,
           loading: false,
+          showLoadingModal: false,
           // 开始学习时长统计
           studyStartTime: new Date().getTime(),
           studyDuration: 0
@@ -963,15 +919,47 @@ Page({
       
       debugLog('预习模式初始化完成');
       
+      // 异步从云端加载预习状态，与本地的合并后更新界面
+      // 这样换设备后预习标记也能恢复，不丢失
+      loadPreviewStateFromCloud(studentId, wordbookId).then(cloudPreview => {
+        if (!cloudPreview || !cloudPreview.mastery) return;
+        const cloudMasteryKeys = Object.keys(cloudPreview.mastery);
+        if (cloudMasteryKeys.length === 0) return;
+        
+        // 合并云端数据到本地（云端优先级高，覆盖本地旧数据）
+        const merged = { ...savedPreviewMastery };
+        let hasNewData = false;
+        cloudMasteryKeys.forEach(key => {
+          const cv = cloudPreview.mastery[key];
+          const lv = merged[key];
+          // 云端有且本地没有，或云端标记状态不同时以云端为准
+          if (cv !== undefined && cv !== null && (lv === undefined || lv === null || cv !== lv)) {
+            merged[key] = cv;
+            hasNewData = true;
+          }
+        });
+        
+        if (hasNewData) {
+          // 写回本地存储
+          wx.setStorageSync(storageKey, merged);
+          // 更新当前界面的 previewMastery 数据
+          this.setData({ previewMastery: merged });
+          console.log('已合并云端预习状态，新增', cloudMasteryKeys.length, '条记录');
+        }
+      }).catch(err => {
+        console.warn('加载云端预习状态失败:', err);
+      });
+      
     } catch (error) {
       console.error('初始化预习模式失败:', error);
       this.setData({
         loading: false,
+        showLoadingModal: false,
         hasError: true,
         errorMessage: '初始化预习模式失败，请重试'
       });
     } finally {
-      this._stopLoadingSteps();
+      // 确保自定义加载弹窗关闭
       this.setData({ showLoadingModal: false });
     }
   },
@@ -1142,8 +1130,6 @@ Page({
   // 播放单词读音
   playWordPronunciation: function(wordId) {
     try {
-      this.applyInnerAudioOption();
-
       // 查找单词
       if (!this.data.currentBatchWords) {
         console.warn('currentBatchWords 未定义，无法查找单词:', wordId);
@@ -1203,9 +1189,7 @@ Page({
           hasRetriedWithFallback = true;
           resolveDictionaryApiAudioUrl(word.word).then((fallbackUrl) => {
             try {
-              if (innerAudioContext && typeof innerAudioContext.destroy === 'function') {
-                innerAudioContext.destroy();
-              }
+              innerAudioContext.destroy();
             } catch (destroyError) {
               console.error('销毁主音频上下文失败:', destroyError);
             }
@@ -1217,7 +1201,6 @@ Page({
               return;
             }
 
-            this.applyInnerAudioOption();
             const fallbackAudioContext = wx.createInnerAudioContext();
             this._currentAudioContext = fallbackAudioContext;
             fallbackAudioContext.onEnded(() => {
@@ -1308,11 +1291,8 @@ Page({
       }
       
       // 过滤包含多个空格或特殊格式的短语，避免API错误
-      // ★ 先清理括号内容再判断词数，避免 "(for sth)" 等被计入
-      const cleanedForCheck = word.trim().replace(/\s*[\(（][^()（）]*[\)）]\s*/g, ' ').replace(/\s+/g, ' ').trim();
-      const wordCount = cleanedForCheck.split(/\s+/).length;
-      if (wordCount > 6) {
-        console.warn('过长短语（>6词），不获取音频URL:', word);
+      if (word.trim().split(/\s+/).length > 3) {
+        console.warn('过长短语，不获取音频URL:', word);
         return null;
       }
       
@@ -1327,49 +1307,71 @@ Page({
   // 更新单词掌握状态
   updateWordMastery: function(e) {
     const { id, mastered } = e.currentTarget.dataset;
-    if (!id) {
-      return;
-    }
-
+    const previewMastery = this.data.previewMastery;
+    
     // 确保mastered是布尔值
-    const isMastered = mastered === 'true' || mastered === true || mastered === 'mastered';
-
-    // 创建新对象，避免直接修改引用导致状态不同步
-    const previewMastery = { ...this.data.previewMastery };
+    const isMastered = mastered === 'true' || mastered === true;
+    
+    // 更新掌握状态
     previewMastery[id] = isMastered;
-
-    const {
-      masteredCount,
-      notMasteredCount,
-      currentBatchMasteredCount,
-      progressPercentage,
-      correctRate
-    } = this._calculateMasteryStats(
-      previewMastery,
-      this.data.currentBatchWords,
-      this.data.allWords,
-      this.data.testWords
-    );
-
+    
+    // 计算已掌握和未掌握的单词数量
+    let masteredCount = 0;
+    let notMasteredCount = 0;
+    for (const wordId in previewMastery) {
+      if (previewMastery[wordId]) {
+        masteredCount++;
+      } else if (previewMastery[wordId] === false) {
+        notMasteredCount++;
+      }
+    }
+    
+    // 计算当前批次的统计信息
+    const currentBatchMasteredCount = Object.keys(previewMastery).filter(wordId => {
+      return previewMastery[wordId] && this.data.currentBatchWords.some(word => word.id === wordId);
+    }).length;
+    
+    // 计算总体进度百分比和正确率
+    const totalWords = this.data.testWords.length || this.data.allWords.length;
+    
+    // 在课后检测模式下，使用测试单词的数量作为已处理单词数
+    let totalProcessedWords = Object.keys(previewMastery).length;
+    let correctRate = 0;
+    
+    if (this.data.learningMode === 'finalTest') {
+      // 课后检测模式：使用测试单词的数量作为已处理单词数
+      totalProcessedWords = this.data.testWords.length;
+      // 只有当所有测试单词都被标记时，才计算正确率
+      if (totalProcessedWords > 0) {
+        correctRate = Math.round((masteredCount / totalProcessedWords) * 100);
+      }
+    } else {
+      // 其他模式：使用传统计算方式
+      totalProcessedWords = Object.keys(previewMastery).length;
+      correctRate = totalProcessedWords > 0 ? Math.round((masteredCount / totalProcessedWords) * 100) : 0;
+    }
+    
+    const progressPercentage = totalWords > 0 ? Math.round((totalProcessedWords / totalWords) * 100) : 0;
+    
+    // 根据学习模式设置不同的进度
     const updateData = {
-      previewMastery,
+      previewMastery: previewMastery,
       masteredWordsCount: masteredCount,
       notMasteredWordsCount: notMasteredCount,
-      currentBatchMasteredCount
+      currentBatchMasteredCount: currentBatchMasteredCount
     };
-
+    
+    // 在课后检测模式下更新正确率，其他模式保持进度百分比
     if (this.data.learningMode === 'finalTest') {
       updateData.testProgress = correctRate;
     } else {
       updateData.progressPercentage = progressPercentage;
     }
-
+    
     this.setData(updateData);
-
-    const finalTestDenominator = Array.isArray(this.data.testWords) ? this.data.testWords.length : 0;
-    const nonFinalDenominator = Array.isArray(this.data.allWords) ? this.data.allWords.length : 0;
-    const logDenominator = this.data.learningMode === 'finalTest' ? finalTestDenominator : nonFinalDenominator;
-    console.log(`预览标记更新: 单词ID=${id}, 标记状态=${mastered}, 当前批次已掌握=${currentBatchMasteredCount}/${this.data.currentBatchWords.length}, 总体掌握=${masteredCount}/${logDenominator}, 进度=${progressPercentage}%, 正确率=${correctRate}%`);
+    
+    // 实时日志记录当前状态
+    console.log(`预览标记更新: 单词ID=${id}, 标记状态=${mastered}, 当前批次已掌握=${currentBatchMasteredCount}/${this.data.currentBatchWords.length}, 总体掌握=${masteredCount}/${totalWords}, 进度=${progressPercentage}%`);
   },
 
   // 更新预习掌握状态
@@ -1382,77 +1384,38 @@ Page({
 
   // 辅助函数：计算单词掌握统计信息
   _calculateMasteryStats: function(previewMastery, currentBatchWords, allWords, testWords) {
-    const safePreviewMastery = previewMastery || {};
     let masteredCount = 0;
     let notMasteredCount = 0;
-    
-    // 计算当前批次掌握情况（仅在有当前批次单词时计算）
-    let currentBatchMasteredCount = 0;
-    if (currentBatchWords && currentBatchWords.length > 0) {
-      currentBatchMasteredCount = currentBatchWords.filter(word => {
-        const status = safePreviewMastery[String(word.id)];
-        return status === true || status === 'mastered';
-      }).length;
-    }
-
-    // finalTest 专用口径：只统计当前 testWords，避免预习阶段状态污染分子分母。
-    if (this.data.learningMode === 'finalTest') {
-      const normalizedTestWords = Array.isArray(testWords)
-        ? testWords.filter(word => word && word.id !== undefined && word.id !== null)
-        : [];
-
-      let totalProcessedWords = 0;
-      normalizedTestWords.forEach(word => {
-        const wordId = String(word.id);
-        const status = safePreviewMastery[wordId];
-
-        if (status === true || status === 'mastered') {
-          masteredCount++;
-        } else if (status === false || status === 'difficult') {
-          notMasteredCount++;
-        }
-
-        if (status === true || status === 'mastered' || status === false || status === 'difficult') {
-          totalProcessedWords++;
-        }
-      });
-
-      const totalWords = normalizedTestWords.length;
-      const progressPercentage = totalWords > 0 ? Math.round((totalProcessedWords / totalWords) * 100) : 0;
-      const correctRate = totalWords > 0 ? Math.round((masteredCount / totalWords) * 100) : 0;
-
-      return {
-        masteredCount,
-        notMasteredCount,
-        currentBatchMasteredCount,
-        progressPercentage,
-        correctRate
-      };
-    }
 
     const allWordIds = new Set((allWords || []).map(word => String(word.id || '')));
-    let totalProcessedWords = 0;
-
-    // 非 finalTest 模式按 allWords 口径统计
-    for (const wordId in safePreviewMastery) {
+    
+    // 计算总体掌握情况
+    for (const wordId in previewMastery) {
       if (!allWordIds.has(String(wordId))) {
         continue;
       }
-      const status = safePreviewMastery[wordId];
+      const status = previewMastery[wordId];
       if (status === true || status === 'mastered') {
         masteredCount++;
       } else if (status === false || status === 'difficult') {
         notMasteredCount++;
       }
-
-      if (status === true || status === 'mastered' || status === false || status === 'difficult') {
-        totalProcessedWords++;
-      }
     }
-
+    
+    // 计算当前批次掌握情况（仅在有当前批次单词时计算）
+    let currentBatchMasteredCount = 0;
+    if (currentBatchWords && currentBatchWords.length > 0) {
+      currentBatchMasteredCount = currentBatchWords.filter(word => {
+        const status = previewMastery[word.id];
+        return status === true || status === 'mastered';
+      }).length;
+    }
+    
+    // 计算进度和正确率
+    const totalProcessedWords = Object.keys(previewMastery || {}).length;
+    const testWordCount = Array.isArray(testWords) ? testWords.length : 0;
     const allWordCount = Array.isArray(allWords) ? allWords.length : 0;
-    const fallbackTestWordCount = Array.isArray(testWords) ? testWords.length : 0;
-    const totalWords = allWordCount > 0 ? allWordCount : fallbackTestWordCount;
+    const totalWords = testWordCount > 0 ? testWordCount : allWordCount;
     const progressPercentage = totalWords > 0 ? Math.round((totalProcessedWords / totalWords) * 100) : 0;
     const correctRate = totalProcessedWords > 0 ? Math.round((masteredCount / totalProcessedWords) * 100) : 0;
     
@@ -1465,12 +1428,30 @@ Page({
     };
   },
 
-  // 辅助函数：保存预习状态到本地存储
+  // 辅助函数：保存预习状态到本地存储（含云同步）
   _savePreviewState: function(studentId, wordbookId, previewMastery, wordId, status) {
     // 保存预习状态到本地存储，确保startNewLearning函数能获取到用户标记的单词状态
     const storageKey = `previewMastery_${studentId}_${wordbookId}`;
     wx.setStorageSync(storageKey, previewMastery);
     console.log('预习状态已保存到本地存储:', storageKey, '单词ID:', wordId, '状态:', status);
+    
+    // 同步到云端，换设备后预习状态不丢失
+    const excludedStorageKey = `previewExcludedWordIds_${studentId}_${wordbookId}`;
+    const excludedIds = wx.getStorageSync(excludedStorageKey) || [];
+    const previewOrderKey = `previewWordOrder_${studentId}_${wordbookId}`;
+    const orderIds = wx.getStorageSync(previewOrderKey) || [];
+
+    syncPreviewState(studentId, wordbookId, {
+      mastery: previewMastery,
+      order: Array.isArray(orderIds) ? orderIds : [],
+      excluded: Array.isArray(excludedIds) ? excludedIds : []
+    }).then(result => {
+      if (result && result.ok) {
+        console.log('预习状态云同步成功:', wordId);
+      }
+    }).catch(err => {
+      console.warn('预习状态云同步失败:', err);
+    });
     
     // 移除：不再在标记单词时更新抗遗忘列表，只在完成测试时统一更新
     // 这样可以避免复习次数被多次增加
@@ -1909,7 +1890,19 @@ Page({
       
       // 清除本地存储的预习记录，确保每次开始学习都是新的状态
       const previewMasteryKey = `previewMastery_${studentId}_${wordbookId}`;
+      const previewExcludedKey = `previewExcludedWordIds_${studentId}_${wordbookId}`;
       wx.removeStorageSync(previewMasteryKey);
+      wx.removeStorageSync(previewExcludedKey);
+      
+      // ★ 修复：同步清除云端 preview_state 中的 mastery 数据
+      // 防止下次进入预习时 cloud load 把旧 master 数据恢复回来
+      syncPreviewState(studentId, wordbookId, {
+        mastery: {},
+        order: [],
+        excluded: []
+      }).catch(err => {
+        console.warn('[startNewLearning] 清除云端预习状态失败:', err);
+      });
       
       // 获取单词掌握状态存储，确保过滤掉已掌握的单词
       let masteredWordIdArray = [];
@@ -2035,6 +2028,39 @@ Page({
     }
   },
 
+  // 打乱预览单词顺序（预览/复习模式）
+  shufflePreviewWords: function() {
+    try {
+      const currentWords = [...this.data.currentBatchWords];
+      
+      // Fisher-Yates 洗牌算法
+      for (let i = currentWords.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [currentWords[i], currentWords[j]] = [currentWords[j], currentWords[i]];
+      }
+      
+      this.setData({
+        currentBatchWords: currentWords,
+        showMeaning: {},
+        clickCounts: {},
+        showPhonetic: {},
+        wordDisplayState: {},
+        activeWordId: ''
+      });
+      
+      wx.showToast({
+        title: '顺序已打乱',
+        icon: 'success'
+      });
+    } catch (error) {
+      console.error('打乱预览单词顺序失败:', error);
+      wx.showToast({
+        title: '操作失败，请重试',
+        icon: 'none'
+      });
+    }
+  },
+
   // 打乱当前单词顺序
   shuffleCurrentWords: function() {
     try {
@@ -2061,38 +2087,6 @@ Page({
       });
     } catch (error) {
       console.error('打乱单词顺序失败:', error);
-      wx.showToast({
-        title: '操作失败，请重试',
-        icon: 'none'
-      });
-    }
-  },
-
-  // 预习模式打乱全部单词
-  shufflePreviewWords: function() {
-    try {
-      const words = [...this.data.currentBatchWords];
-      // Fisher-Yates 洗牌
-      for (let i = words.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [words[i], words[j]] = [words[j], words[i]];
-      }
-      
-      this.setData({
-        currentBatchWords: words,
-        showMeaning: {},
-        clickCounts: {},
-        showPhonetic: {},
-        wordDisplayState: {},
-        activeWordId: ''
-      });
-      
-      wx.showToast({
-        title: '顺序已打乱',
-        icon: 'success'
-      });
-    } catch (error) {
-      console.error('打乱预习单词失败:', error);
       wx.showToast({
         title: '操作失败，请重试',
         icon: 'none'
@@ -2743,7 +2737,18 @@ Page({
         // 清除本地存储的预习记录
         const { studentId, wordbookId } = this.data;
         const previewMasteryKey = `previewMastery_${studentId}_${wordbookId}`;
+        const previewExcludedKey = `previewExcludedWordIds_${studentId}_${wordbookId}`;
         wx.removeStorageSync(previewMasteryKey);
+        wx.removeStorageSync(previewExcludedKey);
+        
+        // ★ 修复：同步清除云端 preview_state，防止下次预习时旧数据被恢复
+        syncPreviewState(studentId, wordbookId, {
+          mastery: {},
+          order: [],
+          excluded: []
+        }).catch(err => {
+          console.warn('[completeTest] 清除云端预习状态失败:', err);
+        });
         
         // 显示测试结果
         this.showTestResult(this.data.accuracyRate.toFixed(1), totalWords, masteredCount);
@@ -2848,6 +2853,31 @@ Page({
         return result;
       };
 
+      // 从结构化wordId中提取实际单词（例：senior_bkk_1_ren_jiao_male → male）
+      const extractWordFromStructuredId = (structuredId) => {
+        if (!structuredId || typeof structuredId !== 'string') return '';
+        const text = structuredId.trim();
+        // 纯英文直接返回
+        if (/^[a-zA-Z][a-zA-Z\s'\-]*$/.test(text)) return text;
+        // 按下划线分割，从后往前找第一个"真正的英文单词"（跳过数字、词书标记等）
+        const parts = text.split('_').filter(Boolean);
+        const noiseTokens = new Set([
+          'real', 'word', 'words', 'book', 'wordbook', 'grade',
+          'first', 'second', 'third', 'fourth', 'fifth', 'sixth',
+          'seventh', 'eighth', 'ninth', 'new', 'standard', 'complete',
+          'junior', 'senior', 'curriculum', 'ren', 'jiao', 'yi', 'lin', 'ji',
+          'bkk', 'v1', 'v2', 'v3'
+        ]);
+        for (let i = parts.length - 1; i >= 0; i--) {
+          const part = parts[i].replace(/[^a-zA-Z'\-]/g, '').trim();
+          const lower = part.toLowerCase();
+          if (part.length >= 2 && !noiseTokens.has(lower) && !/^\d+$/.test(lower)) {
+            return part;
+          }
+        }
+        return '';
+      };
+
       const buildDetailedWord = (rawWord, fallbackId = '') => {
         const sourceId = String((rawWord && (rawWord.sourceWordId || rawWord.id)) || fallbackId || '').trim();
         const displayWord = String((rawWord && rawWord.word) || '').replace(/\s+/g, ' ').trim();
@@ -2858,10 +2888,13 @@ Page({
         const finalId = sourceId || displayWord.toLowerCase().replace(/\s+/g, '_');
         const meaning = (rawWord && (rawWord.meaning || rawWord.translation)) || '未知释义';
 
+        // 当 rawWord 为 null 且 displayWord 为空时，从 fallbackId 中提取真实单词
+        const resolvedWord = displayWord || extractWordFromStructuredId(finalId) || finalId;
+
         return {
           id: finalId,
           sourceWordId: sourceId || finalId,
-          word: displayWord || finalId,
+          word: resolvedWord,
           phonetic: this.normalizePhoneticDisplay(rawWord && rawWord.phonetic),
           meaning: meaning,
           translation: (rawWord && (rawWord.translation || rawWord.meaning)) || meaning
@@ -2958,9 +2991,9 @@ Page({
           return null;
         }
 
-        const fallbackWordText = key.includes('_')
-          ? key.slice(key.indexOf('_') + 1).replace(/_/g, ' ').trim()
-          : key.replace(/_/g, ' ').trim();
+        const fallbackWordText = extractWordFromStructuredId(key) || (key.includes('_')
+          ? key.slice(key.lastIndexOf('_') + 1).trim()
+          : key.replace(/_/g, ' ').trim());
 
         return {
           ...baseWord,
@@ -3045,38 +3078,37 @@ Page({
         // 兼容历史链路：若状态仍为空，默认按未掌握处理，确保后续继续复习。
         if (Object.keys(masterySnapshot).length === 0) {
           learnedWordIds.forEach((rawId) => {
-            masterySnapshot[String(rawId)] = 'difficult';
+            const wordId = String(rawId);
+            masterySnapshot[wordId] = 'difficult';
+            // ★ 修复：同步设置 antiForgettingSeed，确保兜底路径也能生成抗遗忘记录
+            antiForgettingSeedSnapshot[wordId] = true;
           });
         }
 
         this.updateWordMasteryStatus(learnedWordIds, 'mastered', masterySnapshot, {
           antiForgettingSeedSnapshot
         });
+
+        // ★ 立即同步 wordMastery 到云端，防止本地数据丢失导致云端缺失
+        const studentId = this.data.currentStudent?.id;
+        const wordbookId = this.data.currentWordbook?.id;
+        if (studentId && wordbookId) {
+          const wordMastery = wx.getStorageSync('wordMastery') || {};
+          const changedRecords = wordMastery[studentId]?.[wordbookId] || {};
+          syncWordMasteryBatch(studentId, wordbookId, changedRecords).catch(err => {
+            console.warn('[saveLearningRecord] wordMastery 云端同步失败:', err);
+          });
+        }
       }
       
       // 调用app.js中的方法，这样会触发全局事件
       const app = getApp();
       app.addLearningRecord(record);
       
-      // 同步学习记录到云端
-      syncLearningRecord(record);
-      
       console.log('学习记录保存成功:', record);
       console.log('本次学习的单词数量:', learnedWordIds.length);
       console.log('计算的正确率:', calculatedCorrectRate);
       console.log('学习时长:', studyDuration, '秒');
-      
-      // 诊断：打印 wordMastery 更新后的未掌握数量
-      try {
-        var wm = wx.getStorageSync('wordMastery') || {};
-        var sm = wm[studentId] || {};
-        var book = sm[wordbookId] || {};
-        var diffCount = 0;
-        Object.keys(book).forEach(function(wid) {
-          if (book[wid] && book[wid].difficult === true) diffCount++;
-        });
-        console.log('[诊断] wordMastery 未掌握数量:', diffCount, '本次未掌握:', notMasteredWordIds.length);
-      } catch(e) {}
 
       this.setData({
         finalTestSourceWordIds: [],
@@ -3146,7 +3178,9 @@ Page({
 
         // 获取当前单词的掌握记录
         const currentWordRecord = wordbookMastery[wordId] || {};
-        const nextAntiForgettingSeed = currentWordRecord.antiForgettingSeed || shouldSeedAntiForgetting || keepAntiForgettingSeed;
+        // ★ 安全兜底：只要是 difficult 的单词，无条件设置 antiForgettingSeed
+        // 防止因调用链 flags 不完整导致抗遗忘记录缺失
+        const nextAntiForgettingSeed = currentWordRecord.antiForgettingSeed || shouldSeedAntiForgetting || keepAntiForgettingSeed || isDifficult;
         
         // 计算复习次数
         // 这里是“预习结果同步”，不是一次真实复习，不应推进复习轮次。
@@ -3182,7 +3216,6 @@ Page({
             lastReviewTime: now,
             mastered: isMastered,
             difficult: isDifficult,
-            isLearned: true,
             antiForgettingSeed: nextAntiForgettingSeed,
             // 根据艾宾浩斯遗忘曲线计算下次复习时间
             nextReviewTime: this.calculateNextReviewTime(reviewCount, now, masteryLevel),
@@ -3198,7 +3231,6 @@ Page({
             nextReviewTime: this.calculateNextReviewTime(reviewCount, now, masteryLevel), // 第一次复习时间为当天
             mastered: isMastered,
             difficult: isDifficult,
-            isLearned: true,
             antiForgettingSeed: nextAntiForgettingSeed,
             reviewTimeline: reviewTimeline // 保存复习时间线
           };
@@ -3212,20 +3244,6 @@ Page({
       const app = getApp();
       if (app.emit) {
         app.emit('wordMasteryUpdated');
-      }
-      
-      // 【V1.0.1 云同步】收集本次变更的单词记录，异步批量同步到云端
-      // 修复：原 learning.js 缺少此云同步调用，导致学习页数据仅存本地
-      const changedRecords = {};
-      wordIds.forEach((rawId) => {
-        const wid = String(rawId);
-        if (wordbookMastery[wid]) {
-          changedRecords[wid] = wordbookMastery[wid];
-        }
-      });
-      if (Object.keys(changedRecords).length > 0) {
-        syncWordMasteryBatch(studentId, wordbookId, changedRecords);
-        console.log('[cloud-sync] 学习页 wordMastery 已提交云同步, 数量:', Object.keys(changedRecords).length);
       }
       
       console.log('单词掌握状态已更新，单词数量:', Object.keys(wordbookMastery).length);

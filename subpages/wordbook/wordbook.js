@@ -9,6 +9,7 @@ const wordbooks = Array.isArray(wordbookData) ? wordbookData :
                  );
 const generateWordsForBook = wordbookData.generateWordsForBook || function(wordbook) { return wordbook.words || []; };
 const { syncLearningProgress, markPendingSync } = require('../../utils/cloud-sync.js');
+const cloudWordbookLoader = require('../../utils/cloud-wordbook-loader.js');
 
 Page({
   data: {
@@ -26,14 +27,6 @@ Page({
     try {
       // 登录检查：如果未登录，自动跳转到登录页面
       const app = getApp();
-      if (!app.globalData.currentUser) {
-        console.log('用户未登录，跳转到登录页面');
-        wx.redirectTo({
-          url: '/pages/login/login'
-        });
-        return;
-      }
-      
       this.setData({ loading: true });
       console.log('词书页面加载，参数:', options);
       
@@ -539,6 +532,15 @@ Page({
     try {
       const wordbookId = e.currentTarget.dataset.id;
       console.log('选择词书，词书ID:', wordbookId);
+
+      // 【云端词书】非阻塞触发云端词书预下载
+      if (cloudWordbookLoader.isCloudWordbook(wordbookId)) {
+        cloudWordbookLoader.downloadWordsFromCloud(wordbookId).then((words) => {
+          if (words) {
+            console.log('[cloud-wordbook] 预下载完成:', wordbookId);
+          }
+        });
+      }
       
       const app = getApp();
       const currentStudent = app.globalData.currentStudent;

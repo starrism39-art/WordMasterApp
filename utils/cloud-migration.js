@@ -1,6 +1,30 @@
 const DEFAULT_ENV = 'cloudbase-4gafzdch60ad597b';
-const MAX_CONCURRENCY = 20;
-const MAX_QUERY_LIMIT = 20;
+const DEFAULT_TEACHER_NAME = 'Default Teacher';
+const MAX_CONCURRENCY = 5;
+const MAX_QUERY_LIMIT = 100;
+const BATCH_DELAY_MS = 800;
+
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
+ * 带指数退避的重试包装器，用于处理 CloudBase 限流错误 (-405015)
+ */
+const withRetry = async (fn, label, maxRetries = 3) => {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      if (attempt === maxRetries) throw error;
+      const errMsg = (error && (error.message || error.errMsg || '')) || '';
+      const isRateLimit = errMsg.includes('exceed max client request count') ||
+        errMsg.includes('-405015') ||
+        errMsg.includes('rate limit');
+      const backoff = isRateLimit ? 5000 * attempt : 1000 * attempt;
+      console.warn(`[cloud-migration] ${label} 第${attempt}次重试，等待${backoff}ms:`, errMsg);
+      await delay(backoff);
+    }
+  }
+};
 
 // ★ 委托 cloud-sync 统一写路径，确保文档 ID 一致
 const {
@@ -38,9 +62,13 @@ const runBatches = async (items, batchSize, worker, label) => {
 
   for (let i = 0; i < batches.length; i += 1) {
     const batch = batches[i];
-    await Promise.all(batch.map(worker));
+    await Promise.all(batch.map(item => withRetry(() => worker(item), label)));
     processed += batch.length;
     console.log(`[cloud-migration] ${label}: ${processed}/${items.length}`);
+    // 节流：每批之间延迟 BATCH_DELAY_MS，避免触发 CloudBase 请求限流
+    if (i < batches.length - 1) {
+      await delay(BATCH_DELAY_MS);
+    }
   }
 
   return processed;
@@ -72,18 +100,24 @@ const normalizeStudentForMerge = (student) => {
 
 const fetchAllByTeacher = async (db, collectionName, openid, limit = MAX_QUERY_LIMIT) => {
   const collection = db.collection(collectionName);
-  const countResult = await collection.where({ teacher_id: openid }).count();
+  const countResult = await withRetry(
+    () => collection.where({ teacher_id: openid }).count(),
+    `${collectionName}.count`
+  );
   const total = countResult && typeof countResult.total === 'number' ? countResult.total : 0;
   const items = [];
 
   for (let offset = 0; offset < total; offset += limit) {
-    const batch = await collection
-      .where({ teacher_id: openid })
-      .skip(offset)
-      .limit(limit)
-      .get();
+    const batch = await withRetry(
+      () => collection.where({ teacher_id: openid }).skip(offset).limit(limit).get(),
+      `${collectionName}.page`
+    );
     if (batch && Array.isArray(batch.data)) {
       items.push(...batch.data);
+    }
+    // 分页间节流，避免连续密集查询
+    if (offset + limit < total) {
+      await delay(300);
     }
   }
 
@@ -121,14 +155,11 @@ const ensureTeacher = async (db, openid) => {
     };
   }
 
-  // 生成带时间戳的默认教师名（不用 count() 避免权限问题）
-  const defaultName = '教师' + String(Date.now()).slice(-4);
-
   await teachersRef.add({
     data: {
       teacher_id: openid,
       openid: openid,
-      name: defaultName,
+      name: DEFAULT_TEACHER_NAME,
       userRole: 'external',
       memberLevel: 'free',
       createdAt: db.serverDate ? db.serverDate() : new Date()
@@ -334,10 +365,6 @@ const mergeWordMasteryRecord = (localRecord, cloudRecord) => {
   // antiForgettingSeed: 逻辑或
   result.antiForgettingSeed = !!(local.antiForgettingSeed || cloud.antiForgettingSeed);
 
-  // isLearned: 逻辑或（任一方标记已学即为已学）
-  // 如果两端都没有 isLearned，但有 mastered/difficult 标记，也视为已学
-  result.isLearned = !!(local.isLearned || cloud.isLearned || local.mastered || cloud.mastered || local.difficult || cloud.difficult);
-
   // reviewTimeline: 合并数组，按 time+reviewCount+status 去重
   const localTimeline = Array.isArray(local.reviewTimeline) ? local.reviewTimeline : [];
   const cloudTimeline = Array.isArray(cloud.reviewTimeline) ? cloud.reviewTimeline : [];
@@ -481,20 +508,12 @@ const syncDataFromCloud = async (openid) => {
     if (teacherResult.userRole) {
       try {
         const app = getApp();
-        const normalizedUser = (typeof app.ensureUserPermissions === 'function')
-          ? app.ensureUserPermissions({
-              id: openid,
-              username: openid,
-              userRole: teacherResult.userRole,
-              memberLevel: teacherResult.memberLevel
-            })
-          : {
-              id: openid,
-              username: openid,
-              userRole: teacherResult.userRole,
-              memberLevel: teacherResult.memberLevel || 'free',
-              name: '教师'
-            };
+        const normalizedUser = app.ensureUserPermissions({
+          id: openid,
+          username: openid,
+          userRole: teacherResult.userRole,
+          memberLevel: teacherResult.memberLevel
+        });
         wx.setStorageSync('currentUser', normalizedUser);
         if (app.globalData) {
           app.globalData.currentUser = normalizedUser;
@@ -682,16 +701,16 @@ const syncDataFromCloud = async (openid) => {
   }
 };
 
-const migrateLocalDataToCloud = async (options = {}) => {
+const migrateLocalDataToCloud = async () => {
   try {
-    if (!options.force && wx.getStorageSync('hasMigratedToCloud')) {
+    if (wx.getStorageSync('hasMigratedToCloud')) {
       console.log('[cloud-migration] already migrated, skip');
       return { skipped: true };
     }
 
     if (!wx.cloud) {
       wx.showToast({
-        title: '云环境不可用',
+        title: 'wx.cloud unavailable',
         icon: 'none'
       });
       return { error: 'wx_cloud_unavailable' };
@@ -710,7 +729,7 @@ const migrateLocalDataToCloud = async (options = {}) => {
     const openid = wx.getStorageSync('openid');
     if (!openid) {
       wx.showToast({
-        title: '缺少用户标识',
+        title: 'Missing openid',
         icon: 'none'
       });
       return { error: 'missing_openid' };
@@ -728,21 +747,13 @@ const migrateLocalDataToCloud = async (options = {}) => {
       if (teacherProfile && Array.isArray(teacherProfile.data) && teacherProfile.data.length > 0) {
         const cloudTeacher = teacherProfile.data[0];
         const app = getApp();
-        const normalizedUser = (typeof app.ensureUserPermissions === 'function')
-          ? app.ensureUserPermissions({
-              id: openid,
-              username: openid,
-              name: cloudTeacher.name || '教师',
-              userRole: cloudTeacher.userRole || 'external',
-              memberLevel: cloudTeacher.memberLevel || 'free'
-            })
-          : {
-              id: openid,
-              username: openid,
-              name: cloudTeacher.name || '教师',
-              userRole: cloudTeacher.userRole || 'external',
-              memberLevel: cloudTeacher.memberLevel || 'free'
-            };
+        const normalizedUser = app.ensureUserPermissions({
+          id: openid,
+          username: openid,
+          name: cloudTeacher.name || '教师',
+          userRole: cloudTeacher.userRole || 'external',
+          memberLevel: cloudTeacher.memberLevel || 'free'
+        });
         wx.setStorageSync('currentUser', normalizedUser);
         if (app.globalData) {
           app.globalData.currentUser = normalizedUser;
@@ -849,7 +860,7 @@ const migrateLocalDataToCloud = async (options = {}) => {
       success: true,
       counts: {
         students: studentDocs.length,
-        learningRecords: learningRecords.length,
+        learningRecords: recordSynced,
         learningProgress: progressStudentIds.length,
         wordMastery: masteryStudentIds.length
       }
@@ -857,7 +868,7 @@ const migrateLocalDataToCloud = async (options = {}) => {
   } catch (error) {
     console.error('[cloud-migration] failed:', error);
     wx.showToast({
-      title: '数据迁移失败',
+      title: 'Migration failed',
       icon: 'none'
     });
     return { error: error && error.message ? error.message : 'unknown_error' };

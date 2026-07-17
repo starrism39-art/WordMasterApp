@@ -1,5 +1,6 @@
 ﻿﻿// pages/students/students.js
 const app = getApp();
+const loginService = require('../../utils/login-service.js');
 
 Page({
   data: {
@@ -384,14 +385,7 @@ Page({
     wx.showActionSheet({
       itemList: ['核心统计', '词书详细统计'],
       success: (res) => {
-        if (res.tapIndex === 0) {
-          const studentId = encodeURIComponent(currentStudent.id);
-          wx.navigateTo({
-            url: `/pages/debug-update-stats/index?mode=core&studentId=${studentId}`
-          });
-          return;
-        }
-
+        // 两个模式都需要词书上下文
         if (!currentWordbook || !currentWordbook.id) {
           wx.showToast({ title: '请先选择词书', icon: 'none' });
           return;
@@ -399,8 +393,13 @@ Page({
 
         const studentId = encodeURIComponent(currentStudent.id);
         const wordbookId = encodeURIComponent(currentWordbook.id);
+        const mode = res.tapIndex === 0 ? 'core' : 'wordbook';
         wx.navigateTo({
-          url: `/pages/debug-update-stats/index?mode=wordbook&studentId=${studentId}&wordbookId=${wordbookId}`
+          url: `/pages/debug-update-stats/index?mode=${mode}&studentId=${studentId}&wordbookId=${wordbookId}`,
+          fail: (error) => {
+            console.error('导航到手动修正统计页面失败:', error);
+            wx.showToast({ title: '页面导航失败', icon: 'error' });
+          }
         });
       }
     });
@@ -512,14 +511,20 @@ Page({
     });
   },
 
-  // 跳转到登录页（用户自愿点击）
+  // 静默登录（游客一键开启云端同步）
   goToLogin: function() {
-    wx.navigateTo({
-      url: '/pages/login/login',
-      fail: (err) => {
-        console.error('跳转到登录页失败:', err);
-        wx.showToast({ title: '跳转失败', icon: 'none' });
+    wx.showLoading({ title: '登录中...' });
+    loginService.doSilentLogin().then((result) => {
+      wx.hideLoading();
+      if (result && result.ok) {
+        wx.showToast({ title: '登录成功', icon: 'success' });
+        this.checkLoginStatus();
+      } else {
+        wx.showToast({ title: '登录失败，请检查网络', icon: 'none' });
       }
+    }).catch(() => {
+      wx.hideLoading();
+      wx.showToast({ title: '登录失败，请检查网络', icon: 'none' });
     });
   },
   
@@ -564,6 +569,7 @@ Page({
           // ★ 清除登录凭证，防止自动静默登录（支持多账号切换）
           wx.removeStorageSync('openid');
           wx.removeStorageSync('currentUser');
+          wx.removeStorageSync('currentStudent');
           
           // 更新页面状态为未登录
           this.setData({
@@ -572,7 +578,7 @@ Page({
             currentUser: null
           });
 
-          // 退回到首页（不强制跳转登录页）
+          // 退到首页（游客模式）
           wx.switchTab({
             url: '/pages/index/index'
           });
@@ -714,9 +720,18 @@ Page({
 
                 // 刷新页面
                 setTimeout(function() {
-                  wx.reLaunch({
-                    url: '/pages/index/index'
-                  });
+                  try {
+                    wx.reLaunch({
+                      url: '/pages/index/index',
+                      fail: function(rlErr) {
+                        console.error('reLaunch 失败，尝试 switchTab 兜底:', rlErr);
+                        wx.switchTab({ url: '/pages/index/index' });
+                      }
+                    });
+                  } catch (rlErr) {
+                    console.error('reLaunch 异常，尝试 switchTab 兜底:', rlErr);
+                    wx.switchTab({ url: '/pages/index/index' });
+                  }
                 }, 2000);
               } catch (error) {
                 console.error('解析备份数据失败:', error);

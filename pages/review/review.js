@@ -2,7 +2,7 @@
 const { generateWordsForBook } = require('../../data/wordbook-loader.js');
 const { mergeWordbooks, createWordMap, findWord } = require('../../data/wordbook-utils.js');
 const { resolveDictionaryApiAudioUrl, buildYoudaoAudioUrl } = require('../../utils/audio-fallback.js');
-const { shouldIncludeAntiForgettingWord } = require('../../utils/anti-forgetting-filter.js');
+const { shouldIncludeAntiForgettingWord, repairMissingAntiForgettingSeed: repairAntiForgettingSeedUtil } = require('../../utils/anti-forgetting-filter.js');
 const { syncWordMasteryBatch } = require('../../utils/cloud-sync.js');
 
 // 初始化合并后的词书数据和单词映射表
@@ -199,6 +199,8 @@ Page({
         !!record.firstMasteryTime ||
         (Array.isArray(record.reviewTimeline) && record.reviewTimeline.length > 0) ||
         record.mastered === true ||
+        record.mastery === 'mastered' ||
+        record.masteryStatus === 'mastered' ||
         record.difficult === true;
     };
 
@@ -244,6 +246,48 @@ Page({
     }
     wx.setStorageSync(migrateKey, true);
     return wordMastery;
+  },
+
+  /**
+   * ★ 修复：补回因 saveLearningRecord 兼容路径 bug 而缺失的 antiForgettingSeed
+   * 条件：单词被标记为 difficult，但 antiForgettingSeed 未设为 true
+   * 无门控，每次进入抗遗忘复习时自动检查修复
+   */
+  repairMissingAntiForgettingSeed: function(studentId, wordbookId, wordMastery) {
+    try {
+      if (!wordMastery[studentId] || !wordMastery[studentId][wordbookId]) {
+        return wordMastery;
+      }
+
+      const wordbookMastery = wordMastery[studentId][wordbookId];
+      if (Array.isArray(wordbookMastery)) {
+        return wordMastery; // 旧数组格式由 migrateAntiForgettingSeedIfNeeded 处理
+      }
+
+      let repairCount = 0;
+      for (const wordId in wordbookMastery) {
+        const record = wordbookMastery[wordId];
+        if (!record || typeof record !== 'object') continue;
+        // 单词被标记为 difficult 但缺少 antiForgettingSeed
+        if (record.difficult === true && !record.antiForgettingSeed) {
+          wordbookMastery[wordId] = {
+            ...record,
+            antiForgettingSeed: true
+          };
+          repairCount++;
+        }
+      }
+
+      if (repairCount > 0) {
+        wx.setStorageSync('wordMastery', wordMastery);
+        console.log('[repairMissingAntiForgettingSeed] 修复了', repairCount, '个缺失 antiForgettingSeed 的单词');
+      }
+
+      return wordMastery;
+    } catch (error) {
+      console.error('[repairMissingAntiForgettingSeed] 修复失败:', error);
+      return wordMastery;
+    }
   },
 
   normalizeReviewWordId: function(wordId) {
@@ -390,6 +434,13 @@ Page({
     // 获取单词掌握记录
     let wordMastery = this.safeGetStorageSync('wordMastery', {});
     wordMastery = this.migrateAntiForgettingSeedIfNeeded(studentId, wordbookId, wordMastery);
+
+    // ★ 修复：补回因 saveLearningRecord 兼容路径 bug 缺失的 antiForgettingSeed
+    const repaired = repairAntiForgettingSeedUtil();
+    if (repaired > 0) {
+      // 重新读取修复后的数据
+      wordMastery = this.safeGetStorageSync('wordMastery', {});
+    }
     
     // 生成抗遗忘复习记录
     const reviewRecords = this.generateAntiForgettingRecords(studentId, wordbookId, wordMastery);
@@ -877,7 +928,7 @@ Page({
             if (!matchedWord && wordbookId === 'junior_7th_yi_lin') {
               try {
                 console.log('直接加载译林牛津版七年级上册的词书数据');
-                const yiLinData = require('../../yi_lin_7th_grade_first.js');
+                const yiLinData = require('../../data/yi_lin_7th_grade_first.js');
                 console.log('译林牛津版七年级上册词书数据长度:', yiLinData.length);
                 console.log('译林牛津版七年级上册词书数据示例:', yiLinData.slice(0, 10));
                 
@@ -1055,14 +1106,24 @@ Page({
               }
             }
             
-            // 5. 处理短语的大小写：含空格且全小写的短语自动首字母大写
+            // 5. 处理地名词组的大小写
             if (matchedWord && matchedWord.word) {
-              const displayWord = matchedWord.word;
-              if (displayWord.includes(' ') && !/[A-Z]/.test(displayWord)) {
-                matchedWord.word = displayWord.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+              // 检查是否是地名词组或国家名称
+              const placeWords = ['south africa', 'north america', 'south america', 'united states', 'united kingdom', 'new york', 'los angeles', 'australia', 'china', 'america', 'japan', 'france', 'germany', 'canada'];
+              if (placeWords.includes(matchedWord.word.toLowerCase())) {
+                // 地名词组或国家名称首字母大写
+                const capitalizedWord = matchedWord.word.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                matchedWord.word = capitalizedWord;
+                console.log('地名词组或国家名称首字母大写:', matchedWord.word);
               }
-            } else if (word && word.includes(' ') && !/[A-Z]/.test(word)) {
-              word = word.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+            } else if (word) {
+              // 检查是否是地名词组或国家名称
+              const placeWords = ['south africa', 'north america', 'south america', 'united states', 'united kingdom', 'new york', 'los angeles', 'australia', 'china', 'america', 'japan', 'france', 'germany', 'canada'];
+              if (placeWords.includes(word.toLowerCase())) {
+                // 地名词组或国家名称首字母大写
+                word = word.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                console.log('地名词组或国家名称首字母大写:', word);
+              }
             }
             
             // 6. 如果还是没找到，尝试在线词典查询
@@ -1582,11 +1643,8 @@ Page({
       }
       
       // 过滤包含多个空格或特殊格式的短语，避免API错误
-      // ★ 先清理括号内容再判断词数，避免 "(for sth)" 等被计入
-      const cleanedForCheck = word.trim().replace(/\s*[\(（][^()（）]*[\)）]\s*/g, ' ').replace(/\s+/g, ' ').trim();
-      const wordCount = cleanedForCheck.split(/\s+/).length;
-      if (wordCount > 6) {
-        console.warn('过长短语（>5词），不获取音频URL:', word);
+      if (word.trim().split(/\s+/).length > 3) {
+        console.warn('过长短语，不获取音频URL:', word);
         return null;
       }
       
@@ -2444,68 +2502,68 @@ Page({
       
       // 根据词书ID加载对应的词书文件
       if (wordbookCategory === 'primary') {
-        localWords = require('../../primary_real_words.js');
+        localWords = require('../../data/primary_real_words.js');
       } else if (wordbookCategory === 'junior') {
         // 根据具体的词书ID加载对应的年级词书
         if (wordbookId.includes('7th') && wordbookId.includes('second')) {
-          localWords = require('../../new_standard_7th_grade_second_complete.js');
+          localWords = require('../../data/new_standard_7th_grade_second_complete.js');
         } else if (wordbookId.includes('7th')) {
-          localWords = require('../../new_standard_7th_grade_words.js');
+          localWords = require('../../data/new_standard_7th_grade_words.js');
         } else if (wordbookId.includes('8th') && wordbookId.includes('second')) {
-          localWords = require('../../new_standard_8th_grade_second_complete.js');
+          localWords = require('../../data/new_standard_8th_grade_second_complete.js');
         } else if (wordbookId.includes('8th')) {
-          localWords = require('../../new_standard_8th_grade_words.js');
+          localWords = require('../../data/new_standard_8th_grade_words.js');
         } else if (wordbookId.includes('9th') && wordbookId.includes('second')) {
-          localWords = require('../../new_standard_9th_grade_second_complete.js');
+          localWords = require('../../data/new_standard_9th_grade_second_complete.js');
         } else if (wordbookId.includes('9th')) {
-          localWords = require('../../new_standard_9th_grade_words.js');
+          localWords = require('../../data/new_standard_9th_grade_words.js');
         } else if (wordbookId.includes('ren_jiao')) {
           // 人教版词书
           if (wordbookId.includes('9th')) {
-            localWords = require('../../ren_jiao_9th_grade.js');
+            localWords = require('../../data/ren_jiao_9th_grade.js');
           } else if (wordbookId.includes('8th') && wordbookId.includes('second')) {
-            localWords = require('../../ren_jiao_8th_grade_second.js');
+            localWords = require('../../data/ren_jiao_8th_grade_second.js');
           } else if (wordbookId.includes('8th')) {
-            localWords = require('../../ren_jiao_8th_grade_first.js');
+            localWords = require('../../data/ren_jiao_8th_grade_first.js');
           } else if (wordbookId.includes('7th') && wordbookId.includes('second')) {
-            localWords = require('../../ren_jiao_7th_grade_second.js');
+            localWords = require('../../data/ren_jiao_7th_grade_second.js');
           } else if (wordbookId.includes('7th')) {
-            localWords = require('../../ren_jiao_7th_grade_first.js');
+            localWords = require('../../data/ren_jiao_7th_grade_first.js');
           }
         } else if (wordbookId.includes('yi_lin')) {
           // 译林版词书
           if (wordbookId.includes('9th') && wordbookId.includes('second')) {
-            localWords = require('../../yi_lin_9th_grade_second.js');
+            localWords = require('../../data/yi_lin_9th_grade_second.js');
           } else if (wordbookId.includes('9th')) {
-            localWords = require('../../yi_lin_9th_grade_first.js');
+            localWords = require('../../data/yi_lin_9th_grade_first.js');
           } else if (wordbookId.includes('8th') && wordbookId.includes('second')) {
-            localWords = require('../../yi_lin_8th_grade_second.js');
+            localWords = require('../../data/yi_lin_8th_grade_second.js');
           } else if (wordbookId.includes('8th')) {
-            localWords = require('../../yi_lin_8th_grade_first.js');
+            localWords = require('../../data/yi_lin_8th_grade_first.js');
           } else if (wordbookId.includes('7th') && wordbookId.includes('second')) {
-            localWords = require('../../yi_lin_7th_grade_second.js');
+            localWords = require('../../data/yi_lin_7th_grade_second.js');
           } else {
-            localWords = require('../../yi_lin_7th_grade_first.js');
+            localWords = require('../../data/yi_lin_7th_grade_first.js');
           }
         } else if (wordbookId.includes('ji')) {
           // 冀教版词书
           if (wordbookId.includes('7th') && wordbookId.includes('second')) {
-            localWords = require('../../ji_7th_grade_second.js');
+            localWords = require('../../data/ji_7th_grade_second.js');
           } else if (wordbookId.includes('7th')) {
-            localWords = require('../../ji_7th_grade_words.js');
+            localWords = require('../../data/ji_7th_grade_words.js');
           } else if (wordbookId.includes('8th') && wordbookId.includes('second')) {
-            localWords = require('../../ji_8th_grade_second.js');
+            localWords = require('../../data/ji_8th_grade_second.js');
           } else if (wordbookId.includes('8th')) {
-            localWords = require('../../ji_8th_grade_first.js');
+            localWords = require('../../data/ji_8th_grade_first.js');
           } else if (wordbookId.includes('9th')) {
-            localWords = require('../../ji_9th_grade_words.js');
+            localWords = require('../../data/ji_9th_grade_words.js');
           }
         } else {
           // 默认使用七年级下册完整版
-          localWords = require('../../new_standard_7th_grade_second_complete.js');
+          localWords = require('../../data/new_standard_7th_grade_second_complete.js');
         }
       } else if (wordbookCategory === 'senior') {
-        localWords = require('../../senior_real_words.js');
+        localWords = require('../../data/senior_real_words.js');
       }
       
       console.log('加载的本地词书数据数量:', localWords.length);
@@ -2672,14 +2730,24 @@ Page({
         phonetic = matchedWord.phonetic || '';
       }
       
-      // 4. 处理短语的大小写：含空格且全小写的短语自动首字母大写
+      // 4. 处理地名词组的大小写
       if (matchedWord && matchedWord.word) {
-        const displayWord = matchedWord.word;
-        if (displayWord.includes(' ') && !/[A-Z]/.test(displayWord)) {
-          matchedWord.word = displayWord.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        // 检查是否是地名词组或国家名称
+        const placeWords = ['south africa', 'north america', 'south america', 'united states', 'united kingdom', 'new york', 'los angeles', 'australia', 'china', 'america', 'japan', 'france', 'germany', 'canada'];
+        if (placeWords.includes(matchedWord.word.toLowerCase())) {
+          // 地名词组或国家名称首字母大写
+          const capitalizedWord = matchedWord.word.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+          matchedWord.word = capitalizedWord;
+          console.log('地名词组或国家名称首字母大写:', matchedWord.word);
         }
-      } else if (word && word.includes(' ') && !/[A-Z]/.test(word)) {
-        word = word.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      } else if (word) {
+        // 检查是否是地名词组或国家名称
+        const placeWords = ['south africa', 'north america', 'south america', 'united states', 'united kingdom', 'new york', 'los angeles', 'australia', 'china', 'america', 'japan', 'france', 'germany', 'canada'];
+        if (placeWords.includes(word.toLowerCase())) {
+          // 地名词组或国家名称首字母大写
+          word = word.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+          console.log('地名词组或国家名称首字母大写:', word);
+        }
       }
       
       // 5. 确保即使从本地词书数据中找到单词，也要检查是否是国家名称并使用正确的释义

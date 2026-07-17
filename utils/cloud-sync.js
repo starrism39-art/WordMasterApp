@@ -229,7 +229,9 @@ const resolveUpdatedAt = (obj) => {
 const withUpdatedAt = (obj) => {
   const base = obj && typeof obj === 'object' ? { ...obj } : {};
   const updatedAt = resolveUpdatedAt(base) || Date.now();
-  return { ...base, updatedAt };
+  // 剥离系统保留字段，避免 _id 被带入 .set() 导致 E11000 主键冲突
+  const { _id, _openid, ...clean } = base;
+  return { ...clean, updatedAt };
 };
 
 const ensureLearningRecordId = (record) => {
@@ -373,25 +375,27 @@ const syncWordMasteryRecord = (studentId, wordbookId, wordId, wordRecord) => {
     });
 };
 
-const syncWordMasteryBatch = (studentId, wordbookId, wordRecordsMap) => {
+const syncWordMasteryBatch = async (studentId, wordbookId, wordRecordsMap) => {
   const db = ensureDb();
   const openid = getOpenId();
   if (!db || !openid || !studentId || !wordbookId || !wordRecordsMap) {
     console.warn('[cloud-sync] syncWordMasteryBatch 前置条件不满足, db:', !!db, 'openid:', !!openid);
     markPendingSync();
-    return Promise.resolve({ skipped: true, reason: 'precondition_failed' });
+    return { skipped: true, reason: 'precondition_failed' };
   }
 
   const wordIds = Object.keys(wordRecordsMap);
   if (wordIds.length === 0) {
-    return Promise.resolve({ skipped: true, reason: 'empty_batch' });
+    return { skipped: true, reason: 'empty_batch' };
   }
 
   const collection = db.collection('word_mastery');
   const displayNames = getDisplayNames(studentId);
 
   // 【V2.0 防退化】逐条同步前先读云端，若云端进度更优则跳过写入
-  const promises = wordIds.map((wordId) => {
+  // 分批并发，每批 MAX_BATCH 条，避免超限限流
+
+  const syncOneWord = (wordId) => {
     const wordRecord = wordRecordsMap[wordId];
     if (!wordRecord) {
       return Promise.resolve({ wordId, ok: true, skipped: true });
@@ -409,8 +413,6 @@ const syncWordMasteryBatch = (studentId, wordbookId, wordRecordsMap) => {
           const localLastReview = typeof wordRecord.lastReviewTime === 'number' ? wordRecord.lastReviewTime : 0;
           const cloudLastReview = typeof cloudData.lastReviewTime === 'number' ? cloudData.lastReviewTime : 0;
 
-          // 云端在所有维度都不落后 → 跳过写入，保护云端不退化
-          // 必须 BOTH 条件满足才跳过：reviewCount 和 lastReviewTime 都不小于本地
           const localMastered = !!wordRecord.mastered;
           const localDifficult = !!wordRecord.difficult;
           const localIsLearned = !!wordRecord.isLearned;
@@ -432,9 +434,10 @@ const syncWordMasteryBatch = (studentId, wordbookId, wordRecordsMap) => {
           }
         }
 
-        // 本地数据更新或云端不存在，正常写入（保留云端未知字段）
+        // 本地数据更新或云端不存在，正常写入（保留云端未知字段，排除 _id/_openid 避免主键冲突）
+        const { _id: _cdId, _openid: _cdOpenid, ...safeCloudData } = cloudData || {};
         const data = {
-          ...(cloudData || {}),
+          ...safeCloudData,
           teacher_id: openid,
           student_id: String(studentId),
           wordbook_id: String(wordbookId),
@@ -446,14 +449,15 @@ const syncWordMasteryBatch = (studentId, wordbookId, wordRecordsMap) => {
         return collection.doc(docId).set({ data })
           .then(() => ({ wordId, ok: true }))
           .catch((error) => {
+            if (error && error.errMsg && error.errMsg.indexOf('E11000') !== -1) {
+              return { wordId, ok: true, skipped: true, reason: 'already_exists' };
+            }
             console.warn('[cloud-sync] 单条 word_mastery 同步失败:', wordId, error);
             return { wordId, ok: false, error };
           });
       })
       .catch((getError) => {
-        // 读取失败（可能文档不存在），直接写入
         if (getError && getError.errCode === -1) {
-          // 文档不存在，正常写入
           const data = {
             teacher_id: openid,
             student_id: String(studentId),
@@ -465,6 +469,9 @@ const syncWordMasteryBatch = (studentId, wordbookId, wordRecordsMap) => {
           return collection.doc(docId).set({ data })
             .then(() => ({ wordId, ok: true }))
             .catch((error) => {
+              if (error && error.errMsg && error.errMsg.indexOf('E11000') !== -1) {
+                return { wordId, ok: true, skipped: true, reason: 'already_exists' };
+              }
               console.warn('[cloud-sync] 单条 word_mastery 同步失败:', wordId, error);
               return { wordId, ok: false, error };
             });
@@ -472,52 +479,64 @@ const syncWordMasteryBatch = (studentId, wordbookId, wordRecordsMap) => {
         console.warn('[cloud-sync] 读取云端记录失败:', wordId, getError);
         return { wordId, ok: false, error: getError };
       });
-  });
+  };
 
-  return Promise.all(promises).then((results) => {
-    const failed = results.filter((r) => r && !r.ok);
-    const succeeded = results.filter((r) => r && r.ok && !r.skipped);
-    const skippedCloudFresher = results.filter((r) => r && r.ok && r.skipped && r.reason === 'cloud_fresher');
-    console.log('[cloud-sync] word mastery batch 完成:', succeeded.length, '成功,', failed.length, '失败,', skippedCloudFresher.length, '跳过(云端更新)');
-    if (succeeded.length > 0) {
-      markSyncSuccess(succeeded.length);
+  const BATCH_SIZE = 5;
+  const allResults = [];
+
+  for (let i = 0; i < wordIds.length; i += BATCH_SIZE) {
+    const batch = wordIds.slice(i, i + BATCH_SIZE);
+    const batchResults = await Promise.all(batch.map(syncOneWord));
+    allResults.push(...batchResults);
+    if (i + BATCH_SIZE < wordIds.length) {
+      await new Promise((r) => setTimeout(r, 500));
     }
-    // 清理 pendingWordMasterySync 中已跳过（云端更新）的记录
-    if (skippedCloudFresher.length > 0) {
-      try {
-        const pendingWords = wx.getStorageSync('pendingWordMasterySync') || {};
-        skippedCloudFresher.forEach((f) => {
-          if (f && f.wordId) delete pendingWords[f.wordId];
-        });
-        if (Object.keys(pendingWords).length === 0) {
-          wx.removeStorageSync('pendingWordMasterySync');
-        } else {
-          wx.setStorageSync('pendingWordMasterySync', pendingWords);
-        }
-        markSyncSuccess(skippedCloudFresher.length);
-      } catch (e) { /* ignore */ }
-    }
-    if (failed.length > 0) {
-      markPendingSync();
-      // 把失败的 wordId 存到本地，下次重试
-      try {
-        const pendingWords = wx.getStorageSync('pendingWordMasterySync') || {};
-        failed.forEach((f) => {
-          if (f && f.wordId && wordRecordsMap[f.wordId]) {
-            pendingWords[f.wordId] = {
-              ...wordRecordsMap[f.wordId],
-              student_id: String(studentId),
-              wordbook_id: String(wordbookId)
-            };
-          }
-        });
+  }
+
+  const failed = allResults.filter((r) => r && !r.ok);
+  const succeeded = allResults.filter((r) => r && r.ok && !r.skipped);
+  const skippedCloudFresher = allResults.filter((r) => r && r.ok && r.skipped && r.reason === 'cloud_fresher');
+  const skippedAlreadyExists = allResults.filter((r) => r && r.ok && r.skipped && r.reason === 'already_exists');
+  const totalSkipped = skippedCloudFresher.length + skippedAlreadyExists.length;
+  console.log('[cloud-sync] word mastery batch 完成:', succeeded.length, '成功,', failed.length, '失败,', skippedCloudFresher.length, '跳过(云端更新),', skippedAlreadyExists.length, '跳过(已存在)');
+  if (succeeded.length > 0) {
+    markSyncSuccess(succeeded.length);
+  }
+  // 清理 pendingWordMasterySync 中已跳过（云端更新/已存在）的记录
+  if (totalSkipped > 0) {
+    try {
+      const pendingWords = wx.getStorageSync('pendingWordMasterySync') || {};
+      [...skippedCloudFresher, ...skippedAlreadyExists].forEach((f) => {
+        if (f && f.wordId) delete pendingWords[f.wordId];
+      });
+      if (Object.keys(pendingWords).length === 0) {
+        wx.removeStorageSync('pendingWordMasterySync');
+      } else {
         wx.setStorageSync('pendingWordMasterySync', pendingWords);
-      } catch (storeError) {
-        console.warn('[cloud-sync] 无法保存待重试记录:', storeError);
       }
+      markSyncSuccess(totalSkipped);
+    } catch (e) { /* ignore */ }
+  }
+  if (failed.length > 0) {
+    markPendingSync();
+    // 把失败的 wordId 存到本地，下次重试
+    try {
+      const pendingWords = wx.getStorageSync('pendingWordMasterySync') || {};
+      failed.forEach((f) => {
+        if (f && f.wordId && wordRecordsMap[f.wordId]) {
+          pendingWords[f.wordId] = {
+            ...wordRecordsMap[f.wordId],
+            student_id: String(studentId),
+            wordbook_id: String(wordbookId)
+          };
+        }
+      });
+      wx.setStorageSync('pendingWordMasterySync', pendingWords);
+    } catch (storeError) {
+      console.warn('[cloud-sync] 无法保存待重试记录:', storeError);
     }
-    return { succeeded: succeeded.length, failed: failed.length };
-  });
+  }
+  return { succeeded: succeeded.length, failed: failed.length };
 };
 
 const syncLearningProgress = (studentId, progressData) => {
@@ -596,11 +615,13 @@ const syncLearningProgress = (studentId, progressData) => {
         }
       }
 
+      // 剔除系统保留字段，避免 _openid 等只读字段导致写入失败
+      const { _id, _openid, ...safeCloudData } = cloudData || {};
       return db.collection('learning_progress')
         .doc(docId)
         .set({
           data: {
-            ...(cloudData || {}),
+            ...safeCloudData,
             teacher_id: openid,
             student_id: String(studentId),
             ...(displayNames.studentName ? { student_name: displayNames.studentName } : {}),
@@ -716,12 +737,14 @@ const syncPreviewState = (studentId, wordbookId, previewData) => {
       const existing = (res && res.data) ? res.data : {};
       const mergedOrder = incomingOrder.length > 0 ? incomingOrder : (existing.order || []);
       const mergedExcluded = incomingExcluded.length > 0 ? incomingExcluded : (existing.excluded || []);
+      // 剥离系统保留字段，避免 _openid 等只读字段导致写入失败
+      const { _id: _eid, _openid: _eoid, ...safeExisting } = existing || {};
 
       return db.collection('preview_state')
         .doc(docId)
         .set({
           data: {
-            ...existing,
+            ...safeExisting,
             teacher_id: openid,
             student_id: String(studentId),
             wordbook_id: String(wordbookId),

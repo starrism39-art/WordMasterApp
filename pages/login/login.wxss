@@ -144,67 +144,6 @@ page {
   transform: rotate(45deg);
 }
 
-.agreement-mask {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(17, 20, 24, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 20;
-}
-
-.agreement-dialog {
-  width: 86%;
-  background: #FFFFFF;
-  border-radius: 24rpx;
-  padding: 40rpx 32rpx 32rpx;
-  box-sizing: border-box;
-  text-align: left;
-}
-
-.agreement-title {
-  font-size: 32rpx;
-  font-weight: 700;
-  color: #2C3E50;
-}
-
-.agreement-desc {
-  margin-top: 12rpx;
-  font-size: 22rpx;
-  color: #6B7280;
-}
-
-.agreement-row {
-  margin-top: 28rpx;
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-}
-
-.agreement-text {
-  font-size: 22rpx;
-  color: #5F6672;
-}
-
-.agreement-actions {
-  margin-top: 36rpx;
-  display: flex;
-  gap: 16rpx;
-}
-
-.btn-ghost {
-  flex: 1;
-  height: 80rpx;
-  border-radius: 40rpx;
-  background: #F4F6F8;
-  color: #4B4F57;
-  font-size: 28rpx;
-}
-
 .btn-primary--modal {
   flex: 1;
   height: 80rpx;

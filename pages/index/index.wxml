@@ -5,7 +5,7 @@
     <view class="page-decor page-decor--two"></view>
 
     <view wx:if="{{loading}}" class="loading-overlay">
-      <loading></loading>
+      <view class="loading-spinner"></view>
       <text class="loading-text">加载中...</text>
     </view>
 
@@ -31,12 +31,10 @@
 
     <view wx:if="{{!currentStudent}}" class="empty-state-container">
       <view class="empty-state glass-card">
-        <view class="empty-icon">
-          <image class="empty-icon-img" src="/images/student_avatar_new.jpg" mode="aspectFit"></image>
-        </view>
-        <view class="empty-title">还没有学生</view>
-        <view class="empty-description">添加一个学生，开始背单词吧</view>
-        <button class="add-student-btn" type="primary" bindtap="navigateToStudentSelect">添加学生</button>
+        <view class="empty-icon">👥</view>
+        <view class="empty-title">暂无学生数据</view>
+        <view class="empty-description">请先选择学生，开始单词学习之旅</view>
+        <button class="add-student-btn" type="primary" bindtap="navigateToStudentSelect">选择学生</button>
       </view>
     </view>
 
@@ -46,6 +44,11 @@
           <view class="hero-greeting">你好，{{currentStudent && currentStudent.name ? currentStudent.name : '同学'}}</view>
           <view class="hero-title">今天也慢慢往前走一点</view>
         </view>
+      </view>
+
+      <!-- 游客登录入口：未登录时提示 -->
+      <view wx:if="{{!isLoggedIn}}" class="guest-login-banner" bindtap="goToLogin">
+        <text class="guest-login-text">登录后数据云端同步，换设备不丢失 →</text>
       </view>
 
       <view class="student-info card hero-card">
@@ -186,19 +189,6 @@
         </view>
       </view>
     </view>
-
-      <!-- 隐私政策弹窗 -->
-  <view class="privacy-mask" wx:if="{{showPrivacyModal}}" catchtap="noop">
-    <view class="privacy-dialog" catchtap="noop">
-      <view class="privacy-icon">&#x1F512;</view>
-      <view class="privacy-title">隐私政策</view>
-      <view class="privacy-body">
-        <text class="privacy-text">我们高度重视您的隐私保护。在您使用本应用前，请阅读并了解我们的隐私政策，包括我们如何收集、使用和保护您的个人信息。</text>
-      </view>
-      <view class="privacy-link-row" catchtap="onViewPrivacyPolicy">查看完整《隐私政策》</view>
-      <button class="privacy-confirm-btn" bindtap="onPrivacyConfirm">知道了</button>
-    </view>
-  </view>
 
 <view class="page-bottom-spacer"></view>
   </view>

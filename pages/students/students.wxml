@@ -4,7 +4,7 @@
     <!-- 账号信息内容：已登录 -->
     <block wx:if="{{isLoggedIn}}">
       <view class="account-details">
-        <view wx:if="{{!isEditingNickname}}" class="account-name" bindtap="startEditNickname">{{currentUser && currentUser.name ? currentUser.name : '默认用户'}}</view>
+        <view wx:if="{{!isEditingNickname}}" class="account-name" bindtap="startEditNickname">教师名称：{{currentUser && currentUser.name ? currentUser.name : '默认用户'}}</view>
         <view wx:else class="nickname-edit-container">
           <input class="nickname-input" type="text" value="{{nicknameEditValue}}" bindinput="onNicknameInput" placeholder="输入教师昵称" maxlength="20" />
           <view class="nickname-edit-actions">
@@ -12,7 +12,7 @@
             <button class="nickname-btn save" bindtap="saveNickname" size="mini">保存</button>
           </view>
         </view>
-        <view class="account-role">教师账号</view>
+        <view class="account-id">ID：{{currentUser && currentUser.id ? currentUser.id : ''}}</view>
       </view>
     </block>
     <!-- 账号信息内容：未登录 -->

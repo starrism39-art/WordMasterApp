@@ -142,8 +142,9 @@ Page({
     // 这样即使缺少显式 mastered 标记，也能正常显示“已掌握”列表。
     if (showRecordFilter) {
       for (let i = 0; i < allWords.length; i++) {
-        if (allWords[i].masteryStatus !== 'notMastered') {
-          allWords[i].masteryStatus = 'mastered';
+        const status = allWords[i].masteryStatus;
+        if (status === undefined || status === null || status === '') {
+          allWords[i].masteryStatus = 'unknown';
         }
       }
     }
@@ -627,20 +628,23 @@ Page({
         phonetic = matchedWord.phonetic || '';
       }
       
-      // 3. 处理短语/地名的大小写：含空格的短语自动首字母大写
+      // 3. 处理地名词组的大小写
       if (matchedWord && matchedWord.word) {
-        const displayWord = matchedWord.word;
-        if (displayWord.includes(' ')) {
-          // 检查是否全小写（可能是从 wordMastery key 还原的），需要首字母大写
-          const hasUpperCase = /[A-Z]/.test(displayWord);
-          if (!hasUpperCase) {
-            matchedWord.word = displayWord.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-          }
+        // 检查是否是地名词组或国家名称
+        const placeWords = ['south africa', 'north america', 'south america', 'united states', 'united kingdom', 'new york', 'los angeles', 'australia', 'china', 'america', 'japan', 'france', 'germany', 'canada'];
+        if (placeWords.includes(matchedWord.word.toLowerCase())) {
+          // 地名词组或国家名称首字母大写
+          const capitalizedWord = matchedWord.word.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+          matchedWord.word = capitalizedWord;
+          console.log('地名词组或国家名称首字母大写:', matchedWord.word);
         }
-      } else if (word && word.includes(' ')) {
-        const hasUpperCase = /[A-Z]/.test(word);
-        if (!hasUpperCase) {
-          word = word.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      } else if (word) {
+        // 检查是否是地名词组或国家名称
+        const placeWords = ['south africa', 'north america', 'south america', 'united states', 'united kingdom', 'new york', 'los angeles', 'australia', 'china', 'america', 'japan', 'france', 'germany', 'canada'];
+        if (placeWords.includes(word.toLowerCase())) {
+          // 地名词组或国家名称首字母大写
+          word = word.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+          console.log('地名词组或国家名称首字母大写:', word);
         }
       }
       

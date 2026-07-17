@@ -1,4 +1,7 @@
 // pages/stats/stats.js
+const loginService = require('../../utils/login-service.js');
+const cloudMigration = require('../../utils/cloud-migration.js');
+
 Page({
   data: {
     currentUser: null,
@@ -27,14 +30,14 @@ Page({
   
   onLoad: function() {
     try {
-      // 唯一门禁：没有 openid 才跳转登录页
+      // 检查登录状态，未登录无 openid 时静默登录
       const openid = wx.getStorageSync('openid');
       if (!openid) {
-        console.log('用户未登录，跳转到登录页面');
-        wx.redirectTo({
-          url: '/pages/login/login'
+        // 静默登录
+        const loginService = require('../../utils/login-service.js');
+        loginService.doSilentLogin().catch(function(err) {
+          console.warn('[stats] 静默登录失败，以游客模式查看:', err);
         });
-        return;
       }
 
       const app = getApp();
@@ -75,15 +78,13 @@ Page({
     try {
       this.setData({ loading: true });
       const app = getApp();
-      
-      // 唯一门禁：没有 openid 才跳转登录页
+
+      // 检查登录状态，未登录时静默登录
       const openid = wx.getStorageSync('openid');
       if (!openid) {
-        console.log('用户未登录，跳转到登录页面');
-        wx.redirectTo({
-          url: '/pages/login/login'
+        loginService.doSilentLogin().catch(function(err) {
+          console.warn('[stats] 静默登录失败，以游客模式查看:', err);
         });
-        return;
       }
 
       // 确保应用实例存在
@@ -115,8 +116,25 @@ Page({
       // 确保注册监听（防止热重载/异常导致未注册）
       this.registerRealtimeListeners();
 
-      // 重新加载学习数据
-      this.loadAndCalculateStats();
+      // ====== 【验证】云端同步测试 ======
+      var self = this;
+      var pullPromise = Promise.resolve();
+      console.log('========== 验证信息 ==========');
+      console.log('【验证】openid 是否存在:', !!openid);
+      if (openid) {
+        console.log('【验证】即将调用 syncDataFromCloud...');
+        pullPromise = cloudMigration.syncDataFromCloud(openid).then(function(res) {
+          console.log('【验证】云端拉取成功, 结果:', JSON.stringify(res));
+        }).catch(function(err) {
+          console.log('【验证】云端拉取失败（降级使用本地数据）:', err && err.message);
+        });
+      } else {
+        console.log('【验证】openid 为空 → 跳过云端拉取');
+      }
+      pullPromise.then(function() {
+        self.loadAndCalculateStats();
+        console.log('========== 验证结束 ==========');
+      });
     } catch (error) {
       console.error('统计页面显示时出错:', error);
       this.setData({
@@ -278,8 +296,30 @@ Page({
         currentWordbook = wx.getStorageSync('selectedWordbook') || null;
       }
 
+      // 仍然没有词书时，从 wordMastery 推断数据最多的词书（跨设备首次进入）
+      if ((!currentWordbook || !currentWordbook.id) && currentStudent && currentStudent.id) {
+        try {
+          var _sm2 = (wx.getStorageSync('wordMastery') || {})[currentStudent.id];
+          if (_sm2) {
+            var _bestId2 = null, _bestCnt2 = 0, _k2;
+            for (_k2 in _sm2) {
+              if (_sm2.hasOwnProperty && !_sm2.hasOwnProperty(_k2)) continue;
+              var _c2 = Object.keys(_sm2[_k2] || {}).length;
+              if (_c2 > _bestCnt2) { _bestCnt2 = _c2; _bestId2 = _k2; }
+            }
+            if (_bestId2) {
+              var _inf2 = { id: _bestId2, title: _bestId2.replace(/_/g, ' ') };
+              try { var _wb2 = require('../../data/wordbooks.js'); if (_wb2 && _wb2.getBookById) { var _full2 = _wb2.getBookById(_bestId2); if (_full2 && _full2.totalWords) { _inf2 = _full2; } } } catch(e) {}
+              currentWordbook = _inf2;
+              wx.setStorageSync('selectedWordbook', _inf2);
+              console.log('[stats] 从 wordMastery 恢复词书:', _bestId2);
+            }
+          }
+        } catch(e) { console.warn('[stats] 推断词书失败:', e); }
+      }
+
       const currentWordbookName = currentWordbook
-        ? (currentWordbook.title || currentWordbook.name || '未知词书')
+        ? (currentWordbook.title || currentWordbook.name || '暂无词书')
         : '暂无词书';
 
       // 没有词书时，回退使用 stats_ 缓存

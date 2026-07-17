@@ -34,7 +34,7 @@
 			<text class="label">未掌握</text>
 			<input class="input" type="number" data-field="notMasteredCount" value="{{editStats.notMasteredCount}}" bindinput="handleInput" />
 		</view>
-		<view class="form-row" wx:if="{{mode === 'core'}}">
+		<view class="form-row">
 			<text class="label">打卡天数</text>
 			<input class="input" type="number" data-field="checkinDays" value="{{editStats.checkinDays}}" bindinput="handleInput" />
 		</view>

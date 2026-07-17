@@ -120,6 +120,15 @@
   border: 1rpx solid #e2e8f0;
 }
 
+/* 教师ID样式 */
+.account-id {
+  font-size: 26rpx;
+  color: #8899b0;
+  font-weight: 400;
+  margin-top: 4rpx;
+  user-select: text;
+}
+
 /* 区域标题样式 */
 .section-title {
   font-size: 36rpx;

@@ -1,5 +1,8 @@
 // 简化版词书数据，直接导出所有词书，避免分包导入问题
 
+// 云端词书加载器（用于减少主包体积）
+const cloudWordbookLoader = require('../utils/cloud-wordbook-loader.js');
+
 // 小学词书
 const primaryWordbooks = [
   {
@@ -326,6 +329,62 @@ const juniorWordbooks = [
       { "word": "pronunciation", "phonetic": "/prəˌnʌnsiˈeɪʃn/", "meaning": "发音；读音" },
       { "word": "sentence", "phonetic": "/ˈsentəns/", "meaning": "句子" }
     ]
+  },
+  // ===== 人教版初中重录版（v2）=====
+  {
+    "id": "junior_7th_ren_jiao_v2",
+    "title": "人教版七年级上册（重录版）",
+    "description": "重新录入的人教版七年级上册英语词汇表，按单元排列",
+    "category": "junior",
+    "grade": "7th",
+    "region": "全国",
+    "version": "人教版",
+    "totalWords": 263,
+    "words": []
+  },
+  {
+    "id": "junior_7th_ren_jiao_second_v2",
+    "title": "人教版七年级下册（重录版）",
+    "description": "重新录入的人教版七年级下册英语词汇表，按单元排列",
+    "category": "junior",
+    "grade": "7th",
+    "region": "全国",
+    "version": "人教版",
+    "totalWords": 451,
+    "words": []
+  },
+  {
+    "id": "junior_8th_ren_jiao_v2",
+    "title": "人教版八年级上册（重录版）",
+    "description": "重新录入的人教版八年级上册英语词汇表，按单元排列",
+    "category": "junior",
+    "grade": "8th",
+    "region": "全国",
+    "version": "人教版",
+    "totalWords": 525,
+    "words": []
+  },
+  {
+    "id": "junior_8th_ren_jiao_second_v2",
+    "title": "人教版八年级下册（重录版）",
+    "description": "重新录入的人教版八年级下册英语词汇表，按单元排列",
+    "category": "junior",
+    "grade": "8th",
+    "region": "全国",
+    "version": "人教版",
+    "totalWords": 573,
+    "words": []
+  },
+  {
+    "id": "junior_9th_ren_jiao_v2",
+    "title": "人教版九年级全一册（重录版）",
+    "description": "重新录入的人教版九年级全一册英语词汇表，按单元排列",
+    "category": "junior",
+    "grade": "9th",
+    "region": "全国",
+    "version": "人教版",
+    "totalWords": 604,
+    "words": []
   },
   {
     "id": "junior_7th_yi_lin_second",
@@ -680,8 +739,12 @@ const generateWordsForBook = function (bookCategory, bookId, startIndex, count) 
           './new_standard_9th_grade_first_complete.js',
           './junior_real_words.js',
           './new_curriculum_senior_words.js',
-          './高考英语阅读高频词汇.js',
-          './senior_real_words.js'
+          // 人教版初中重录版（v2）
+          './ren_jiao_7th_grade_first_v2.js',
+          './ren_jiao_7th_grade_second_v2.js',
+          './ren_jiao_8th_grade_first_v2.js',
+          './ren_jiao_8th_grade_second_v2.js',
+          './ren_jiao_9th_grade_v2.js'
         ];
         
         filesToClear.forEach(filePath => {
@@ -694,7 +757,23 @@ const generateWordsForBook = function (bookCategory, bookId, startIndex, count) 
         });
       }
       
-      if (bookId.includes('primary')) {
+      // ===== 人教版初中重录版（v2）路由 =====
+      if (bookId === 'junior_7th_ren_jiao_v2') {
+        words = require('./ren_jiao_7th_grade_first_v2.js');
+        console.log('成功加载人教版七年级上册 v2（重录版），数量：', words.length);
+      } else if (bookId === 'junior_7th_ren_jiao_second_v2') {
+        words = require('./ren_jiao_7th_grade_second_v2.js');
+        console.log('成功加载人教版七年级下册 v2（重录版），数量：', words.length);
+      } else if (bookId === 'junior_8th_ren_jiao_v2') {
+        words = require('./ren_jiao_8th_grade_first_v2.js');
+        console.log('成功加载人教版八年级上册 v2（重录版），数量：', words.length);
+      } else if (bookId === 'junior_8th_ren_jiao_second_v2') {
+        words = require('./ren_jiao_8th_grade_second_v2.js');
+        console.log('成功加载人教版八年级下册 v2（重录版），数量：', words.length);
+      } else if (bookId === 'junior_9th_ren_jiao_v2') {
+        words = require('./ren_jiao_9th_grade_v2.js');
+        console.log('成功加载人教版九年级全一册 v2（重录版），数量：', words.length);
+      } else if (bookId.includes('primary')) {
         words = require('./primary_real_words.js');
       } else if (bookId.includes('junior')) {
         if (bookId.includes('exam')) {
@@ -874,12 +953,29 @@ const generateWordsForBook = function (bookCategory, bookId, startIndex, count) 
         } else if (bookId.includes('new_curriculum')) {
           words = require('./new_curriculum_senior_words.js');
         } else if (bookId.includes('gaokao')) {
-          // 直接加载高考英语阅读高频词汇.js文件
-          const gaokaoWords = require('./高考英语阅读高频词汇.js');
-          console.log('成功加载高考英语阅读高频词汇.js，单词数量：', gaokaoWords.length);
-          words = gaokaoWords;
+          // 【云端迁移】优先从本地缓存读取云端词书数据
+          const cloudWords = cloudWordbookLoader.getWordsSync('gaokao_reading_words');
+          if (cloudWords && cloudWords.length > 0) {
+            words = cloudWords;
+            console.log('成功从云端缓存加载高考英语阅读高频词汇，数量：', words.length);
+          } else {
+            // 缓存未命中，使用词书定义中的默认单词
+            console.log('高考英语阅读高频词汇云端缓存未命中，使用词书默认单词，数量：', book.words ? book.words.length : 0);
+            words = book.words || [];
+          }
+        } else if (bookId === 'senior_textbook_real') {
+          // 【云端迁移】优先从本地缓存读取云端词书数据
+          const cloudWords = cloudWordbookLoader.getWordsSync('senior_textbook_real');
+          if (cloudWords && cloudWords.length > 0) {
+            words = cloudWords;
+            console.log('成功从云端缓存加载高中统编版英语词书，数量：', words.length);
+          } else {
+            // 缓存未命中，使用词书默认单词
+            console.log('高中统编版云端缓存未命中，使用词书默认单词，数量：', book.words ? book.words.length : 0);
+            words = book.words || [];
+          }
         } else {
-          words = require('./senior_real_words.js');
+          words = book.words || [];
         }
       }
       words = sanitizeWordEntries(words);
@@ -910,11 +1006,15 @@ const generateWordsForBook = function (bookCategory, bookId, startIndex, count) 
     console.log('译林牛津版七年级上册总单词数设置为：', result._totalCount);
   }
   
-  // 特殊处理人教版七年级上册词书，确保加载所有单词
+  // 特殊处理人教版七年级上册词书（新旧两版），确保加载所有单词
   if (bookId === 'junior_7th_ren_jiao') {
     // 强制设置单词数量为419，确保学习页面加载所有单词
     result._totalCount = 419;
     console.log('人教版七年级上册总单词数设置为：', result._totalCount);
+  }
+  if (bookId === 'junior_7th_ren_jiao_v2') {
+    result._totalCount = words.length;
+    console.log('人教版七年级上册 v2（重录版）总单词数设置为：', result._totalCount);
   }
   
   return result;

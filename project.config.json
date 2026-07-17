@@ -199,7 +199,7 @@
     "localPlugins": false,
     "disableUseStrict": false,
     "useCompilerPlugins": false,
-    "condition": true,
+    "condition": false,
     "swc": true,
     "disableSWC": false,
     "compressTemplate": true,

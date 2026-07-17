@@ -1,19 +1,17 @@
 // pages/index/index.js
-const { getSyncStatus } = require('../../utils/cloud-sync.js');
+const { repairMissingAntiForgettingSeed } = require('../../utils/anti-forgetting-filter.js');
 
 Page({
   data: {
     userInfo: null,
     currentStudent: null,
-    syncState: 'ok',
-    syncPendingCount: 0,
-    totalUnmasteredWords: 0,
     learningStats: {
       totalWords: 0,
       learnedWords: 0,
       dailyLearning: 0,
       weekStreak: 0
     },
+    totalUnmasteredWords: 0,
     recentRecords: [],
     recommendedWordbooks: [],
     learningWordbooks: '',
@@ -21,9 +19,24 @@ Page({
     showWordbookModal: false,
     loading: true,
     antiForgotTime: '无抗遗忘', // 抗遗忘时间信息
+    isLoggedIn: false
   },
 
   onLoad: function() {
+    console.log('========== [首页] onLoad 开始 ==========');
+    
+    // ★★★ 最早期修复：在页面加载第一时间修复缺失的 antiForgettingSeed ★★★
+    try {
+      const repaired = repairMissingAntiForgettingSeed();
+      console.log('========== [首页] 早期修复: 修复了', repaired, '个单词 ==========');
+      if (repaired > 0) {
+        wx.showToast({ title: '已修复' + repaired + '个单词记录', icon: 'none', duration: 3000 });
+      }
+    } catch (e) {
+      console.error('========== [首页] 早期修复失败:', e, '==========');
+      wx.showToast({ title: '修复失败:' + (e.message || '未知'), icon: 'none', duration: 3000 });
+    }
+    
     // 立即设置加载状态为true
     this.setData({ loading: true });
     
@@ -36,6 +49,7 @@ Page({
       if (savedUser) {
         app.globalData.currentUser = savedUser;
         app.globalData.isLoggedIn = true;
+        this.setData({ isLoggedIn: true });
         if (typeof app.migrateLegacyStudentsForUser === 'function') {
           app.migrateLegacyStudentsForUser(savedUser);
         }
@@ -54,43 +68,59 @@ Page({
           currentStudent: savedCurrentStudent
         });
       } else {
-        // 没有保存的当前学生，智能推断最活跃的学生
+        // 如果没有保存的当前学生，使用学生列表的第一个学生
         let students = wx.getStorageSync('students') || [];
         const currentUser = app.globalData.currentUser || wx.getStorageSync('currentUser') || null;
         const currentUserId = currentUser && (currentUser.id || currentUser.username);
         if (currentUserId) {
           students = students.filter(s => s && (s.ownerId || s.ownerUsername) === currentUserId);
         }
-
-        if (students.length === 0) {
-          app.globalData.currentStudent = null;
-          this.setData({ currentStudent: null });
-        } else {
-          // 从 wordMastery 找数据最多的学生
-          const wordMastery = wx.getStorageSync('wordMastery') || {};
-          let bestStudent = null;
-          let bestCount = 0;
-          students.forEach(s => {
-            const sid = String(s.id || s.student_id || '');
-            const m = wordMastery[sid];
-            if (!m) return;
-            let total = 0;
-            Object.keys(m).forEach(wbId => { total += Object.keys(m[wbId] || {}).length; });
-            if (total > bestCount) { bestCount = total; bestStudent = s; }
-          });
-          const currentStudent = bestStudent || students[0];
+        if (students.length > 0) {
+            const currentStudent = students[0];
           app.globalData.currentStudent = currentStudent;
-          wx.setStorageSync('currentStudent', currentStudent);
-          wx.setStorageSync('selectedStudent', currentStudent);
+          
+          // 生成头像文本
           currentStudent.avatarText = this.generateAvatarText(currentStudent.name);
-          this.setData({ currentStudent: currentStudent });
-          console.log('智能恢复学生:', currentStudent.name, '(数据量:', bestCount, ')');
+          this.setData({
+            currentStudent: currentStudent
+          });
+        } else {
+          // 没有学生数据时，不自动创建，显示空状态
+          app.globalData.currentStudent = null;
+          this.setData({
+            currentStudent: null
+          });
         }
       }
     } catch (error) {
       console.error('恢复学生信息失败:', error);
     }
     
+    // 检测同步完成标记，弹"同步完成"提示（仅首次进入时）
+    if (app.globalData.syncFreshCompleted) {
+      wx.showToast({
+        title: '可以开始学习了',
+        icon: 'success',
+        duration: 2000
+      });
+      app.globalData.syncFreshCompleted = false;
+    }
+
+    // 注册 cloudSyncComplete 事件作为兜底（静默登录可能晚于 onLoad）
+    if (app && app.on && !this._syncHandler) {
+      this._syncHandler = function() {
+        if (app.globalData.syncFreshCompleted) {
+          wx.showToast({
+            title: '可以开始学习了',
+            icon: 'success',
+            duration: 2000
+          });
+          app.globalData.syncFreshCompleted = false;
+        }
+      };
+      app.on('cloudSyncComplete', this._syncHandler);
+    }
+
     // 异步加载更多数据
     setTimeout(() => {
       this.loadPageData();
@@ -103,12 +133,8 @@ Page({
       this.learningRecordDeleteHandler = this.handleLearningRecordDelete.bind(this);
       // 新增：单词掌握状态更新事件监听器
       this.wordMasteryUpdateHandler = () => {
-        console.log('收到单词掌握状态更新事件，刷新统计和抗遗忘时间');
+        console.log('收到单词掌握状态更新事件，重新计算抗遗忘时间');
         this.calculateAntiForgotTime();
-        // 同时刷新统计数据（云端合并后也需要更新）
-        if (this.data.currentStudent && this.data.currentStudent.id) {
-          this.updateRealTimeStats(this.data.currentStudent.id);
-        }
       };
       
       app.on('learningRecordAdded', this.learningRecordUpdateHandler);
@@ -150,6 +176,9 @@ Page({
       if (this.learningRecordDeleteHandler) {
         app.off('learningRecordDeleted', this.learningRecordDeleteHandler);
       }
+      if (this._syncHandler) {
+        app.off('cloudSyncComplete', this._syncHandler);
+      }
       console.log('已移除学习记录相关事件监听器');
     }
   },
@@ -169,27 +198,27 @@ Page({
     console.log('收到新的学习记录，立即更新统计数据:', newRecord);
     
     // 优化：如果收到了具体的学习记录，可以直接更新相关统计，而不必重新加载所有数据
-    if (newRecord && newRecord.studentId && newRecord.studentId === this.data.currentStudent?.id) {
+    if (newRecord && newRecord.studentId && String(newRecord.studentId) === String(this.data.currentStudent?.id)) {
       // 直接更新实时统计数据，响应更快
       this.updateRealTimeStats(newRecord.studentId);
       
       // 重新加载最近学习记录以显示最新的记录
       this.loadRecentRecords();
+      
+      // 有真实记录数据时才弹 Toast，提示用户学习数据已更新
+      wx.showToast({
+        title: '学习数据已更新',
+        icon: 'success',
+        duration: 800
+      });
     } else {
-      // 如果记录不属于当前学生，仍然重新加载所有数据以确保正确性
+      // 没有具体记录数据（来自云端同步事件），仅重新加载数据，不弹 Toast
       this.loadLearningStats();
       this.loadRecentRecords();
     }
     
     // 更新抗遗忘时间
     this.calculateAntiForgotTime();
-    
-    // 显示短暂的提示，告知用户数据已更新
-    wx.showToast({
-      title: '学习数据已更新',
-      icon: 'success',
-      duration: 800 // 稍微缩短提示时间
-    });
   },
   
   // 保存当前页面状态到本地存储
@@ -245,12 +274,17 @@ Page({
         });
       }
 
-      // 关键兜底：若 userId 过滤后为空，强制降级到本地 students[0]
-      const fallbackStudent =
-        filteredStudents[0] ||
-        normalizedAllStudents[0] ||
-        wx.getStorageSync('currentStudent') ||
-        null;
+      // 关键兜底：优先用 wx.getStorageSync('currentStudent')（学习页、学生选择页刚保存的），
+      // 再降级到 students 数组中的第一个，确保多学生场景下上下文不丢失
+      const storedStudent = wx.getStorageSync('currentStudent') || null;
+      const firstFiltered = filteredStudents[0] || null;
+      const firstAll = normalizedAllStudents[0] || null;
+
+      // 如果存储的学生在 filteredStudents 或 allStudents 中存在，优先使用
+      const storedMatch = storedStudent && (filteredStudents.some(s => String(s.id) === String(storedStudent.id)) || normalizedAllStudents.some(s => String(s.id) === String(storedStudent.id)));
+      const fallbackStudent = storedMatch
+        ? storedStudent
+        : (firstFiltered || firstAll || storedStudent || null);
 
       if (fallbackStudent && fallbackStudent.id) {
         const normalizedFallbackStudent = {
@@ -301,32 +335,32 @@ Page({
         loading: true // 暂时保持加载状态，直到数据恢复完成
       });
       
-      // 显示刷新提示，让用户知道数据正在恢复
-      wx.showToast({
-        title: '正在更新学习数据...',
-        icon: 'loading',
-        duration: 800
-      });
-      
       // 优先从studentSettings获取用户选择的词书
       let selectedWordbook = null;
       try {
-        const studentSettings = wx.getStorageSync('studentSettings') || {};
-        const studentWordbookKey = `student_${student.id}_wordbook`;
-        if (studentSettings[studentWordbookKey]) {
-          selectedWordbook = studentSettings[studentWordbookKey];
-          console.log('从studentSettings获取到用户选择的词书:', selectedWordbook.title);
+        // 检查学习页/词书选择页保存的当前词书（优先级最高）
+        const storedWordbook = wx.getStorageSync('selectedWordbook') || wx.getStorageSync('currentWordbook') || null;
+        if (storedWordbook && storedWordbook.id) {
+          selectedWordbook = storedWordbook;
+          console.log('从本地存储获取到用户选择的词书:', selectedWordbook.title);
         } else {
-          // 如果studentSettings中没有，尝试从页面状态获取
-          const pageStateKey = `${student.id}_pageState`;
-          const savedPageState = wx.getStorageSync(pageStateKey);
-          if (savedPageState && savedPageState.currentWordbook && savedPageState.timestamp) {
-            // 检查保存时间，确保是较新的数据（7天内）
-            const timeDiff = Date.now() - savedPageState.timestamp;
-            const sevenDaysInMs = 7 * 24 * 60 * 60 * 1000;
-            if (timeDiff < sevenDaysInMs) {
-              selectedWordbook = savedPageState.currentWordbook;
-              console.log('从页面状态获取到用户选择的词书:', selectedWordbook.title);
+          const studentSettings = wx.getStorageSync('studentSettings') || {};
+          const studentWordbookKey = `student_${student.id}_wordbook`;
+          if (studentSettings[studentWordbookKey]) {
+            selectedWordbook = studentSettings[studentWordbookKey];
+            console.log('从studentSettings获取到用户选择的词书:', selectedWordbook.title);
+          } else {
+            // 如果studentSettings中没有，尝试从页面状态获取
+            const pageStateKey = `${student.id}_pageState`;
+            const savedPageState = wx.getStorageSync(pageStateKey);
+            if (savedPageState && savedPageState.currentWordbook && savedPageState.timestamp) {
+              // 检查保存时间，确保是较新的数据（7天内）
+              const timeDiff = Date.now() - savedPageState.timestamp;
+              const sevenDaysInMs = 7 * 24 * 60 * 60 * 1000;
+              if (timeDiff < sevenDaysInMs) {
+                selectedWordbook = savedPageState.currentWordbook;
+                console.log('从页面状态获取到用户选择的词书:', selectedWordbook.title);
+              }
             }
           }
         }
@@ -340,34 +374,14 @@ Page({
           currentWordbook: selectedWordbook,
           learningWordbooks: selectedWordbook.title || selectedWordbook.name || '未知词书'
         });
+        // 同时更新全局数据
         app.globalData.currentWordbook = selectedWordbook;
       } else if (app.globalData.currentWordbook) {
+        // 如果没有保存的词书选择，但全局数据中有，使用全局数据
         this.setData({
           currentWordbook: app.globalData.currentWordbook,
           learningWordbooks: app.globalData.currentWordbook.title || app.globalData.currentWordbook.name || '未知词书'
         });
-      } else {
-        // 智能推断：从 wordMastery 找当前学生数据最多的词书
-        const studentId = student.id;
-        const wordMastery = wx.getStorageSync('wordMastery') || {};
-        const studentMastery = wordMastery[studentId];
-        if (studentMastery) {
-          let bestWbId = null;
-          let bestWbCount = 0;
-          Object.keys(studentMastery).forEach(wbId => {
-            const count = Object.keys(studentMastery[wbId] || {}).length;
-            if (count > bestWbCount) { bestWbCount = count; bestWbId = wbId; }
-          });
-          if (bestWbId) {
-            const inferred = { id: bestWbId, title: bestWbId.replace(/_/g, ' ') };
-            this.setData({ currentWordbook: inferred, learningWordbooks: inferred.title });
-            app.globalData.currentWordbook = inferred;
-            app.globalData.selectedWordbook = inferred;
-            wx.setStorageSync('selectedWordbook', inferred);
-            wx.setStorageSync('currentWordbook', inferred);
-            console.log('智能恢复词书:', bestWbId, '(数据量:', bestWbCount, ')');
-          }
-        }
       }
       
       // 仅在“已有学生且发生切换”时重置，避免首次进入把已恢复词书覆盖成未知
@@ -382,6 +396,7 @@ Page({
             dailyLearning: 0,
             weekStreak: 0
           },
+          totalUnmasteredWords: 0,
           recentRecords: [],
           currentWordbook: null,
           learningWordbooks: '未知词书'
@@ -416,16 +431,6 @@ Page({
         loading: false
       });
     }
-
-    // 读取云同步状态（静默，不打断用户）
-    try {
-      const status = getSyncStatus();
-      let syncState = 'ok';
-      if (status.pending > 0) {
-        syncState = status.lastFail > status.lastOk ? 'fail' : 'pending';
-      }
-      this.setData({ syncState, syncPendingCount: status.pending || 0 });
-    } catch (e) { /* ignore */ }
   },
   
   // 根据学生名字生成头像文本
@@ -444,38 +449,6 @@ Page({
       // 三个字或更多，只显示最后一个字（名）
       return name.slice(-1);
     }
-  },
-
-  // 云同步状态点点击：显示详情或手动重试
-  onSyncStatusTap: function() {
-    const status = getSyncStatus();
-    if (status.pending <= 0) {
-      wx.showToast({ title: '数据已全部同步', icon: 'success' });
-      return;
-    }
-    const lastOkStr = status.lastOk ? new Date(status.lastOk).toLocaleString() : '无';
-    const lastFailStr = status.lastFail ? new Date(status.lastFail).toLocaleString() : '无';
-    wx.showModal({
-      title: '同步状态',
-      content: '待同步: ' + status.pending + ' 条\n上次成功: ' + lastOkStr + '\n上次失败: ' + lastFailStr,
-      confirmText: '重试同步',
-      cancelText: '知道了',
-      success: (res) => {
-        if (res.confirm) {
-          const { retryPendingSyncs } = require('../../utils/cloud-sync.js');
-          wx.showLoading({ title: '同步中...' });
-          retryPendingSyncs().then(() => {
-            wx.hideLoading();
-            const updated = getSyncStatus();
-            this.setData({ syncState: updated.pending > 0 ? 'pending' : 'ok', syncPendingCount: updated.pending || 0 });
-            wx.showToast({ title: updated.pending > 0 ? '仍有 ' + updated.pending + ' 条待同步' : '同步完成', icon: 'none' });
-          }).catch(() => {
-            wx.hideLoading();
-            wx.showToast({ title: '重试失败，请稍后再试', icon: 'none' });
-          });
-        }
-      }
-    });
   },
 
   // 设置默认模拟数据，确保页面能立即显示内容
@@ -501,7 +474,6 @@ Page({
   },
   
   // 跳转到学习记录页面
-
   goToRecords: function() {
     // 保存当前状态
     this.saveCurrentPageState();
@@ -584,18 +556,6 @@ Page({
           formattedDate = date.getFullYear() + '年' + (date.getMonth() + 1) + '月' + date.getDate() + '日';
         }
         
-        // 计算学习时长（秒）
-        let studyTime = 0;
-        if (record.studyTime && typeof record.studyTime === 'number') {
-          studyTime = record.studyTime;
-        } else if (record.duration && typeof record.duration === 'number') {
-          studyTime = Math.floor(record.duration * 60);
-        } else if (record.duration && typeof record.duration === 'string') {
-          studyTime = Math.floor(parseFloat(record.duration) * 60);
-        } else if (record.studyTime && typeof record.studyTime === 'string') {
-          studyTime = Math.floor(parseFloat(record.studyTime));
-        }
-        
         return {
           ...record,
           id: record.id || Date.now().toString() + Math.random().toString(36).substr(2, 9),
@@ -603,7 +563,6 @@ Page({
           formattedDate: formattedDate,
           // 确保有必要的字段 - 使用与saveLearningRecord一致的字段名称
           wordCount: record.totalWords || record.wordCount || 0,
-          studyTime: studyTime,
           wordbookName: record.wordbookTitle || record.wordbookName || '未知词书'
         };
       });
@@ -954,29 +913,11 @@ Page({
       const student = this.data.currentStudent;        
 
       if (student && student.id) {
-        // ★ 优先读取 stats_ 缓存（已是云端和本地的 max 值，含管理员修正）
-        const statsCacheKey = 'stats_' + student.id;
-        const cachedStats = wx.getStorageSync(statsCacheKey) || null;
-        if (cachedStats && cachedStats.isManualOverride === true && typeof cachedStats.masteredCount === 'number') {
-          // 使用 stats_ 缓存（已由 stats-engine 保证只进不退）
-          const stats = {
-            totalWords: 0,
-            learnedWords: cachedStats.masteredCount || 0,
-            dailyLearning: 0,
-            weekStreak: cachedStats.checkinDays || 0
-          };
-          this.setData({
-            learningStats: stats,
-            totalUnmasteredWords: cachedStats.notMasteredCount || 0
-          });
-          console.log('首页使用 stats_ 缓存:', stats, '手动修正:', !!cachedStats.isManualOverride);
-          return;
-        }
-
-        // 后备：旧版 _stats 缓存
-        const oldStatsKey = student.id + '_stats';
-        let stats = wx.getStorageSync(oldStatsKey) || {};
+        // 从存储中获取学生的学习统计数据作为初始值
+        const statsKey = student.id + '_stats';
+        let stats = wx.getStorageSync(statsKey) || {};
         
+        // 确保统计数据完整性，防止显示undefined
         stats = {
           totalWords: stats.totalWords || 0,
           learnedWords: stats.learnedWords || 0,
@@ -984,7 +925,10 @@ Page({
           weekStreak: stats.weekStreak || 0
         };
         
+        // 立即设置数据，确保页面响应速度
         this.setData({ learningStats: stats });
+        
+        // 立即调用实时更新方法，确保数据最新
         this.updateRealTimeStats(student.id);
       }
     } catch (error) {
@@ -996,7 +940,8 @@ Page({
           learnedWords: 0,
           dailyLearning: 0,
           weekStreak: 0
-        }
+        },
+        totalUnmasteredWords: 0
       });
     }
   },
@@ -1006,9 +951,21 @@ Page({
     try {
       console.log('开始更新实时统计数据:', new Date().toLocaleTimeString());
       
+      // ★ 每次打开首页时自动修复缺失的 antiForgettingSeed
+      try {
+        const repaired = repairMissingAntiForgettingSeed();
+        if (repaired > 0) {
+          console.log('[首页] 自动修复了', repaired, '个缺失 antiForgettingSeed 的单词');
+        } else {
+          console.log('[首页] antiForgettingSeed 数据正常，无需修复');
+        }
+      } catch (repairErr) {
+        console.error('[首页] 修复 antiForgettingSeed 失败:', repairErr);
+      }
+      
       // 获取最新的学习记录
       const learningRecords = wx.getStorageSync('learningRecords') || [];
-      const studentRecords = learningRecords.filter(record => record.studentId === studentId);
+      const studentRecords = learningRecords.filter(record => String(record.studentId) === String(studentId));
       
       // 计算今日学习数据 - 更精确的时间计算
       const today = new Date();
@@ -1052,7 +1009,6 @@ Page({
       
       // 计算连续学习天数 - 保持原有逻辑
       let streakDays = 0;
-      let totalCheckinDays = 0;
       if (studentRecords.length > 0) {
         const uniqueDates = new Set();
         studentRecords.forEach(record => {
@@ -1061,16 +1017,15 @@ Page({
           recordDay.setHours(0, 0, 0, 0);
           uniqueDates.add(recordDay.getTime());
         });
-
-        totalCheckinDays = uniqueDates.size;
+        
         const sortedDates = Array.from(uniqueDates).sort((a, b) => b - a);
         let currentDate = new Date();
         currentDate.setHours(0, 0, 0, 0);
-
+        
         for (let i = 0; i < sortedDates.length; i++) {
           let expectedDate = new Date(currentDate);
           expectedDate.setDate(expectedDate.getDate() - i);
-
+          
           if (sortedDates[i] === expectedDate.getTime()) {
             streakDays++;
           } else {
@@ -1107,7 +1062,7 @@ Page({
 
       let totalWords = 0;
       let learnedWords = 0;
-      let totalUnmasteredWords = 0;
+      let unmasteredWords = 0;
 
       if (currentWordbook && currentWordbook.id) {
         totalWords =
@@ -1115,44 +1070,21 @@ Page({
           (currentWordbook.words ? currentWordbook.words.length : 0) ||
           0;
 
-        // 优先从 wordMastery 中计算「当前词书」已学单词数和未掌握单词数
+        // 优先从 wordMastery 中计算「当前词书」已学/未掌握单词数
         if (studentMastery && studentMastery[currentWordbook.id]) {
           const wordbookMastery = studentMastery[currentWordbook.id];
-          const wordbookId = currentWordbook.id;
-          const hasPrefix = wordbookId && wordbookId.includes('_');
-          const prefix = hasPrefix ? (wordbookId + '_') : '';
-
-          // ★ 向后兼容：检测当前词书中是否有任何单词已完成学习（isLearned === true）
-          const allWordIds = Object.keys(wordbookMastery).filter(wid => {
-            if (prefix && !String(wid).startsWith(prefix)) return false;
-            return wordbookMastery[wid] && typeof wordbookMastery[wid] === 'object';
-          });
-          const hasAnyLearnedFlag = allWordIds.some(wid => {
-            const r = wordbookMastery[wid];
-            return r && r.isLearned === true;
-          });
-
-          Object.keys(wordbookMastery).forEach(wordId => {
+          const wordIds = Object.keys(wordbookMastery);
+          learnedWords = 0;
+          unmasteredWords = 0;
+          wordIds.forEach(wordId => {
             const wordRecord = wordbookMastery[wordId];
-            if (!wordRecord || typeof wordRecord !== 'object') return;
-
-            // 安全隔离：带前缀的词书只统计属于当前词书的单词
-            if (prefix && !String(wordId).startsWith(prefix)) return;
-
-            // ★ 向后兼容：仅当词书中存在 isLearned 标记时才过滤
-            // 修复：只跳过明确标记 isLearned === false 且无 mastered/difficult 的单词
-            // 老数据可能 isLearned 为 false/undefined，但有 mastered/difficult 说明已学过
-            if (hasAnyLearnedFlag && wordRecord.isLearned === false
-                && !wordRecord.mastered && !wordRecord.difficult) return;
-
-            const isMastered = wordRecord.mastered === true;
-            const isDifficult = wordRecord.difficult === true;
-
-            if (isMastered || isDifficult) {
-              learnedWords++;
-            }
-            if (isDifficult) {
-              totalUnmasteredWords++;
+            if (wordRecord) {
+              if (wordRecord.mastered || wordRecord.difficult) {
+                learnedWords++;
+              }
+              if (wordRecord.difficult) {
+                unmasteredWords++;
+              }
             }
           });
         } else {
@@ -1164,104 +1096,48 @@ Page({
           if (totalWords === 0) {
             totalWords = bookProgress.totalCount || 0;
           }
+          // 后备逻辑无法计算未掌握数，置为 0
+          unmasteredWords = 0;
         }
       } else {
         // 没有当前词书：不再跨词书汇总，避免把不同词书混到首页统计里
         totalWords = 0;
         learnedWords = 0;
-      }
-
-      // 若存在手动修正（词书级优先），则在计算值基础上覆盖
-      let statsCacheKey = null;
-      let cachedStats = null;
-      
-      // 先尝试词书级手动修正
-      if (currentWordbook && currentWordbook.id) {
-        const wbKey = `wordbook_stats_${studentId}_${currentWordbook.id}`;
-        const wbCache = wx.getStorageSync(wbKey) || null;
-        if (wbCache && wbCache.isManualOverride === true) {
-          statsCacheKey = wbKey;
-          cachedStats = wbCache;
-        }
+        unmasteredWords = 0;
       }
       
-      // 没有词书级修正时，回退到全词书 stats_
-      if (!cachedStats) {
-        statsCacheKey = 'stats_' + studentId;
-        cachedStats = wx.getStorageSync(statsCacheKey) || null;
-      }
-      
-      if (cachedStats && cachedStats.isManualOverride === true) {
-        const readNumber = (value) => {
-          const n = Number(value);
-          return Number.isFinite(n) ? n : null;
-        };
-
-        let manualMastered = readNumber(cachedStats.manualMasteredCount);
-        if (manualMastered === null) manualMastered = readNumber(cachedStats.masteredCount) || 0;
-
-        let manualNotMastered = readNumber(cachedStats.manualNotMasteredCount);
-        if (manualNotMastered === null) manualNotMastered = readNumber(cachedStats.notMasteredCount) || 0;
-
-        let manualCheckin = readNumber(cachedStats.manualCheckinDays);
-        if (manualCheckin === null) manualCheckin = readNumber(cachedStats.checkinDays) || 0;
-
-        const baseMastered = readNumber(cachedStats.baseMasteredCount);
-        const baseNotMastered = readNumber(cachedStats.baseNotMasteredCount);
-        const baseCheckin = readNumber(cachedStats.baseCheckinDays);
-        const hasBase = baseMastered !== null && baseNotMastered !== null && baseCheckin !== null;
-
-        if (hasBase) {
-          learnedWords = manualMastered + Math.max(0, learnedWords - baseMastered);
-          totalUnmasteredWords = manualNotMastered + Math.max(0, totalUnmasteredWords - baseNotMastered);
-          streakDays = manualCheckin + Math.max(0, totalCheckinDays - baseCheckin);
-        } else {
-          learnedWords = Math.max(manualMastered, learnedWords);
-          totalUnmasteredWords = Math.max(manualNotMastered, totalUnmasteredWords);
-          streakDays = Math.max(manualCheckin, totalCheckinDays || streakDays);
-        }
-      }
-      
-      console.log('首页统计数据计算:', {
-        totalWords,
-        learnedWords,
-        totalUnmasteredWords,
+      console.log('首页统计数据诊断:', JSON.stringify({
+        currentWordbookId: currentWordbook ? currentWordbook.id : 'NULL',
+        currentWordbookTitle: currentWordbook ? currentWordbook.title : 'NULL',
+        totalWords: totalWords,
+        learnedWords: learnedWords,
+        unmasteredWords: unmasteredWords,
+        wordMasteryStudentKeys: Object.keys(studentMastery),
+        wordMasteryWordbookKeys: studentMastery ? Object.keys(studentMastery) : [],
+        wordMasteryCurrentBookWordCount: studentMastery && currentWordbook && studentMastery[currentWordbook.id] 
+          ? Object.keys(studentMastery[currentWordbook.id]).length : 0,
         hasWordMastery: Object.keys(studentMastery).length > 0
-      });
+      }));
       
       // 合并并更新统计数据
       const updatedStats = {
         totalWords: totalWords,
         learnedWords: learnedWords,
         dailyLearning: todayWords,
-        weekStreak: streakDays,
-        notMasteredCount: totalUnmasteredWords
+        weekStreak: streakDays
       };
       
-      // 立即更新到页面数据（totalUnmasteredWords 单独设置，给 wxml 用）
-      this.setData({ learningStats: updatedStats, totalUnmasteredWords: totalUnmasteredWords }, () => {
-        console.log('统计数据已更新到页面:', updatedStats, '未掌握:', totalUnmasteredWords);
+      // 立即更新到页面数据
+      this.setData({
+        learningStats: updatedStats,
+        totalUnmasteredWords: unmasteredWords
+      }, () => {
+        console.log('统计数据已更新到页面:', updatedStats);
       });
       
-      // 同时更新到存储（仅当有有效数据时才写入，防止空数据覆盖正确缓存）
-      if (totalWords > 0 || learnedWords > 0 || todayWords > 0 || streakDays > 0 || totalUnmasteredWords > 0) {
-        const statsKey = studentId + '_stats';
-        // 如果实时计算值大于手动修正值，清除手动修正标记，让实时值生效
-        const existingStats = wx.getStorageSync(statsKey) || {};
-        if (existingStats.isManualOverride && totalUnmasteredWords > (existingStats.manualNotMasteredCount || existingStats.notMasteredCount || 0)) {
-          console.log('实时未掌握(' + totalUnmasteredWords + ')超过手动修正值，清除手动修正标记');
-          delete existingStats.isManualOverride;
-          delete existingStats.manualMasteredCount;
-          delete existingStats.manualNotMasteredCount;
-          delete existingStats.manualCheckinDays;
-          delete existingStats.baseMasteredCount;
-          delete existingStats.baseNotMasteredCount;
-          delete existingStats.baseCheckinDays;
-        }
-        wx.setStorageSync(statsKey, { ...existingStats, ...updatedStats });
-      } else {
-        console.log('updateRealTimeStats: 统计数据全为0，跳过写入缓存，防止覆盖已有数据');
-      }
+      // 同时更新到存储
+      const statsKey = studentId + '_stats';
+      wx.setStorageSync(statsKey, updatedStats);
       
       // 保存当前页面状态
       this.saveCurrentPageState();
@@ -1354,6 +1230,7 @@ Page({
         for (const wordId in masteredWords) {
           if (masteredWords[wordId].nextReviewTime) {
             const nextReviewTime = masteredWords[wordId].nextReviewTime;
+            console.log('首页：检查单词:', wordId, '复习时间:', new Date(nextReviewTime).toLocaleString());
             
             // 检查是否在今天范围内（包括精确到毫秒的当前时间之后）
             if (nextReviewTime >= todayStartTime && nextReviewTime <= todayEndTime) {
@@ -1362,6 +1239,7 @@ Page({
             
             // 新增：检查是否是新学单词（reviewCount <= 1），确保当天显示抗遗忘
             if (masteredWords[wordId].reviewCount && masteredWords[wordId].reviewCount <= 1) {
+              console.log('首页：新学单词', wordId, '需要当天复习');
               hasTodayReview = true;
             }
             
@@ -1374,6 +1252,7 @@ Page({
           } else {
             // 新增：处理没有nextReviewTime的情况，确保新学单词能被识别
             if (masteredWords[wordId].reviewCount && masteredWords[wordId].reviewCount <= 1) {
+              console.log('首页：新学单词', wordId, '没有复习时间，但需要当天复习');
               hasTodayReview = true;
               // 设置一个当天的复习时间
               nearestReviewTime = now;
@@ -1844,13 +1723,9 @@ Page({
       // 记录学习开始时间，用于计算学习时长
       app.globalData.studyStartTime = new Date().getTime();
       
-      // 显示加载提示，让用户立即感知到操作已触发
-      wx.showLoading({ title: '正在加载...', mask: true });
-      
       // 跳转到学习页面并传递词书ID参数和fromStart标志
       wx.navigateTo({
-        url: `/pages/learning/learning?wordbookId=${wordbookId}&fromStart=true`,
-        complete: () => { wx.hideLoading(); }
+        url: `/pages/learning/learning?wordbookId=${wordbookId}&fromStart=true`
       });
     } else {
       wx.showToast({
@@ -1883,7 +1758,6 @@ Page({
       url: '/subpages/stats/stats'
     });
   },
-
 
   // 跳转到学生选择页面
   navigateToStudentSelect: function() {
@@ -2024,6 +1898,13 @@ Page({
         });
       }
     }, 500);
+  },
+
+  /** 跳转到登录页 */
+  goToLogin: function () {
+    wx.navigateTo({
+      url: '/pages/login/login'
+    });
   },
 
 

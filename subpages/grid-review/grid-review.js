@@ -1,6 +1,6 @@
 // pages/grid-review/grid-review.js
 const { generateWordsForBook } = require('../../data/wordbook-loader.js');
-const { syncWordMasteryBatch, syncPreviewState, loadPreviewStateFromCloud } = require('../../utils/cloud-sync.js');
+const { syncWordMasteryBatch } = require('../../utils/cloud-sync.js');
 
 Page({
   data: {
@@ -39,45 +39,6 @@ Page({
     console.log('九宫格复习页面显示');
     this.syncFromGlobalData();
     this.checkSelectedStudentAndWordbook();
-  },
-
-  onHide: function() {
-    // 【V2.0 预览云同步】页面隐藏时刷新同步（取消防抖，立即上传）
-    this._flushGridStateToCloud();
-  },
-
-  onUnload: function() {
-    // 【V2.0 预览云同步】页面卸载时刷新同步（取消防抖，立即上传）
-    this._flushGridStateToCloud();
-  },
-
-  _flushGridStateToCloud: function() {
-    if (this._gridSyncTimer) {
-      clearTimeout(this._gridSyncTimer);
-      this._gridSyncTimer = null;
-    }
-    this._doSyncGridStateToCloud();
-  },
-
-  // 【V2.0 预览云同步】同步九宫格标记到云端（实际API调用）
-  _doSyncGridStateToCloud: function() {
-    try {
-      const studentId = this.data.currentStudent?.id;
-      const wordbookId = this.data.currentWordbook?.id;
-      if (!studentId || !wordbookId) return;
-
-      const previewMastery = this.data.previewMastery || {};
-      if (Object.keys(previewMastery).length === 0) return;
-
-      syncPreviewState(studentId, wordbookId, {
-        mastery: previewMastery,
-        order: [],
-        excluded: []
-      });
-      console.log('[preview-sync] 九宫格标记已提交云同步, mastery=', Object.keys(previewMastery).length);
-    } catch (e) {
-      console.warn('[preview-sync] 同步九宫格标记失败:', e);
-    }
   },
 
   syncFromGlobalData: function() {
@@ -354,24 +315,6 @@ Page({
       if (!savedPreviewMastery || Object.keys(savedPreviewMastery).length === 0) {
         savedPreviewMastery = wx.getStorageSync(`previewMastery_${studentId}_${wordbookId}`) || {};
       }
-
-      // 【V2.0 预览云同步】异步从云端加载并合并（云端覆盖本地）
-      const that = this;
-      loadPreviewStateFromCloud(studentId, wordbookId).then(function(cloudPreview) {
-        if (!cloudPreview || !cloudPreview.mastery) return;
-        const cloudMastery = cloudPreview.mastery || {};
-        if (Object.keys(cloudMastery).length === 0) return;
-
-        const merged = Object.assign({}, savedPreviewMastery, cloudMastery);
-        if (that.data && that.setData) {
-          that.setData({ previewMastery: merged });
-        }
-        try {
-          wx.setStorageSync('gridMastery_' + studentId + '_' + wordbookId, merged);
-        } catch (e) { /* ignore */ }
-        console.log('云端九宫格标记已合并, mastery=', Object.keys(merged).length);
-      });
-
       return savedPreviewMastery;
     } catch (error) {
       console.error('获取保存的预习掌握状态失败:', error);
@@ -474,13 +417,6 @@ Page({
       
       wx.setStorageSync(`gridMastery_${studentId}_${wordbookId}`, this.data.previewMastery);
       console.log('九宫格掌握状态保存成功');
-
-      // 【V2.0 预览云同步】防抖：3秒无操作后打包上传
-      if (this._gridSyncTimer) clearTimeout(this._gridSyncTimer);
-      this._gridSyncTimer = setTimeout(() => {
-        this._gridSyncTimer = null;
-        this._doSyncGridStateToCloud();
-      }, 3000);
     } catch (error) {
       console.error('保存九宫格掌握状态失败:', error);
     }
