@@ -1,5 +1,6 @@
 // pages/index/index.js
 const { repairMissingAntiForgettingSeed } = require('../../utils/anti-forgetting-filter.js');
+const { getWordbookMasterySummary } = require('../../utils/learning-progress.js');
 
 Page({
   data: {
@@ -1071,22 +1072,11 @@ Page({
           0;
 
         // 优先从 wordMastery 中计算「当前词书」已学/未掌握单词数
-        if (studentMastery && studentMastery[currentWordbook.id]) {
-          const wordbookMastery = studentMastery[currentWordbook.id];
-          const wordIds = Object.keys(wordbookMastery);
-          learnedWords = 0;
-          unmasteredWords = 0;
-          wordIds.forEach(wordId => {
-            const wordRecord = wordbookMastery[wordId];
-            if (wordRecord) {
-              if (wordRecord.mastered || wordRecord.difficult) {
-                learnedWords++;
-              }
-              if (wordRecord.difficult) {
-                unmasteredWords++;
-              }
-            }
-          });
+        const wordbookMastery = studentMastery && studentMastery[currentWordbook.id];
+        const masterySummary = getWordbookMasterySummary(currentWordbook.id, wordbookMastery);
+        if (masterySummary.entryCount > 0) {
+          learnedWords = masterySummary.learnedCount;
+          unmasteredWords = masterySummary.unmasteredCount;
         } else {
           // 后备：使用 learningProgress[studentId].wordbooks[wordbookId]，不做跨词书汇总
           const studentProgress = learningProgress[studentId] || {};

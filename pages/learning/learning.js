@@ -3084,6 +3084,7 @@ Page({
         studentName: this.data.currentStudent.name,
         wordbookId: this.data.currentWordbook.id,
         wordbookTitle: this.data.currentWordbook.title,
+        wordbookTotalWords: Number(this.data.currentWordbook.totalWords || 0) || 0,
         totalWords: recordTotalWords,
         masteredWords: masteredWordIds.length,
         correctRate: parseFloat(correctRate),

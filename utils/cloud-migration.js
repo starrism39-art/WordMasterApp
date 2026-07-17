@@ -32,6 +32,7 @@ const {
   syncWordMasteryBatch,
   syncLearningProgress
 } = require('./cloud-sync.js');
+const { reconcileLearningProgressMap } = require('./learning-progress.js');
 
 const chunkArray = (items, size) => {
   if (!Array.isArray(items) || items.length === 0) {
@@ -591,6 +592,12 @@ const syncDataFromCloud = async (openid) => {
       mergedMastery = localMastery;
     }
 
+    try {
+      mergedProgress = reconcileLearningProgressMap(mergedProgress, mergedMastery, mergedRecords);
+    } catch (e) {
+      console.error('[cloud-sync] 根据原始明细重算学习进度失败，保留合并结果:', e);
+    }
+
     console.log('[cloud-sync] 合并后: students=' + mergedStudents.length +
       ' | learning_records=' + mergedRecords.length +
       ' | progress=' + Object.keys(mergedProgress || {}).length +
@@ -599,7 +606,7 @@ const syncDataFromCloud = async (openid) => {
     // 安全日志：记录本次合入概况
     console.log('[cloud-sync] 语义合并完成 | students 本地' + localStudents.length + '→合并' + mergedStudents.length +
       ' | wordMastery 本地' + Object.keys(localMastery).length + '→合并' + Object.keys(mergedMastery).length +
-      ' | 策略=语义级（进度只进不退）');
+      ' | 策略=原始记录语义合并，派生进度按单词去重重算');
 
     wx.setStorageSync('students', mergedStudents);
     wx.setStorageSync('learningRecords', mergedRecords);

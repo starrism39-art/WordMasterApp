@@ -1,6 +1,7 @@
 // pages/stats/stats.js
 const loginService = require('../../utils/login-service.js');
 const cloudMigration = require('../../utils/cloud-migration.js');
+const { getWordbookMasterySummary } = require('../../utils/learning-progress.js');
 
 Page({
   data: {
@@ -391,20 +392,6 @@ Page({
         });
       };
 
-      const normalizeBoolean = (value) => {
-        if (value === true || value === false) return value;
-        if (value === 1) return true;
-        if (value === 0) return false;
-        if (typeof value === 'string') {
-          const normalized = value.trim().toLowerCase();
-          if (normalized === 'true') return true;
-          if (normalized === 'false') return false;
-          if (normalized === '1') return true;
-          if (normalized === '0') return false;
-        }
-        return null;
-      };
-
       const normalizeStatusToken = (statusValue) => {
         if (statusValue === undefined || statusValue === null) return '';
         return String(statusValue).trim().toLowerCase().replace(/[^a-z]/g, '');
@@ -463,55 +450,15 @@ Page({
 
         const studentMastery = wordMastery[currentStudent.id] || {};
         const wordbookMastery = studentMastery[currentWordbook.id] || {};
-
-        // ★ P0修复：检测当前词书是否使用前缀式wordId，用于跨词书安全隔离
-        const wordbookId = currentWordbook.id;
-        const hasPrefix = wordbookId && wordbookId.includes('_');
-        const prefix = hasPrefix ? (wordbookId + '_') : '';
-
-        // ★ 向后兼容：检测当前词书中是否有任何单词已完成学习（isLearned === true）
-        // 如果没有任何单词有 isLearned===true（历史数据），则不过滤，统计所有单词
-        const allWordIds = Object.keys(wordbookMastery).filter(wid => {
-          if (prefix && !String(wid).startsWith(prefix)) return false;
-          return wordbookMastery[wid] && typeof wordbookMastery[wid] === 'object';
-        });
-        const hasAnyLearnedFlag = allWordIds.some(wid => {
-          const r = wordbookMastery[wid];
-          return r && r.isLearned === true;
-        });
-
-        Object.keys(wordbookMastery).forEach(wordId => {
-          const wordRecord = wordbookMastery[wordId];
-          if (!wordRecord || typeof wordRecord !== 'object') return;
-
-          // ★ 安全隔离：带前缀的词书只统计属于当前词书的单词；老词书（无前缀）全取
-          if (prefix && !String(wordId).startsWith(prefix)) return;
-
-          // ★ 向后兼容：仅当词书中存在 isLearned 标记时才过滤
-          // 历史数据（无 isLearned 字段）全部参与统计
-          if (hasAnyLearnedFlag && wordRecord.isLearned !== true) return;
-
-          const masteredValue = normalizeBoolean(wordRecord.mastered);
-          const difficultValue = normalizeBoolean(wordRecord.difficult);
-          const isMastered = masteredValue === true;
-          const isDifficult = difficultValue === true;
-          // ★ P0修复：未掌握判定严格以 difficult===true 为准
-          const isUnmastered = isDifficult;
-
-          if (isMastered || isDifficult) {
-            totalLearnedWords++;
-          }
-
-          if (isUnmastered) {
-            totalUnmasteredWords++;
-          }
-        });
+        const masterySummary = getWordbookMasterySummary(currentWordbook.id, wordbookMastery);
+        totalLearnedWords = masterySummary.learnedCount;
+        totalUnmasteredWords = masterySummary.unmasteredCount;
 
         learnedWords = totalLearnedWords;
         reviewWords = todayNewWords;
 
         // 后备：若当前词书没有 mastery 记录，尝试从 learningRecords 恢复已学/未掌握
-        if (totalLearnedWords === 0) {
+        if (masterySummary.entryCount === 0) {
           const studentProgress = learningProgress[currentStudent.id] || {};
           const studentWordbooksProgress = studentProgress.wordbooks || {};
           const bookProgress = studentWordbooksProgress[currentWordbook.id] || {};

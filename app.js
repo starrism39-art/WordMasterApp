@@ -10,6 +10,10 @@ const DataMigration = require('./utils/data-migration.js');
 
 // 引入云同步模块
 const { syncLearningRecord, syncLearningProgress, syncAllLocalLearningProgress, retryPendingSyncs } = require('./utils/cloud-sync.js');
+const {
+  reconcileLearningProgressMap,
+  reconcileStudentLearningProgress
+} = require('./utils/learning-progress.js');
 
 // 引入云端词书加载器
 const cloudWordbookLoader = require('./utils/cloud-wordbook-loader.js');
@@ -239,6 +243,11 @@ App({
           }
 
           studentLevelKeys.add(key);
+          Object.keys(value).forEach((field) => {
+            if (field !== 'wordbooks') {
+              studentProgress[field] = value[field];
+            }
+          });
           studentProgress.learnedWords = Number(value.learnedWords || 0) || 0;
           studentProgress.totalWords = Number(value.totalWords || 0) || 0;
 
@@ -362,8 +371,16 @@ App({
         studentProgress.totalWords = Math.max(Number(studentProgress.totalWords || 0) || 0, summedTotalWords);
       });
 
+      // 进度是可重算的派生数据。原始学习记录和掌握明细保持不动，
+      // 这里只根据两者纠正累计漂移，并保留旧计数到 legacy 字段。
+      const reconciledProgress = reconcileLearningProgressMap(
+        normalizedProgress,
+        wx.getStorageSync('wordMastery') || {},
+        wx.getStorageSync('learningRecords') || []
+      );
+      const progressReconciled = JSON.stringify(reconciledProgress) !== JSON.stringify(normalizedProgress);
       const sourceKeys = Object.keys(source);
-      const normalizedKeys = Object.keys(normalizedProgress);
+      const normalizedKeys = Object.keys(reconciledProgress);
       const hasFlatKeys = sourceKeys.some((key) => {
         if (studentLevelKeys.has(key)) {
           return false;
@@ -375,12 +392,13 @@ App({
         return !(value.wordbooks && typeof value.wordbooks === 'object' && !Array.isArray(value.wordbooks));
       });
 
-      normalizedChanged = migratedFlatCount > 0 || hasFlatKeys || sourceKeys.length !== normalizedKeys.length;
+      normalizedChanged = migratedFlatCount > 0 || hasFlatKeys || sourceKeys.length !== normalizedKeys.length || progressReconciled;
       if (normalizedChanged) {
-        wx.setStorageSync('learningProgress', normalizedProgress);
+        wx.setStorageSync('learningProgress', reconciledProgress);
         console.log('learningProgress 迁移完成:', {
           migratedFlatCount,
-          studentCount: normalizedKeys.length
+          studentCount: normalizedKeys.length,
+          progressReconciled
         });
       }
 
@@ -717,46 +735,28 @@ App({
   updateLearningProgress: function(record) {
     try {
       const learningProgress = wx.getStorageSync('learningProgress') || {};
-      const studentId = record.studentId;
-      
-      // 确保学生进度对象存在
-      if (!learningProgress[studentId] || typeof learningProgress[studentId] !== 'object' || Array.isArray(learningProgress[studentId])) {
-        learningProgress[studentId] = {
-          learnedWords: 0,
-          totalWords: 0,
-          wordbooks: {}
-        };
+      const wordMastery = wx.getStorageSync('wordMastery') || {};
+      const learningRecords = wx.getStorageSync('learningRecords') || [];
+      const studentId = String(record.studentId || '');
+      const wordbookId = String(record.wordbookId || '');
+      const now = Date.now();
+      const lastStudyTime = record.studyDate || new Date(now).toISOString();
+      const bookTotals = {};
+      if (wordbookId && record.wordbookTotalWords) {
+        bookTotals[wordbookId] = record.wordbookTotalWords;
       }
-      
-      const studentProgress = learningProgress[studentId];
-      if (!studentProgress.wordbooks || typeof studentProgress.wordbooks !== 'object' || Array.isArray(studentProgress.wordbooks)) {
-        studentProgress.wordbooks = {};
-      }
-      const wordsLearned = record.totalWords || record.wordCount || record.wordsLearned || 0;
-      
-      // 更新全局学习单词数
-      studentProgress.learnedWords = (studentProgress.learnedWords || 0) + wordsLearned;
-      
-      // 如果提供了词书ID，更新特定词书的进度
-      if (record.wordbookId) {
-        const wordbookId = String(record.wordbookId);
-        const currentWordbookProgress = studentProgress.wordbooks[wordbookId] || {};
-        const currentCompletedCount = Number(currentWordbookProgress.completedCount || currentWordbookProgress.learnedWords || 0) || 0;
-        const nextCompletedCount = currentCompletedCount + wordsLearned;
-        const currentTotalCount = Number(currentWordbookProgress.totalCount || 0) || 0;
-        const recordTotalCount = Number(record.wordbookTotalWords || 0) || 0;
-        const nextTotalCount = Math.max(currentTotalCount, recordTotalCount);
-        const lastStudyTime = record.studyDate || new Date().toISOString();
 
-        studentProgress.wordbooks[wordbookId] = {
-          ...currentWordbookProgress,
-          completedCount: nextCompletedCount,
-          learnedWords: nextCompletedCount,
-          totalCount: nextTotalCount,
-          lastStudyTime: lastStudyTime,
-          lastStudied: lastStudyTime
-        };
-      }
+      const studentProgress = reconcileStudentLearningProgress({
+        studentId,
+        progressData: learningProgress[studentId],
+        studentMastery: wordMastery[studentId],
+        learningRecords,
+        bookTotals,
+        updatedBookId: wordbookId,
+        lastStudyTime,
+        updatedAt: now
+      });
+      learningProgress[studentId] = studentProgress;
       
       // 保存更新后的进度数据
       wx.setStorageSync('learningProgress', learningProgress);

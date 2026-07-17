@@ -14,6 +14,7 @@
 'use strict';
 
 const DEFAULT_ENV = 'cloudbase-4gafzdch60ad597b';
+const { getWordbookMasterySummary } = require('./learning-progress.js');
 
 // ===== 云端推送工具 =====
 const syncStudentStatsToCloud = async (studentId, stats) => {
@@ -96,44 +97,9 @@ const calculateWordbookStats = (studentId, wordbookId) => {
     const wordMastery = wx.getStorageSync('wordMastery') || {};
     const studentMastery = wordMastery[studentId] || {};
     const wordbookMastery = studentMastery[wordbookId] || {};
-
-    // ★ 检测词书是否使用前缀式wordId（新词书），用于安全隔离
-    const hasPrefix = wordbookId && wordbookId.includes('_');
-    const prefix = hasPrefix ? (wordbookId + '_') : '';
-
-    let masteredCount = 0;
-    let notMasteredCount = 0;
-
-    // ★ 向后兼容：检测词书中是否有任何单词已完成学习（isLearned === true）
-    const allWordIds = Object.keys(wordbookMastery).filter(wid => {
-      if (prefix && !String(wid).startsWith(prefix)) return false;
-      return wordbookMastery[wid] && typeof wordbookMastery[wid] === 'object';
-    });
-    const hasAnyLearnedFlag = allWordIds.some(wid => {
-      const r = wordbookMastery[wid];
-      return r && r.isLearned === true;
-    });
-
-    Object.keys(wordbookMastery).forEach((wordId) => {
-      const record = wordbookMastery[wordId];
-      if (!record || typeof record !== 'object') return;
-
-      // ★ 安全隔离：带前缀词书只统计本词书的单词
-      if (prefix && !String(wordId).startsWith(prefix)) return;
-
-      // ★ 向后兼容：仅当词书中存在 isLearned===true 标记时才过滤
-      // 历史数据（无 isLearned 字段）全部参与统计
-      const isLearned = !hasAnyLearnedFlag || record.isLearned === true;
-      const isMastered = record.mastered === true;
-      const isDifficult = record.difficult === true;
-
-      if (isLearned && (isMastered || isDifficult)) {
-        masteredCount += 1;
-      }
-      if (isLearned && isDifficult) {
-        notMasteredCount += 1;
-      }
-    });
+    const masterySummary = getWordbookMasterySummary(wordbookId, wordbookMastery);
+    const masteredCount = masterySummary.learnedCount;
+    const notMasteredCount = masterySummary.unmasteredCount;
 
     // 打卡天数：只统计当前词书的记录
     const learningRecords = (() => {
@@ -186,29 +152,9 @@ const calculateStudentCoreStats = (studentId) => {
 
     Object.keys(studentMastery).forEach((wordbookId) => {
       const wordbookMastery = studentMastery[wordbookId] || {};
-
-      // ★ 向后兼容：检测该词书中是否有任何单词已完成学习
-      const hasAnyLearnedFlag = Object.keys(wordbookMastery).some(wid => {
-        const r = wordbookMastery[wid];
-        return r && r.isLearned === true;
-      });
-
-      Object.keys(wordbookMastery).forEach((wordId) => {
-        const record = wordbookMastery[wordId];
-        if (!record || typeof record !== 'object') return;
-
-        // ★ 向后兼容：仅当词书中存在 isLearned===true 标记时才过滤
-        const isLearned = !hasAnyLearnedFlag || record.isLearned === true;
-        const isMastered = record.mastered === true;
-        const isDifficult = record.difficult === true;
-
-        if (isLearned && (isMastered || isDifficult)) {
-          masteredCount += 1; // 已学 = isLearned && (mastered + difficult)
-        }
-        if (isLearned && isDifficult) {
-          notMasteredCount += 1; // 未掌握 = isLearned && difficult only
-        }
-      });
+      const summary = getWordbookMasterySummary(wordbookId, wordbookMastery);
+      masteredCount += summary.learnedCount;
+      notMasteredCount += summary.unmasteredCount;
     });
 
     // 打卡天数 = learning_records 中不重复的日期数

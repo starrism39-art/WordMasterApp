@@ -6,6 +6,7 @@
 
 const DEFAULT_ENV = 'cloudbase-4gafzdch60ad597b';
 const { syncStudentStatsToCloud } = require('./stats-engine.js');
+const { reconcileStudentLearningProgress } = require('./learning-progress.js');
 const syncStudentStatistics = syncStudentStatsToCloud;
 
 const toSafeDocIdPart = (value) => {
@@ -226,11 +227,17 @@ const resolveUpdatedAt = (obj) => {
   return Number.isNaN(parsed) ? 0 : parsed;
 };
 
+const stripSystemFields = (value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const { _id, _openid, ...clean } = value;
+  return clean;
+};
+
 const withUpdatedAt = (obj) => {
   const base = obj && typeof obj === 'object' ? { ...obj } : {};
   const updatedAt = resolveUpdatedAt(base) || Date.now();
   // 剥离系统保留字段，避免 _id 被带入 .set() 导致 E11000 主键冲突
-  const { _id, _openid, ...clean } = base;
+  const clean = stripSystemFields(base);
   return { ...clean, updatedAt };
 };
 
@@ -540,67 +547,40 @@ const syncWordMasteryBatch = async (studentId, wordbookId, wordRecordsMap) => {
 };
 
 const syncLearningProgress = (studentId, progressData) => {
-  const db = ensureDb();
-  const openid = getOpenId();
-  if (!db || !openid || !studentId || !progressData) {
-    console.warn('[cloud-sync] syncLearningProgress 跳过: db=', !!db, 'openid=', !!openid);
-    markPendingSync();
-    return Promise.resolve({ skipped: true, reason: 'precondition_failed' });
-  }
-
-  // 【V2.1 事务性修正】从 wordMastery 重新计算真实进度，消除累加计数器漂移
   let correctedProgress = progressData;
   try {
     const wordMastery = wx.getStorageSync('wordMastery') || {};
-    const studentMastery = wordMastery[studentId];
-    if (studentMastery) {
-      let totalLearned = 0;
-      const correctedWordbooks = {};
-      Object.keys(studentMastery).forEach(wbId => {
-        const words = studentMastery[wbId] || {};
-        const masteredCount = Object.keys(words).filter(wid => {
-          const r = words[wid];
-          return r && typeof r === 'object' && r.mastered === true;
-        }).length;
-        const totalCount = Object.keys(words).length;
-        totalLearned += masteredCount;
-        correctedWordbooks[wbId] = {
-          completedCount: masteredCount,
-          learnedWords: masteredCount,
-          totalCount: Math.max(totalCount, (progressData.wordbooks && progressData.wordbooks[wbId] && progressData.wordbooks[wbId].totalCount) || 0),
-          lastStudyTime: (progressData.wordbooks && progressData.wordbooks[wbId] && progressData.wordbooks[wbId].lastStudyTime) || new Date().toISOString(),
-          lastStudied: (progressData.wordbooks && progressData.wordbooks[wbId] && progressData.wordbooks[wbId].lastStudied) || ''
-        };
-      });
-      // 合并：优先用 wordMastery 的真实数据，但保留 progressData 中原有的额外字段
-      correctedProgress = {
-        ...progressData,
-        learnedWords: totalLearned,
-        totalWords: progressData.totalWords || 0,
-        wordbooks: { ...(progressData.wordbooks || {}), ...correctedWordbooks }
-      };
-      if (totalLearned !== (progressData.learnedWords || 0)) {
-        console.log('[cloud-sync] learningProgress 从 wordMastery 修正:',
-          progressData.learnedWords, '→', totalLearned);
-        // 同步修正本地存储
-        try {
-          const lp = wx.getStorageSync('learningProgress') || {};
-          if (lp[studentId]) {
-            lp[studentId].learnedWords = totalLearned;
-            lp[studentId].wordbooks = { ...(lp[studentId].wordbooks || {}), ...correctedWordbooks };
-            wx.setStorageSync('learningProgress', lp);
-          }
-        } catch (e) { /* ignore */ }
-      }
+    const learningRecords = wx.getStorageSync('learningRecords') || [];
+    correctedProgress = reconcileStudentLearningProgress({
+      studentId,
+      progressData,
+      studentMastery: wordMastery[studentId],
+      learningRecords
+    });
+
+    const lp = wx.getStorageSync('learningProgress') || {};
+    if (JSON.stringify(lp[studentId] || {}) !== JSON.stringify(correctedProgress)) {
+      lp[studentId] = correctedProgress;
+      wx.setStorageSync('learningProgress', lp);
+      console.log('[cloud-sync] learningProgress 已按单词明细去重修正:', studentId, correctedProgress.learnedWords);
     }
   } catch (e) {
     console.warn('[cloud-sync] 从 wordMastery 修正 learningProgress 失败，使用原值:', e);
   }
 
+  const db = ensureDb();
+  const openid = getOpenId();
+  if (!db || !openid || !studentId || !correctedProgress) {
+    console.warn('[cloud-sync] syncLearningProgress 跳过: db=', !!db, 'openid=', !!openid);
+    markPendingSync();
+    return Promise.resolve({ skipped: true, reason: 'precondition_failed' });
+  }
+
   const displayNames = getDisplayNames(studentId);
   const docId = buildScopedDocId(openid, 'progress', studentId);
 
-  // 【V2.0 防退化】先读云端记录，若云端 learnedWords 更大则跳过写入
+  // 云端旧值更大时先保留云端，避免尚未拉取完整明细的设备覆盖其他设备数据。
+  // 本地页面始终使用上面根据原始明细重算后的结果。
   return db.collection('learning_progress')
     .doc(docId)
     .get()
@@ -863,6 +843,8 @@ const syncAllLocalLearningRecords = () => {
 };
 
 module.exports = {
+  buildScopedDocId,
+  stripSystemFields,
   syncLearningRecord,
   syncWordMasteryRecord,
   syncWordMasteryBatch,
