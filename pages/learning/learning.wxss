@@ -405,6 +405,48 @@
   gap: 40rpx;
 }
 
+/* 学习模式中的当前词书提示 */
+.current-wordbook-bar {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  min-height: 72rpx;
+  margin: 0 16rpx 14rpx;
+  padding: 12rpx 16rpx;
+  box-sizing: border-box;
+  background-color: #f4fbf7;
+  border: 1rpx solid #cfe9da;
+  border-radius: 12rpx;
+}
+
+.current-wordbook-bar--pressed {
+  background-color: #e7f5ed;
+}
+
+.current-wordbook-label {
+  flex: 0 0 auto;
+  color: #547060;
+  font-size: 24rpx;
+  line-height: 1.4;
+}
+
+.current-wordbook-name {
+  flex: 1;
+  min-width: 0;
+  color: #17261e;
+  font-size: 28rpx;
+  font-weight: 600;
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+.current-wordbook-chevron {
+  flex: 0 0 auto;
+  width: 24rpx;
+  height: 24rpx;
+  opacity: 0.55;
+}
+
 .student-info-card,
 .wordbook-info-card {
   background-color: #fff;

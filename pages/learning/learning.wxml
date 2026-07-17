@@ -12,6 +12,18 @@
     </view>
   </view>
 
+  <!-- 学习过程中持续显示当前词书，点击可直接切换 -->
+  <view
+    wx:if="{{currentWordbook && learningMode && learningMode !== 'completed' && !loading && !showLoadingModal && !hasError}}"
+    class="current-wordbook-bar"
+    bindtap="chooseWordbook"
+    hover-class="current-wordbook-bar--pressed"
+  >
+    <text class="current-wordbook-label">当前词书</text>
+    <text class="current-wordbook-name">{{currentWordbook.title || '未命名词书'}}</text>
+    <image class="current-wordbook-chevron" src="/images/icons/chevron-right.svg" mode="aspectFit" />
+  </view>
+
   <!-- 加载状态（自定义弹窗显示时隐藏旧的加载界面） -->
   <view wx:if="{{loading && !showLoadingModal}}" class="loading-container">
     <view class="loading-spinner"></view>
