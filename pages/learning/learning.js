@@ -5,6 +5,12 @@ const { generateWordsForBook } = wordbooksModule;
 const { resolveDictionaryApiAudioUrl, buildYoudaoAudioUrl } = require('../../utils/audio-fallback.js');
 const { syncPreviewState, loadPreviewStateFromCloud, syncWordMasteryBatch } = require('../../utils/cloud-sync.js');
 const cloudWordbookLoader = require('../../utils/cloud-wordbook-loader.js');
+const {
+  createLearningContextKey,
+  resolveCurrentStudent,
+  resolveCurrentWordbook,
+  setCurrentWordbook
+} = require('../../utils/learning-context.js');
 
 const ENABLE_VERBOSE_LOG = false;
 const debugLog = (...args) => {
@@ -124,6 +130,18 @@ Page({
     if (options.mode) {
       this.setData({ learningMode: options.mode });
     }
+
+    // 路由显式指定词书时，以路由为准并同步为当前词书，不能沿用旧的全局词书。
+    if (options.wordbookId) {
+      const app = getApp();
+      const currentStudent = resolveCurrentStudent(app);
+      const routeWordbook = typeof wordbooksModule.getBookById === 'function'
+        ? wordbooksModule.getBookById(options.wordbookId)
+        : null;
+      if (currentStudent && routeWordbook) {
+        setCurrentWordbook(app, currentStudent, routeWordbook, { emit: false });
+      }
+    }
     
     // 为测试目的，强制设置学习模式
     if (options.mode === 'review') {
@@ -132,7 +150,11 @@ Page({
     }
     
     // 立即从globalData同步数据
-    this.syncFromGlobalData();
+    const initialContext = this.syncFromGlobalData();
+    this._activeContextKey = createLearningContextKey(
+      initialContext && initialContext.currentStudent,
+      initialContext && initialContext.currentWordbook
+    );
     
     // 为测试目的，直接设置测试学生和词书
     if (options.studentId === 'test_student' && options.wordbookId === 'test_wordbook') {
@@ -152,7 +174,22 @@ Page({
     console.log('Learning page shown');
     
     // 每次页面显示时，优先从globalData同步最新数据
-    this.syncFromGlobalData();
+    const context = this.syncFromGlobalData();
+    const nextContextKey = createLearningContextKey(
+      context && context.currentStudent,
+      context && context.currentWordbook
+    );
+    const contextChanged = !!(
+      this._activeContextKey &&
+      nextContextKey &&
+      this._activeContextKey !== nextContextKey
+    );
+
+    if (contextChanged) {
+      console.log('学习上下文已切换，重新加载词书数据:', this._activeContextKey, '→', nextContextKey);
+      this.resetForLearningContextChange();
+    }
+    this._activeContextKey = nextContextKey;
     
     // 然后检查本地存储中的选择
     this.checkSelectedStudentAndWordbook();
@@ -161,7 +198,9 @@ Page({
     this._preloadCloudWordbook();
     
     // 如果已经有学生和词书信息，确保学习过程已初始化
-    if (this.data.currentStudent && this.data.currentWordbook && !this.data.learningMode && this.data.currentBatchWords.length === 0) {
+    if (contextChanged) {
+      this.initStudyProcess();
+    } else if (this.data.currentStudent && this.data.currentWordbook && !this.data.learningMode && this.data.currentBatchWords.length === 0) {
       this.initStudyProcess();
     }
   },
@@ -233,10 +272,8 @@ Page({
   syncFromGlobalData: function() {
     try {
       const app = getApp();
-      const cachedStudent = wx.getStorageSync('currentStudent') || wx.getStorageSync('selectedStudent') || null;
-      const cachedWordbook = wx.getStorageSync('currentWordbook') || wx.getStorageSync('selectedWordbook') || null;
-      const currentStudent = app.globalData.currentStudent || cachedStudent || null;
-      const currentWordbook = app.globalData.currentWordbook || app.globalData.selectedWordbook || cachedWordbook || null;
+      const currentStudent = resolveCurrentStudent(app);
+      const currentWordbook = resolveCurrentWordbook(app, currentStudent);
 
       const studentChanged =
         currentStudent &&
@@ -259,45 +296,72 @@ Page({
       }
       
       // 同步词书信息
-      if (app.globalData.currentWordbook && wordbookChanged) {
+      if (currentWordbook && wordbookChanged) {
         debugLog('从globalData同步词书信息:', currentWordbook.title);
         patch.currentWordbook = currentWordbook;
         patch.learningWordbooks = currentWordbook.title || '未知词书';
-        wx.setStorageSync('selectedWordbook', currentWordbook);
-        wx.setStorageSync('currentWordbook', currentWordbook);
-      } else if (app.globalData.selectedWordbook && wordbookChanged) {
-        // 兼容selectedWordbook字段
-        debugLog('从globalData同步选中词书信息:', currentWordbook.title);
-        patch.currentWordbook = currentWordbook;
-        patch.learningWordbooks = currentWordbook.title || '未知词书';
-        // 同时保存到本地存储
-        wx.setStorageSync('selectedWordbook', currentWordbook);
-        wx.setStorageSync('currentWordbook', currentWordbook);
-        // 同步到currentWordbook以保持一致性
-        app.globalData.currentWordbook = currentWordbook;
+        setCurrentWordbook(app, currentStudent, currentWordbook, { emit: false });
       }
 
       if (Object.keys(patch).length > 0) {
         this.setData(patch);
       }
+
+      return { currentStudent, currentWordbook, studentChanged, wordbookChanged };
     } catch (error) {
       console.error('从globalData同步数据失败:', error);
+      return { currentStudent: null, currentWordbook: null, studentChanged: false, wordbookChanged: false };
     }
+  },
+
+  resetForLearningContextChange: function() {
+    const previousMode = this.data.learningMode;
+    const preservedModes = ['preview', 'review', 'gridReview'];
+    const nextMode = previousMode
+      ? (preservedModes.includes(previousMode) ? previousMode : 'preview')
+      : '';
+
+    this._studyInitializationPromise = null;
+    this.stopStudyTimer();
+    this._destroyCurrentAudioContext();
+    this.setData({
+      learningMode: nextMode,
+      currentBatchWords: [],
+      allWords: [],
+      testWords: [],
+      currentBatchIndex: 0,
+      currentPage: 0,
+      totalBatches: 0,
+      totalPages: 0,
+      previewMastery: {},
+      showMeaning: {},
+      showPhonetic: {},
+      wordDisplayState: {},
+      activeWordId: '',
+      masteredWordsCount: 0,
+      notMasteredWordsCount: 0,
+      showGroupCompletePage: false,
+      showCustomMixPanel: false,
+      hasError: false,
+      errorMessage: '',
+      loading: false,
+      showLoadingModal: false
+    });
   },
 
   // 检查是否已选择学生和词书
   checkSelectedStudentAndWordbook: function() {
     try {
       // 从本地存储获取选中的学生和词书
-      const savedStudent = wx.getStorageSync('selectedStudent') || wx.getStorageSync('currentStudent');
-      const savedWordbook = wx.getStorageSync('selectedWordbook') || wx.getStorageSync('currentWordbook');
+      const app = getApp();
+      const savedStudent = resolveCurrentStudent(app);
+      const savedWordbook = resolveCurrentWordbook(app, savedStudent);
       
       // 如果本地存储有数据但当前页面没有，则更新
       if (savedStudent && !this.data.currentStudent) {
         console.log('从本地存储恢复学生信息');
         this.setData({ currentStudent: savedStudent });
         // 同步回globalData
-        const app = getApp();
         app.globalData.currentStudent = savedStudent;
         wx.setStorageSync('selectedStudent', savedStudent);
         wx.setStorageSync('currentStudent', savedStudent);
@@ -310,11 +374,7 @@ Page({
           learningWordbooks: savedWordbook.title || '未知词书'
         });
         // 同步回globalData
-        const app = getApp();
-        app.globalData.currentWordbook = savedWordbook;
-        app.globalData.selectedWordbook = savedWordbook;
-        wx.setStorageSync('selectedWordbook', savedWordbook);
-        wx.setStorageSync('currentWordbook', savedWordbook);
+        setCurrentWordbook(app, savedStudent, savedWordbook, { emit: false });
       }
     } catch (error) {
       console.error('检查选中的学生和词书失败:', error);

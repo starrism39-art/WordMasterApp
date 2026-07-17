@@ -9,6 +9,12 @@
     <button class="data-manage-btn" size="mini" bindtap="showDataManagement">数据管理</button>
   </view>
 
+  <view class="records-context">
+    <text class="records-context-label">当前词书</text>
+    <text class="records-context-name">{{currentWordbook && currentWordbook.title ? currentWordbook.title : '未选择词书'}}</text>
+    <text class="records-context-note">下方记录默认只显示这本词书，可在“词书”筛选中查看全部</text>
+  </view>
+
   <view class="filter-container">
     <text class="filter-label">时间范围</text>
     <view class="filter-tabs">

@@ -1,6 +1,15 @@
 <!-- pages/wordbook/wordbook.wxml -->
 <view class="container">
   <view class="section-title">{{selectMode ? '选择词书' : '词书列表'}}</view>
+
+  <view class="learning-context">
+    <view class="context-copy">
+      <text class="context-label">当前学习上下文</text>
+      <text class="context-student">{{currentStudent && currentStudent.name ? currentStudent.name : '未选择学生'}}</text>
+      <text class="context-wordbook">{{currentWordbookName}}</text>
+    </view>
+    <text class="context-hint">点击下方词书即可切换</text>
+  </view>
   
   <!-- 筛选栏 -->
   <scroll-view scroll-x="true" class="filter-bar">
@@ -15,15 +24,17 @@
   <!-- 词书列表 -->
   <view class="wordbook-list">
     <block wx:for="{{wordbooks}}" wx:key="id">
-      <view class="wordbook-item card">
+      <view class="wordbook-item card {{item.isCurrent ? 'current' : ''}}" bindtap="startLearning" data-id="{{item.id}}" hover-class="wordbook-item--pressed">
         <view wx:if="{{item.isHot}}" class="hot-badge">热门</view>
         <view class="wordbook-main">
           <view class="wordbook-info">
             <view class="wordbook-header">
               <text class="wordbook-title">{{item.title}}</text>
+              <text wx:if="{{item.isCurrent}}" class="current-badge">当前词书</text>
             </view>
-            <text class="wordbook-meta">{{item.totalWords}}个单词</text>
+            <text class="wordbook-meta">{{item.totalWords}}个单词 · 已学{{item.learnedWords || 0}}词</text>
           </view>
+          <text class="wordbook-action">{{item.isCurrent ? '继续学习' : '切换'}}</text>
         </view>
       </view>
     </block>

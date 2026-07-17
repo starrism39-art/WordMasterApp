@@ -19,8 +19,10 @@
     bindtap="chooseWordbook"
     hover-class="current-wordbook-bar--pressed"
   >
-    <text class="current-wordbook-label">当前词书</text>
-    <text class="current-wordbook-name">{{currentWordbook.title || '未命名词书'}}</text>
+    <view class="current-wordbook-copy">
+      <text class="current-wordbook-label">{{currentStudent && currentStudent.name ? currentStudent.name : '当前学生'}} · 当前词书</text>
+      <text class="current-wordbook-name">{{currentWordbook.title || '未命名词书'}}</text>
+    </view>
     <image class="current-wordbook-chevron" src="/images/icons/chevron-right.svg" mode="aspectFit" />
   </view>
 

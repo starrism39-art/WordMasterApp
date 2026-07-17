@@ -63,7 +63,7 @@
           <view class="student-details">
             <view class="student-name">{{currentStudent && currentStudent.name ? currentStudent.name : '请选择学生'}}</view>
             <view class="student-class">{{currentStudent && currentStudent.grade ? currentStudent.grade : ''}}</view>
-            <view class="student-wordbooks">{{learningWordbooks || '未选择词书'}}</view>
+            <view class="student-wordbooks">当前词书 · {{learningWordbooks || '未选择词书'}}</view>
           </view>
         </view>
         <view class="switch-buttons">

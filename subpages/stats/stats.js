@@ -2,6 +2,7 @@
 const loginService = require('../../utils/login-service.js');
 const cloudMigration = require('../../utils/cloud-migration.js');
 const { getWordbookMasterySummary } = require('../../utils/learning-progress.js');
+const { resolveCurrentStudent, resolveCurrentWordbook } = require('../../utils/learning-context.js');
 
 Page({
   data: {
@@ -19,6 +20,8 @@ Page({
       newWords: 0,           // 已学新词：当日未掌握去重
       totalUnmasteredWords: 0 // 未掌握词数：历史累计当前未掌握
     },
+    currentStudentName: '',
+    currentWordbookId: '',
     currentWordbookName: '',
     studyRecords: [],
     students: []
@@ -60,6 +63,7 @@ Page({
       this.setData({
         currentUser: app.globalData.currentUser || wx.getStorageSync('currentUser')
       });
+      this.syncCurrentContext();
       
       // 注册全局事件监听，实现实时刷新
       this.registerRealtimeListeners();
@@ -103,6 +107,7 @@ Page({
       this.setData({
         currentUser: app.globalData.currentUser || wx.getStorageSync('currentUser')
       });
+      this.syncCurrentContext();
       
       // 重新加载学生数据
       try {
@@ -144,6 +149,20 @@ Page({
         errorMessage: '页面加载失败'
       });
     }
+  },
+
+  syncCurrentContext: function() {
+    const app = getApp();
+    const currentStudent = resolveCurrentStudent(app);
+    const currentWordbook = resolveCurrentWordbook(app, currentStudent);
+    this.setData({
+      currentStudentName: currentStudent ? (currentStudent.name || currentStudent.id || '当前学生') : '',
+      currentWordbookId: currentWordbook ? String(currentWordbook.id) : '',
+      currentWordbookName: currentWordbook
+        ? (currentWordbook.title || currentWordbook.name || '未命名词书')
+        : '暂无词书'
+    });
+    return { currentStudent, currentWordbook };
   },
 
   onHide: function() {
@@ -230,14 +249,11 @@ Page({
       let realStudyRecords = [];
       
       // 获取当前学生信息
-      const currentStudent = app.globalData.currentStudent || wx.getStorageSync('currentStudent');
+      const { currentStudent, currentWordbook } = this.syncCurrentContext();
       
       // 如果有当前学生，获取该学生的学习记录
-      if (currentStudent && currentStudent.id) {
-        realStudyRecords = app.getLearningRecords(currentStudent.id);
-      } else {
-        // 否则获取所有学习记录
-        realStudyRecords = app.getLearningRecords();
+      if (currentStudent && currentStudent.id && currentWordbook && currentWordbook.id) {
+        realStudyRecords = app.getLearningRecords(currentStudent.id, currentWordbook.id);
       }
       
       // 无论记录是否为空，都刷新统计（统计口径依赖wordMastery/learningProgress）
@@ -290,34 +306,8 @@ Page({
       }
       
       const app = getApp();
-      const currentStudent = app.globalData.currentStudent || wx.getStorageSync('currentStudent');
-
-      let currentWordbook = app.globalData.currentWordbook || app.globalData.selectedWordbook || null;
-      if (!currentWordbook) {
-        currentWordbook = wx.getStorageSync('selectedWordbook') || null;
-      }
-
-      // 仍然没有词书时，从 wordMastery 推断数据最多的词书（跨设备首次进入）
-      if ((!currentWordbook || !currentWordbook.id) && currentStudent && currentStudent.id) {
-        try {
-          var _sm2 = (wx.getStorageSync('wordMastery') || {})[currentStudent.id];
-          if (_sm2) {
-            var _bestId2 = null, _bestCnt2 = 0, _k2;
-            for (_k2 in _sm2) {
-              if (_sm2.hasOwnProperty && !_sm2.hasOwnProperty(_k2)) continue;
-              var _c2 = Object.keys(_sm2[_k2] || {}).length;
-              if (_c2 > _bestCnt2) { _bestCnt2 = _c2; _bestId2 = _k2; }
-            }
-            if (_bestId2) {
-              var _inf2 = { id: _bestId2, title: _bestId2.replace(/_/g, ' ') };
-              try { var _wb2 = require('../../data/wordbooks.js'); if (_wb2 && _wb2.getBookById) { var _full2 = _wb2.getBookById(_bestId2); if (_full2 && _full2.totalWords) { _inf2 = _full2; } } } catch(e) {}
-              currentWordbook = _inf2;
-              wx.setStorageSync('selectedWordbook', _inf2);
-              console.log('[stats] 从 wordMastery 恢复词书:', _bestId2);
-            }
-          }
-        } catch(e) { console.warn('[stats] 推断词书失败:', e); }
-      }
+      const currentStudent = resolveCurrentStudent(app);
+      const currentWordbook = resolveCurrentWordbook(app, currentStudent);
 
       const currentWordbookName = currentWordbook
         ? (currentWordbook.title || currentWordbook.name || '暂无词书')
@@ -414,7 +404,7 @@ Page({
         if (isAntiForgettingRecord) return false;
 
         // 仅统计当前词书口径
-        if (currentWordbook && currentWordbook.id && record.wordbookId && record.wordbookId !== currentWordbook.id) {
+        if (currentWordbook && currentWordbook.id && String(record.wordbookId || '') !== String(currentWordbook.id)) {
           return false;
         }
 
@@ -473,7 +463,7 @@ Page({
           if (totalUnmasteredWords === 0 && Array.isArray(records)) {
             const unmasteredSet = new Set();
             records.forEach(record => {
-              if (!record || record.wordbookId !== currentWordbook.id) return;
+              if (!record || String(record.wordbookId || '') !== String(currentWordbook.id)) return;
               if (record.isAntiForgettingReview || record.recordType === 'anti_forgetting_review') return;
               if (Array.isArray(record.notMasteredWordIds)) {
                 record.notMasteredWordIds.forEach(id => { if (id) unmasteredSet.add(String(id)); });
@@ -545,6 +535,8 @@ Page({
       const progressBarPercent = clampedProgressPercent > 0 ? Math.max(clampedProgressPercent, 0.6) : 0;
       
       this.setData({
+        currentStudentName: currentStudent ? (currentStudent.name || currentStudent.id || '当前学生') : '',
+        currentWordbookId: currentWordbook ? String(currentWordbook.id) : '',
         currentWordbookName,
         totalUnmasteredWords,
         learningStats: {
@@ -571,16 +563,15 @@ Page({
       console.error('更新学习统计失败:', error);
       // 使用默认值
       this.setData({
-        currentWordbookName: '暂无词书',
         totalUnmasteredWords: 0,
         learningStats: {
-          totalWords: 100,
-          learnedWords: 20,
-          reviewWords: 6,
-          progressPercent: 20,
-          progressBarPercent: 20,
-          totalLearnedWords: 20,
-          newWords: 6,
+          totalWords: 0,
+          learnedWords: 0,
+          reviewWords: 0,
+          progressPercent: 0,
+          progressBarPercent: 0,
+          totalLearnedWords: 0,
+          newWords: 0,
           totalUnmasteredWords: 0
         }
       });

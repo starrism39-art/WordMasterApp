@@ -1,5 +1,11 @@
 <!-- pages/stats/stats.wxml -->
 <view class="container">
+  <view class="stats-context">
+    <text class="stats-context-label">{{currentStudentName || '当前学生'}} · 当前词书</text>
+    <text class="stats-context-name">{{currentWordbookName || '暂无词书'}}</text>
+    <text class="stats-context-note">本页统计仅计算当前学生在当前词书中的数据</text>
+  </view>
+
   <!-- 加载状态 -->
   <view wx:if="{{loading}}" class="loading-container">
     <text>加载中...</text>
@@ -11,7 +17,7 @@
   </view>
   
   <!-- 有数据时显示统计内容 -->
-  <view wx:elif="{{studyRecords.length > 0}}">
+  <view wx:elif="{{currentWordbookId}}">
     <!-- 统计概览卡片 -->
     <view class="stats-overview-card">
       <view class="stats-overview-item">

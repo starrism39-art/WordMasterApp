@@ -32,6 +32,51 @@
   box-shadow: 0 2rpx 8rpx rgba(74, 144, 226, 0.4);
 }
 
+.learning-context {
+  margin: 0 0 24rpx;
+  padding: 24rpx 28rpx;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24rpx;
+  background: #ffffff;
+  border: 1rpx solid #dcefe4;
+  border-left: 8rpx solid #07c160;
+  border-radius: 18rpx;
+  box-shadow: 0 6rpx 20rpx rgba(31, 45, 61, 0.08);
+}
+
+.context-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+
+.context-label,
+.context-hint {
+  color: #8e95a1;
+  font-size: 22rpx;
+}
+
+.context-student {
+  color: #34404a;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+.context-wordbook {
+  color: #07c160;
+  font-size: 32rpx;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.context-hint {
+  flex-shrink: 0;
+  padding-bottom: 4rpx;
+}
+
 /* 筛选栏 */
 .filter-bar {
   white-space: nowrap;
@@ -83,6 +128,17 @@
   overflow: hidden;
 }
 
+.wordbook-item.current {
+  border-color: #8bd9ad;
+  background: #f3fbf6;
+  box-shadow: 0 8rpx 28rpx rgba(7, 193, 96, 0.14);
+}
+
+.wordbook-item--pressed {
+  transform: scale(0.99);
+  opacity: 0.92;
+}
+
 .wordbook-item::before {
   content: '';
   position: absolute;
@@ -114,6 +170,7 @@
 
 .wordbook-info {
   flex: 1;
+  min-width: 0;
 }
 
 .wordbook-header {
@@ -135,6 +192,25 @@
   overflow: hidden;
   text-shadow: 0 2rpx 4rpx rgba(0, 0, 0, 0.05);
   line-height: 1.3;
+}
+
+.current-badge {
+  flex-shrink: 0;
+  margin-right: 80rpx;
+  padding: 6rpx 14rpx;
+  border-radius: 999rpx;
+  background: #e6f7ef;
+  color: #07c160;
+  font-size: 22rpx;
+  font-weight: 600;
+}
+
+.wordbook-action {
+  flex-shrink: 0;
+  margin-left: 20rpx;
+  color: #07c160;
+  font-size: 26rpx;
+  font-weight: 600;
 }
 
 .wordbook-meta {

@@ -1,7 +1,12 @@
 // 学习记录页面 - 全面优化版
 const { mergeWordbooks, createWordMap, findWord, lookUpPhrase } = require('../../data/wordbook-utils.js');
 const { refreshStudentStats } = require('../../utils/stats-engine.js');
-const { createWordbookOptions, prepareRecordForDisplay } = require('../../utils/record-display.js');
+const { createWordbookOptions, getWordbookTone, prepareRecordForDisplay } = require('../../utils/record-display.js');
+const {
+  createLearningContextKey,
+  resolveCurrentStudent,
+  resolveCurrentWordbook
+} = require('../../utils/learning-context.js');
 
 // 初始化合并后的词书数据和单词映射表
 let mergedWords = mergeWordbooks();
@@ -18,6 +23,7 @@ function reloadWordMap() {
 Page({
   data: {
     currentStudent: null,
+    currentWordbook: null,
     studyRecords: [], // 全部记录
     filteredRecords: [], // 过滤后的记录
     displayedRecords: [], // 当前显示的记录（分页）
@@ -58,10 +64,7 @@ Page({
     const app = getApp();
     
     // 快速设置学生信息
-    this.setData({
-      currentStudent: app.globalData.currentStudent || null,
-      isLoading: true
-    });
+    this.setData({ isLoading: true });
     
     // 初始化缓存
     this._initCache();
@@ -71,6 +74,7 @@ Page({
     
     // 确保有学生信息
     this.ensureStudentInfo();
+    this.syncCurrentContext();
     
     // 异步加载数据，避免阻塞UI
     this.loadData();
@@ -83,6 +87,7 @@ Page({
     
     // 确保学生信息与首页保持同步
     this.ensureStudentInfo();
+    this.syncCurrentContext();
     
     // 强制重新加载数据，确保显示最新的排序结果
     console.log('页面显示，强制重新加载学习记录');
@@ -94,6 +99,26 @@ Page({
       console.log('onShow - 当前displayedRecords:', that.data.displayedRecords);
       console.log('onShow - 当前filteredRecords:', that.data.filteredRecords);
     }, 500);
+  },
+
+  syncCurrentContext: function() {
+    const app = getApp();
+    const currentStudent = resolveCurrentStudent(app);
+    const currentWordbook = resolveCurrentWordbook(app, currentStudent);
+    const nextContextKey = createLearningContextKey(currentStudent, currentWordbook);
+    const contextChanged = this._contextKey !== nextContextKey;
+    const patch = {
+      currentStudent: currentStudent || null,
+      currentWordbook: currentWordbook || null
+    };
+
+    if (contextChanged) {
+      patch.wordbookFilter = currentWordbook ? String(currentWordbook.id) : 'all';
+      this._contextKey = nextContextKey;
+      this._cache.filteredRecords = null;
+    }
+
+    this.setData(patch);
   },
   
   // 确保有学生信息
@@ -161,6 +186,19 @@ Page({
       console.log('loadData - 当前学生:', currentStudent);
       
       try {
+        if (!currentStudent || currentStudent.id === undefined || currentStudent.id === null) {
+          that._cache.processedRecords = [];
+          that.setData({
+            studyRecords: [],
+            filteredRecords: [],
+            displayedRecords: [],
+            wordbookOptions: [],
+            totalRecords: 0,
+            isLoading: false
+          });
+          return;
+        }
+
         // 获取记录：保留所有学习记录，不因单词ID可解析性或快照缺失做记录级过滤
         let allRecords = [];
         // 只获取当前学生的学习记录，确保数据隔离
@@ -237,6 +275,17 @@ Page({
         this._cache.lastUpdateTime = Date.now();
 
         const wordbookOptions = createWordbookOptions(mergedByDayRecords);
+        const currentWordbook = this.data.currentWordbook;
+        if (currentWordbook && !wordbookOptions.some(option => option.id === String(currentWordbook.id))) {
+          const title = currentWordbook.title || currentWordbook.name || '未命名词书';
+          wordbookOptions.splice(1, 0, {
+            id: String(currentWordbook.id),
+            title,
+            shortTitle: title.replace(/英语词书$/, '').replace(/英语阅读高频词汇$/, '阅读高频词汇'),
+            tone: getWordbookTone(currentWordbook.id, title),
+            recordCount: 0
+          });
+        }
         const activeWordbookExists = wordbookOptions.some(option => option.id === this.data.wordbookFilter);
         const wordbookFilter = activeWordbookExists ? this.data.wordbookFilter : 'all';
         
@@ -392,7 +441,7 @@ Page({
       }
 
       if (wordbookFilter !== 'all') {
-        filteredRecords = filteredRecords.filter(record => String(record.wordbookId || '') === wordbookFilter);
+        filteredRecords = filteredRecords.filter(record => String(record.wordbookId || '') === String(wordbookFilter));
       }
 
       const visibleLearningCount = filteredRecords.filter(record => !this.isAntiForgettingRecord(record)).length;

@@ -8,6 +8,31 @@
   flex-direction: column;
 }
 
+.stats-context {
+  margin-bottom: 24rpx;
+  padding: 22rpx 24rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+  background: #f3f8f5;
+  border: 1rpx solid #dcefe4;
+  border-left: 8rpx solid #07c160;
+  border-radius: 16rpx;
+}
+
+.stats-context-label,
+.stats-context-note {
+  color: #8e95a1;
+  font-size: 22rpx;
+}
+
+.stats-context-name {
+  color: #34404a;
+  font-size: 30rpx;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
 
 /* 统计概览卡片 */
 .stats-overview-card {

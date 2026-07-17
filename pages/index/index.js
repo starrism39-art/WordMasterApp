@@ -1,6 +1,7 @@
 // pages/index/index.js
 const { repairMissingAntiForgettingSeed } = require('../../utils/anti-forgetting-filter.js');
 const { getWordbookMasterySummary } = require('../../utils/learning-progress.js');
+const { resolveCurrentWordbook, setCurrentWordbook } = require('../../utils/learning-context.js');
 
 Page({
   data: {
@@ -336,38 +337,8 @@ Page({
         loading: true // 暂时保持加载状态，直到数据恢复完成
       });
       
-      // 优先从studentSettings获取用户选择的词书
-      let selectedWordbook = null;
-      try {
-        // 检查学习页/词书选择页保存的当前词书（优先级最高）
-        const storedWordbook = wx.getStorageSync('selectedWordbook') || wx.getStorageSync('currentWordbook') || null;
-        if (storedWordbook && storedWordbook.id) {
-          selectedWordbook = storedWordbook;
-          console.log('从本地存储获取到用户选择的词书:', selectedWordbook.title);
-        } else {
-          const studentSettings = wx.getStorageSync('studentSettings') || {};
-          const studentWordbookKey = `student_${student.id}_wordbook`;
-          if (studentSettings[studentWordbookKey]) {
-            selectedWordbook = studentSettings[studentWordbookKey];
-            console.log('从studentSettings获取到用户选择的词书:', selectedWordbook.title);
-          } else {
-            // 如果studentSettings中没有，尝试从页面状态获取
-            const pageStateKey = `${student.id}_pageState`;
-            const savedPageState = wx.getStorageSync(pageStateKey);
-            if (savedPageState && savedPageState.currentWordbook && savedPageState.timestamp) {
-              // 检查保存时间，确保是较新的数据（7天内）
-              const timeDiff = Date.now() - savedPageState.timestamp;
-              const sevenDaysInMs = 7 * 24 * 60 * 60 * 1000;
-              if (timeDiff < sevenDaysInMs) {
-                selectedWordbook = savedPageState.currentWordbook;
-                console.log('从页面状态获取到用户选择的词书:', selectedWordbook.title);
-              }
-            }
-          }
-        }
-      } catch (err) {
-        console.error('获取保存的词书选择失败:', err);
-      }
+      // 词书选择按学生隔离；学生级设置优先于全局兼容键，避免切换学生后串书。
+      const selectedWordbook = resolveCurrentWordbook(app, student);
       
       // 如果找到了用户选择的词书，设置它
       if (selectedWordbook) {
@@ -399,13 +370,18 @@ Page({
           },
           totalUnmasteredWords: 0,
           recentRecords: [],
-          currentWordbook: null,
-          learningWordbooks: '未知词书'
+          currentWordbook: selectedWordbook || null,
+          learningWordbooks: selectedWordbook
+            ? (selectedWordbook.title || selectedWordbook.name || '未知词书')
+            : '未知词书'
         });
-        
-        // 清除全局词书状态，确保为新学生重新加载
-        app.globalData.currentWordbook = null;
-        app.globalData.selectedWordbook = null;
+
+        if (selectedWordbook) {
+          setCurrentWordbook(app, student, selectedWordbook, { emit: false });
+        } else {
+          app.globalData.currentWordbook = null;
+          app.globalData.selectedWordbook = null;
+        }
       }
       
       // 更新学习词书信息
@@ -491,8 +467,11 @@ Page({
       let records = [];
       
       if (student && student.id) {
-        // 获取该学生的学习记录
-        records = app.getLearningRecords(student.id);
+        // 最近记录严格按当前学生 + 当前词书读取，避免切换词书后混入旧词书记录。
+        const currentWordbook = this.data.currentWordbook || resolveCurrentWordbook(app, student);
+        records = currentWordbook && currentWordbook.id
+          ? app.getLearningRecords(student.id, currentWordbook.id)
+          : [];
         
         // 即使没有找到该学生的记录，也不获取所有记录，保持空记录
         // 这样可以确保只显示当前学生的记录
@@ -966,7 +945,14 @@ Page({
       
       // 获取最新的学习记录
       const learningRecords = wx.getStorageSync('learningRecords') || [];
-      const studentRecords = learningRecords.filter(record => String(record.studentId) === String(studentId));
+      const app = getApp();
+      const currentStudent = this.data.currentStudent || app.globalData.currentStudent;
+      const currentWordbook = this.data.currentWordbook || resolveCurrentWordbook(app, currentStudent);
+      const studentRecords = learningRecords.filter(record =>
+        String(record.studentId) === String(studentId) &&
+        currentWordbook &&
+        String(record.wordbookId || '') === String(currentWordbook.id)
+      );
       
       // 计算今日学习数据 - 更精确的时间计算
       const today = new Date();
@@ -1042,25 +1028,7 @@ Page({
       const wordMastery = wx.getStorageSync('wordMastery') || {};
       const studentMastery = wordMastery[studentId] || {};
 
-      // 首页统计口径：严格按「当前学生 + 当前词书」统计
-      // 若当前词书为空，则尝试从本地存储恢复；仍为空则不做跨词书汇总，保持为0，避免混淆口径
-      let currentWordbook = this.data.currentWordbook;
-      if (!currentWordbook) {
-        try {
-          const app = getApp();
-          currentWordbook = app?.globalData?.currentWordbook || app?.globalData?.selectedWordbook || null;
-        } catch (e) {
-          // ignore
-        }
-      }
-      if (!currentWordbook) {
-        try {
-          currentWordbook = wx.getStorageSync('selectedWordbook') || null;
-        } catch (e) {
-          // ignore
-        }
-      }
-
+      // 首页统计口径：严格按「当前学生 + 当前词书」统计；无当前词书时保持为 0。
       let totalWords = 0;
       let learnedWords = 0;
       let unmasteredWords = 0;
@@ -1596,11 +1564,17 @@ Page({
       
       if (selectedWordbook) {
         console.log('选中的词书:', selectedWordbook.title, '学生:', this.data.currentStudent?.name);
+
+        const app = getApp();
+        const persistedWordbook = setCurrentWordbook(app, this.data.currentStudent, selectedWordbook);
+        if (!persistedWordbook) {
+          throw new Error('无法保存当前学生的词书选择');
+        }
         
         // 更新当前词书状态
         this.setData({
-          learningWordbooks: selectedWordbook.title || selectedWordbook.name || '未知词书',
-          currentWordbook: selectedWordbook,
+          learningWordbooks: persistedWordbook.title || persistedWordbook.name || '未知词书',
+          currentWordbook: persistedWordbook,
           showWordbookModal: false
         });
         
@@ -1618,6 +1592,7 @@ Page({
           if (this.data.currentStudent) {
             this.updateRealTimeStats(this.data.currentStudent.id);
           }
+          this.loadRecentRecords();
           // 立即保存状态
           this.saveCurrentPageState();
         } catch (innerError) {
@@ -1627,37 +1602,7 @@ Page({
         // 重新加载推荐词书，确保显示的推荐与当前选择匹配
         this.loadRecommendedWordbooks();
         
-        // 保存选择到本地，关联学生ID
-        try {
-          const currentStudent = this.data.currentStudent;
-          if (currentStudent && currentStudent.id) {
-            // 使用学生ID作为键的一部分，确保不同学生的词书选择互不影响
-            const studentSettings = wx.getStorageSync('studentSettings') || {};
-            studentSettings[`student_${currentStudent.id}_wordbook`] = selectedWordbook;
-            wx.setStorageSync('studentSettings', studentSettings);
-            console.log(`词书选择已保存到本地存储，学生ID: ${currentStudent.id}`);
-            
-            // 同时更新页面状态存储，确保重新进入时显示最新选择
-            const pageStateKey = `${currentStudent.id}_pageState`;
-            const pageState = {
-              currentWordbook: selectedWordbook,
-              learningStats: this.data.learningStats,
-              timestamp: Date.now()
-            };
-            wx.setStorageSync(pageStateKey, pageState);
-            console.log('页面状态已更新并保存');
-            
-            // 更新全局数据中的selectedWordbook，确保跳转到学习页面时显示正确的词书
-            const app = getApp();
-            if (app && app.globalData) {
-              app.globalData.currentWordbook = selectedWordbook;
-              app.globalData.selectedWordbook = selectedWordbook;
-              console.log('已更新全局数据中的selectedWordbook:', selectedWordbook.title);
-            }
-          }
-        } catch (error) {
-          console.error('保存词书选择失败:', error);
-        }
+        console.log(`词书选择已按学生保存: ${this.data.currentStudent.id} / ${persistedWordbook.id}`);
       }
     } catch (error) {
       console.error('选择词书失败:', error);

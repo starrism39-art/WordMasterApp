@@ -10,6 +10,7 @@ const wordbooks = Array.isArray(wordbookData) ? wordbookData :
 const generateWordsForBook = wordbookData.generateWordsForBook || function(wordbook) { return wordbook.words || []; };
 const { syncLearningProgress, markPendingSync } = require('../../utils/cloud-sync.js');
 const cloudWordbookLoader = require('../../utils/cloud-wordbook-loader.js');
+const { resolveCurrentStudent, resolveCurrentWordbook, setCurrentWordbook } = require('../../utils/learning-context.js');
 
 Page({
   data: {
@@ -17,6 +18,9 @@ Page({
     allWordbooks: [], // 完整的词书列表
     currentFilter: 'all',
     userInfo: null,
+    currentStudent: null,
+    currentWordbookId: '',
+    currentWordbookName: '未选择词书',
     selectMode: false,
     loading: true,
     hasError: false,
@@ -51,6 +55,7 @@ Page({
       this.setData({
         userInfo: app.globalData.currentUser || { name: '测试用户' }
       });
+      this.syncCurrentContext();
       this.loadWordbooks();
     } catch (error) {
       console.error('词书页面加载失败:', error);
@@ -73,6 +78,7 @@ Page({
           userInfo: app.globalData.currentUser || { name: '测试用户' }
         });
       }
+      this.syncCurrentContext();
       this.loadWordbooks();
     } catch (error) {
       console.error('词书页面显示时出错:', error);
@@ -83,6 +89,24 @@ Page({
       });
       this.createMockWordbooks();
     }
+  },
+
+  syncCurrentContext: function() {
+    const app = getApp();
+    const currentStudent = resolveCurrentStudent(app);
+    const currentWordbook = resolveCurrentWordbook(app, currentStudent);
+
+    if (currentStudent && app && app.globalData) {
+      app.globalData.currentStudent = currentStudent;
+    }
+
+    this.setData({
+      currentStudent: currentStudent || null,
+      currentWordbookId: currentWordbook ? String(currentWordbook.id) : '',
+      currentWordbookName: currentWordbook
+        ? (currentWordbook.title || currentWordbook.name || '未命名词书')
+        : '未选择词书'
+    });
   },
   
   // 加载词书数据
@@ -342,8 +366,9 @@ Page({
   processWordbooksData: function(wordbooks) {
     try {
       const { userInfo } = this.data;
-      const currentStudent = getApp().globalData.currentStudent;
+      const currentStudent = this.data.currentStudent || getApp().globalData.currentStudent;
       const studentId = currentStudent?.id || '';
+      const currentWordbookId = String(this.data.currentWordbookId || '');
       
       // 使用与app.js一致的存储键
       let learningProgress = {};
@@ -371,7 +396,8 @@ Page({
           ...metadata,
           learnedWords: completedCount,
           progressPercent,
-          isInProgress
+          isInProgress,
+          isCurrent: String(wordbook.id || '') === currentWordbookId
         };
       });
     } catch (error) {
@@ -543,7 +569,7 @@ Page({
       }
       
       const app = getApp();
-      const currentStudent = app.globalData.currentStudent;
+      const currentStudent = this.data.currentStudent || app.globalData.currentStudent;
       
       // 检查学生账号（在选择模式下也需要检查，因为需要保存学习进度）
       if (!currentStudent) {
@@ -589,6 +615,24 @@ Page({
         });
         return;
       }
+
+      const persistedWordbook = setCurrentWordbook(app, currentStudent, selectedWordbook);
+      if (!persistedWordbook) {
+        throw new Error('保存当前词书失败');
+      }
+
+      this.setData({
+        currentWordbookId: persistedWordbook.id,
+        currentWordbookName: persistedWordbook.title,
+        allWordbooks: this.data.allWordbooks.map(book => ({
+          ...book,
+          isCurrent: String(book.id) === persistedWordbook.id
+        })),
+        wordbooks: this.data.wordbooks.map(book => ({
+          ...book,
+          isCurrent: String(book.id) === persistedWordbook.id
+        }))
+      });
       
       // 保存到本地存储（统一写入嵌套结构）
       let learningProgress = wx.getStorageSync('learningProgress') || {};
@@ -639,9 +683,6 @@ Page({
           duration: 1000
         });
         
-        // 设置全局词书数据（不加载单词）
-        app.globalData.selectedWordbook = selectedWordbook;
-        app.globalData.currentWordbook = selectedWordbook; // 同时设置currentWordbook以便持久化
         console.log('已设置selectedWordbook:', selectedWordbook.title);
         
         // 延迟返回，确保用户看到提示
