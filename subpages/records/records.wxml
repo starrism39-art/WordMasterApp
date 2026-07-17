@@ -1,16 +1,16 @@
 <!-- 学习记录页面 -->
 <view class="container">
-  <!-- 顶部导航栏 -->
-  <view class="header">
-    <view class="header-actions">
-      <button class="data-manage-btn" size="mini" bindtap="showDataManagement">
-        数据管理
-      </button>
+  <view class="page-intro">
+    <view class="intro-copy">
+      <text class="intro-eyebrow">教师视图 · 学习档案</text>
+      <text class="intro-title">{{currentStudent && currentStudent.name ? currentStudent.name : '当前学生'}}的学习记录</text>
+      <text class="intro-subtitle">按日期、词书与记录类型归档，点击卡片可查看单词明细</text>
     </view>
+    <button class="data-manage-btn" size="mini" bindtap="showDataManagement">数据管理</button>
   </view>
 
-  <!-- 时间筛选区域 - 优化样式 -->
   <view class="filter-container">
+    <text class="filter-label">时间范围</text>
     <view class="filter-tabs">
       <view class="filter-tab {{timeFilter === 'all' ? 'active' : ''}}" bindtap="changeTimeFilter" data-filter="all">
         <text class="tab-text">全部</text>
@@ -26,14 +26,33 @@
       </view>
     </view>
 
+    <text class="filter-label filter-label-spaced">记录类型</text>
     <view class="record-type-tabs">
+      <view class="record-type-tab {{recordTypeFilter === 'all' ? 'active' : ''}}" bindtap="changeRecordTypeFilter" data-filter="all">
+        <text class="tab-text">全部</text>
+        <text class="tab-count">{{visibleLearningCount + visibleReviewCount}}</text>
+      </view>
       <view class="record-type-tab {{recordTypeFilter === 'word' ? 'active' : ''}}" bindtap="changeRecordTypeFilter" data-filter="word">
-        <text class="tab-text">单词记录</text>
+        <text class="tab-text">学习</text>
+        <text class="tab-count">{{visibleLearningCount}}</text>
       </view>
       <view class="record-type-tab {{recordTypeFilter === 'anti' ? 'active' : ''}}" bindtap="changeRecordTypeFilter" data-filter="anti">
-        <text class="tab-text">抗遗忘记录</text>
+        <text class="tab-text">复习</text>
+        <text class="tab-count">{{visibleReviewCount}}</text>
       </view>
     </view>
+
+    <text class="filter-label filter-label-spaced">词书</text>
+    <scroll-view class="wordbook-filter-scroll" scroll-x="true" show-scrollbar="false" enhanced="true">
+      <view class="wordbook-filter-list">
+        <view wx:for="{{wordbookOptions}}" wx:key="id"
+          class="wordbook-filter-chip tone-{{item.tone}} {{wordbookFilter === item.id ? 'active' : ''}}"
+          bindtap="changeWordbookFilter" data-wordbook-id="{{item.id}}">
+          <text class="wordbook-filter-name">{{item.shortTitle}}</text>
+          <text class="wordbook-filter-count">{{item.recordCount}}</text>
+        </view>
+      </view>
+    </scroll-view>
   </view>
 
   <!-- 记录列表 -->
@@ -46,65 +65,59 @@
     
     <!-- 有数据时显示 -->
     <block wx:elif="!isLoading && filteredRecords.length > 0">
-      <!-- 统计卡片 -->
-      <view class="stats-card">
-        <view class="stat-item">
-          <text class="stat-number">{{displayedRecords.length}}</text>
-          <text class="stat-label">当前显示</text>
-        </view>
-        <view class="stat-divider"></view>
-        <view class="stat-item">
-          <text class="stat-number">{{filteredRecords.length}}</text>
-          <text class="stat-label">总记录数</text>
-        </view>
+      <view class="result-summary">
+        <text class="result-summary-title">当前筛选共 {{filteredRecords.length}} 条记录</text>
+        <text class="result-summary-meta">已显示 {{displayedRecords.length}} 条 · 同日同词书记录已合并</text>
       </view>
       
       <!-- 记录列表渲染 -->
       <view wx:for="{{displayedRecords}}" wx:key="id">
-        <!-- 简化的记录项 -->
-        <view class="record-item" data-id="{{item.id}}" bindtap="onRecordTap">
-          <!-- 记录头部信息 -->
+        <view class="record-item book-tone-{{item.wordbookTone}} {{item.recordCategory === 'anti' ? 'record-item-review' : 'record-item-learning'}}" data-id="{{item.id}}" bindtap="onRecordTap">
           <view class="record-header">
-            <text class="wordbook-title">{{item.wordbookTitle || '未知词书'}}</text>
+            <view class="record-heading">
+              <view class="record-type-badge {{item.recordCategory === 'anti' ? 'review' : 'learning'}}">{{item.recordTypeLabel}}</view>
+              <text class="record-date">{{item.formattedDate}}</text>
+            </view>
+            <text class="wordbook-title">{{item.displayWordbookTitle}}</text>
+            <text class="record-merge-label">{{item.recordCountLabel}}</text>
+            <text class="delete-btn-text" catchtap="deleteRecord" data-id="{{item.id}}">删除</text>
           </view>
 
-          <!-- 学习信息卡片 -->
-          <view class="info-card">
-            <!-- 学习日期 -->
-            <view class="info-item date-info">
-              <text class="info-label">学习日期</text>
-              <text class="info-value date-value">{{item.formattedDate}}</text>
+          <view wx:if="{{item.recordCategory !== 'anti'}}" class="learning-summary">
+            <view class="total-block">
+              <text class="summary-label">{{item.totalLabel}}</text>
+              <view><text class="summary-number">{{item.totalWords}}</text><text class="summary-unit">词</text></view>
             </view>
-            
-            <!-- 学习统计 -->
-            <view class="stats-grid {{item.recordCategory === 'anti' ? 'single-col' : ''}}">
-              <!-- 学习单词 -->
-              <view class="info-item word-info">
-                <text class="info-label">学习单词</text>
-                <text class="info-value word-value">{{item.totalWords || item.wordCount || 0}}个</text>
+            <view class="mastery-breakdown">
+              <view class="mastery-cell mastered">
+                <text class="mastery-label">已掌握</text>
+                <text class="mastery-number">{{item.masteredCount}}</text>
               </view>
-
-              <!-- 单词记录：掌握情况（右侧上下） -->
-              <view wx:if="{{item.recordCategory !== 'anti'}}" class="mastery-panel">
-                <view class="mastery-row mastery-row-mastered">
-                  <text class="mastery-row-label">已掌握</text>
-                  <text class="mastery-row-value">{{item.masteredCount || 0}}</text>
-                </view>
-                <view class="mastery-row mastery-row-not-mastered">
-                  <text class="mastery-row-label">未掌握</text>
-                  <text class="mastery-row-value">{{item.notMasteredCount || 0}}</text>
-                </view>
+              <view class="mastery-cell not-mastered">
+                <text class="mastery-label">未掌握</text>
+                <text class="mastery-number">{{item.notMasteredCount}}</text>
               </view>
+            </view>
+            <view class="mastery-track" wx:if="{{item.masteredCount + item.notMasteredCount > 0}}">
+              <view class="mastery-track-mastered" style="width: {{item.masteredPercentage}}%;"></view>
+              <view class="mastery-track-not-mastered" style="width: {{item.notMasteredPercentage}}%;"></view>
             </view>
           </view>
-          
-          <!-- 简化的删除按钮 -->
-          <view class="simple-delete-btn">
-            <text 
-              class="delete-btn-text"
-              catchtap="deleteRecord"
-              data-id="{{item.id}}"
-            >删除</text>
+
+          <view wx:else class="review-summary">
+            <view class="review-total">
+              <text class="summary-label">复习词汇</text>
+              <view><text class="summary-number">{{item.totalWords}}</text><text class="summary-unit">词</text></view>
+            </view>
+            <view class="review-note">
+              <text class="review-note-title">抗遗忘复习</text>
+              <text class="review-note-text">独立归档，不计入新词掌握拆分</text>
+            </view>
+          </view>
+
+          <view class="record-footer">
+            <text>查看本次单词明细</text>
+            <text class="record-footer-arrow">›</text>
           </view>
         </view>
       </view>
@@ -129,7 +142,7 @@
     <!-- 空状态 - 优化显示 -->
     <view wx:else class="empty-state">
       <text class="empty-title">暂无学习记录</text>
-      <text class="empty-subtitle">开始你的学习之旅吧！</text>
+      <text class="empty-subtitle">当前筛选条件下没有记录，请切换时间、类型或词书</text>
     </view>
   </view>
 </view>

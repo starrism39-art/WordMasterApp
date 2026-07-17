@@ -1,10 +1,9 @@
 /* 学习记录页面样式 */
 .container {
-  padding: 20rpx;
+  padding: 24rpx;
   padding-bottom: 140rpx;
-  background-color: #f8f8f8;
+  background-color: #f4f2eb;
   min-height: 100vh;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
 /* 顶部导航栏 */
@@ -301,7 +300,6 @@
   font-size: clamp(36rpx, 6vw, 60rpx);
   color: #28a745;
   font-weight: 700;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   letter-spacing: 1rpx;
   line-height: 1.2;
 }
@@ -359,7 +357,6 @@
   font-size: clamp(36rpx, 6vw, 60rpx);
   color: #1f8f4c;
   font-weight: 700;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   letter-spacing: 1rpx;
   line-height: 1.2;
 }
@@ -384,7 +381,6 @@
   font-size: clamp(36rpx, 6vw, 60rpx);
   font-weight: 700;
   color: #4A90E2;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   letter-spacing: 1rpx;
   line-height: 1.2;
 }
@@ -480,4 +476,439 @@
   font-size: 28rpx;
   color: #999;
   line-height: 1.5;
+}
+
+/* 教师端学习档案信息层级 */
+.page-intro {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24rpx;
+  padding: 32rpx 28rpx;
+  margin-bottom: 24rpx;
+  background: #243127;
+  border-radius: 24rpx 24rpx 8rpx 24rpx;
+  color: #ffffff;
+  box-shadow: 0 12rpx 28rpx rgba(36, 49, 39, 0.16);
+}
+
+.intro-copy {
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
+.intro-eyebrow {
+  margin-bottom: 10rpx;
+  color: #c9d8c7;
+  font-size: 22rpx;
+  font-weight: 600;
+  letter-spacing: 2rpx;
+}
+
+.intro-title {
+  font-size: 38rpx;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.intro-subtitle {
+  margin-top: 12rpx;
+  color: #dce5da;
+  font-size: 24rpx;
+  line-height: 1.55;
+}
+
+.page-intro .data-manage-btn {
+  flex: none;
+  height: 56rpx;
+  margin: 0;
+  padding: 0 20rpx;
+  background: transparent;
+  border: 1rpx solid rgba(255, 255, 255, 0.42);
+  border-radius: 28rpx;
+  box-shadow: none;
+  color: #ffffff;
+  font-size: 23rpx;
+  line-height: 54rpx;
+}
+
+.page-intro .data-manage-btn::after {
+  border: none;
+}
+
+.filter-container {
+  padding: 24rpx;
+  margin-bottom: 24rpx;
+  background: #ffffff;
+  border: 1rpx solid #e5e1d7;
+  border-radius: 20rpx;
+  box-shadow: 0 6rpx 18rpx rgba(36, 49, 39, 0.06);
+}
+
+.filter-label {
+  display: block;
+  margin-bottom: 12rpx;
+  color: #59635b;
+  font-size: 22rpx;
+  font-weight: 650;
+  letter-spacing: 1rpx;
+}
+
+.filter-label-spaced {
+  margin-top: 22rpx;
+}
+
+.filter-tabs,
+.record-type-tabs {
+  padding: 6rpx;
+  margin-top: 0;
+  background: #f2f0e9;
+  border: none;
+  border-radius: 14rpx;
+  box-shadow: none;
+}
+
+.filter-tab,
+.record-type-tab {
+  min-width: 0;
+  padding: 13rpx 8rpx;
+  border-radius: 10rpx;
+}
+
+.filter-tab.active,
+.record-type-tab.active {
+  background: #243127;
+  box-shadow: 0 4rpx 10rpx rgba(36, 49, 39, 0.16);
+  color: #ffffff;
+}
+
+.record-type-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+}
+
+.tab-text {
+  font-size: 25rpx;
+  font-weight: 600;
+}
+
+.tab-count {
+  min-width: 30rpx;
+  padding: 1rpx 8rpx;
+  background: rgba(36, 49, 39, 0.09);
+  border-radius: 14rpx;
+  color: #59635b;
+  font-size: 20rpx;
+  font-variant-numeric: tabular-nums;
+}
+
+.record-type-tab.active .tab-count {
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+}
+
+.wordbook-filter-scroll {
+  width: 100%;
+  white-space: nowrap;
+}
+
+.wordbook-filter-list {
+  display: inline-flex;
+  gap: 12rpx;
+  padding: 2rpx 2rpx 6rpx;
+}
+
+.wordbook-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10rpx;
+  padding: 14rpx 18rpx;
+  background: #f7f6f1;
+  border: 1rpx solid #dedbd1;
+  border-left-width: 6rpx;
+  border-radius: 12rpx;
+  color: #434c45;
+}
+
+.wordbook-filter-chip.tone-forest { border-left-color: #2e7d5b; }
+.wordbook-filter-chip.tone-amber { border-left-color: #b7791f; }
+.wordbook-filter-chip.tone-ocean { border-left-color: #33758c; }
+.wordbook-filter-chip.tone-slate { border-left-color: #68746c; }
+.wordbook-filter-chip.tone-all { border-left-color: #243127; }
+
+.wordbook-filter-chip.active {
+  background: #eef3ed;
+  border-color: #243127;
+  color: #243127;
+  font-weight: 650;
+}
+
+.wordbook-filter-name {
+  max-width: 300rpx;
+  overflow: hidden;
+  font-size: 24rpx;
+  text-overflow: ellipsis;
+}
+
+.wordbook-filter-count {
+  min-width: 30rpx;
+  color: #7a827b;
+  font-size: 20rpx;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.result-summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 20rpx;
+  padding: 4rpx 4rpx 14rpx;
+}
+
+.result-summary-title {
+  color: #243127;
+  font-size: 26rpx;
+  font-weight: 700;
+}
+
+.result-summary-meta {
+  color: #7a827b;
+  font-size: 21rpx;
+  text-align: right;
+}
+
+.record-item {
+  overflow: hidden;
+  padding: 0;
+  margin-bottom: 24rpx;
+  background: #ffffff;
+  border: 1rpx solid #e2ded4;
+  border-left-width: 10rpx;
+  border-radius: 8rpx 22rpx 22rpx 8rpx;
+  box-shadow: 0 8rpx 22rpx rgba(36, 49, 39, 0.07);
+}
+
+.record-item.book-tone-forest { border-left-color: #2e7d5b; }
+.record-item.book-tone-amber { border-left-color: #b7791f; }
+.record-item.book-tone-ocean { border-left-color: #33758c; }
+.record-item.book-tone-slate { border-left-color: #68746c; }
+.record-item-review { background: #fffaf0; }
+
+.record-header {
+  position: relative;
+  padding: 24rpx 104rpx 20rpx 24rpx;
+  margin-bottom: 0;
+  border-bottom: 1rpx solid #ebe7dd;
+}
+
+.record-heading {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  margin-bottom: 13rpx;
+}
+
+.record-type-badge {
+  flex: none;
+  padding: 5rpx 12rpx;
+  border-radius: 6rpx;
+  font-size: 20rpx;
+  font-weight: 700;
+  letter-spacing: 1rpx;
+}
+
+.record-type-badge.learning {
+  background: #e7f3ec;
+  color: #246747;
+}
+
+.record-type-badge.review {
+  background: #f6e7c7;
+  color: #8a5714;
+}
+
+.record-date {
+  color: #707970;
+  font-size: 22rpx;
+  font-variant-numeric: tabular-nums;
+}
+
+.wordbook-title {
+  display: block;
+  color: #243127;
+  font-size: 31rpx;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.record-merge-label {
+  display: block;
+  margin-top: 8rpx;
+  color: #7b827b;
+  font-size: 21rpx;
+}
+
+.record-header .delete-btn-text {
+  position: absolute;
+  top: 24rpx;
+  right: 22rpx;
+  padding: 7rpx 14rpx;
+  background: #f8ece8;
+  border-radius: 16rpx;
+  color: #a8482f;
+  font-size: 21rpx;
+}
+
+.learning-summary {
+  display: grid;
+  grid-template-columns: 0.85fr 1.65fr;
+  gap: 16rpx;
+  padding: 22rpx 24rpx 18rpx;
+}
+
+.total-block,
+.review-total {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 112rpx;
+  padding: 18rpx;
+  background: #f1f0e9;
+  border-radius: 14rpx;
+}
+
+.summary-label,
+.mastery-label {
+  color: #687169;
+  font-size: 21rpx;
+  font-weight: 600;
+}
+
+.summary-number {
+  color: #243127;
+  font-size: 48rpx;
+  font-weight: 750;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.summary-unit {
+  margin-left: 6rpx;
+  color: #687169;
+  font-size: 21rpx;
+}
+
+.mastery-breakdown {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12rpx;
+}
+
+.mastery-cell {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-width: 0;
+  min-height: 112rpx;
+  padding: 18rpx;
+  border-radius: 14rpx;
+}
+
+.mastery-cell.mastered { background: #e9f4ee; }
+.mastery-cell.not-mastered { background: #faebe6; }
+.mastery-cell.mastered .mastery-label,
+.mastery-cell.mastered .mastery-number { color: #2e7d5b; }
+.mastery-cell.not-mastered .mastery-label,
+.mastery-cell.not-mastered .mastery-number { color: #b34f32; }
+
+.mastery-number {
+  font-size: 42rpx;
+  font-weight: 750;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.mastery-track {
+  grid-column: 1 / 3;
+  display: flex;
+  overflow: hidden;
+  height: 8rpx;
+  background: #e3e0d8;
+  border-radius: 4rpx;
+}
+
+.mastery-track-mastered { background: #2e7d5b; }
+.mastery-track-not-mastered { background: #c95d3a; }
+
+.review-summary {
+  display: grid;
+  grid-template-columns: 0.85fr 1.65fr;
+  gap: 16rpx;
+  padding: 22rpx 24rpx 18rpx;
+}
+
+.review-total {
+  background: #f8edd8;
+}
+
+.review-total .summary-number { color: #8a5714; }
+
+.review-note {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 20rpx;
+  background: #ffffff;
+  border: 1rpx dashed #d8bc84;
+  border-radius: 14rpx;
+}
+
+.review-note-title {
+  margin-bottom: 8rpx;
+  color: #8a5714;
+  font-size: 27rpx;
+  font-weight: 700;
+}
+
+.review-note-text {
+  color: #796b52;
+  font-size: 22rpx;
+  line-height: 1.5;
+}
+
+.record-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16rpx 24rpx 18rpx;
+  border-top: 1rpx solid #efebe2;
+  color: #59635b;
+  font-size: 23rpx;
+  font-weight: 600;
+}
+
+.record-footer-arrow {
+  color: #2e7d5b;
+  font-size: 34rpx;
+  line-height: 1;
+}
+
+@media (max-width: 360px) {
+  .page-intro {
+    flex-direction: column;
+  }
+
+  .learning-summary,
+  .review-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .mastery-track {
+    grid-column: 1;
+  }
 }

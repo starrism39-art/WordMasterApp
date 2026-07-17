@@ -1,6 +1,7 @@
 // 学习记录页面 - 全面优化版
 const { mergeWordbooks, createWordMap, findWord, lookUpPhrase } = require('../../data/wordbook-utils.js');
 const { refreshStudentStats } = require('../../utils/stats-engine.js');
+const { createWordbookOptions, prepareRecordForDisplay } = require('../../utils/record-display.js');
 
 // 初始化合并后的词书数据和单词映射表
 let mergedWords = mergeWordbooks();
@@ -22,7 +23,11 @@ Page({
     displayedRecords: [], // 当前显示的记录（分页）
     wordbooks: {},
     timeFilter: 'all', // all, week, month, year
-    recordTypeFilter: 'word', // word: 单词记录, anti: 抗遗忘记录
+    recordTypeFilter: 'all', // all: 全部, word: 学习记录, anti: 复习记录
+    wordbookFilter: 'all',
+    wordbookOptions: [],
+    visibleLearningCount: 0,
+    visibleReviewCount: 0,
     isLoadingMore: false,
     currentPage: 0,
     hasMoreData: true,
@@ -217,7 +222,7 @@ Page({
         console.log('学习记录详细信息:', uniqueRecords);
         
         // 按天合并记录
-        const mergedByDayRecords = this.mergeRecordsByDay(uniqueRecords);
+        const mergedByDayRecords = this.mergeRecordsByDay(uniqueRecords).map(prepareRecordForDisplay);
         
         console.log('按天合并后学习记录数量:', mergedByDayRecords.length);
         console.log('合并后学习记录详细信息:', mergedByDayRecords);
@@ -230,6 +235,10 @@ Page({
         // 缓存处理后的记录，避免重复计算
         this._cache.processedRecords = mergedByDayRecords;
         this._cache.lastUpdateTime = Date.now();
+
+        const wordbookOptions = createWordbookOptions(mergedByDayRecords);
+        const activeWordbookExists = wordbookOptions.some(option => option.id === this.data.wordbookFilter);
+        const wordbookFilter = activeWordbookExists ? this.data.wordbookFilter : 'all';
         
         // 高效处理词书数据
         const wordbooks = wx.getStorageSync('wordbooks') || [];
@@ -246,7 +255,9 @@ Page({
         this.setData({
           studyRecords: uniqueRecords,
           wordbooks: wordbooksMap,
-          totalRecords: uniqueRecords.length
+          totalRecords: uniqueRecords.length,
+          wordbookOptions,
+          wordbookFilter
         }, () => {
           console.log('学习记录数据更新完成，studyRecords:', this.data.studyRecords);
           
@@ -348,6 +359,7 @@ Page({
       let filteredRecords = studyRecords;
       const filterType = this.data.timeFilter;
       const recordTypeFilter = this.data.recordTypeFilter;
+      const wordbookFilter = this.data.wordbookFilter;
       
       console.log('当前时间过滤类型:', filterType);
       
@@ -379,6 +391,13 @@ Page({
         // 时间过滤完成
       }
 
+      if (wordbookFilter !== 'all') {
+        filteredRecords = filteredRecords.filter(record => String(record.wordbookId || '') === wordbookFilter);
+      }
+
+      const visibleLearningCount = filteredRecords.filter(record => !this.isAntiForgettingRecord(record)).length;
+      const visibleReviewCount = filteredRecords.filter(record => this.isAntiForgettingRecord(record)).length;
+
       // 按记录类型筛选
       if (recordTypeFilter === 'anti') {
         filteredRecords = filteredRecords.filter(record => this.isAntiForgettingRecord(record));
@@ -404,7 +423,9 @@ Page({
           displayedRecords: firstPageRecords,
           currentDisplayCount: firstPageRecords.length,
           currentPage: 0,
-          hasMoreData: filteredRecords.length > pageSize
+          hasMoreData: filteredRecords.length > pageSize,
+          visibleLearningCount,
+          visibleReviewCount
         }, () => {
           console.log('数据更新完成，检查displayedRecords:', this.data.displayedRecords);
         });
@@ -489,6 +510,23 @@ Page({
         icon: 'none',
         duration: 1500
       });
+    }
+  },
+
+  changeWordbookFilter: function(e) {
+    const filter = e.currentTarget.dataset.wordbookId;
+    if (!filter || filter === this.data.wordbookFilter) return;
+
+    this.closeAllSliders();
+    this.setData({ wordbookFilter: filter, isLoading: true });
+
+    try {
+      this.filterRecords();
+    } catch (error) {
+      console.error('切换词书筛选失败:', error);
+      wx.showToast({ title: '词书筛选失败', icon: 'none', duration: 1500 });
+    } finally {
+      this.setData({ isLoading: false });
     }
   },
 

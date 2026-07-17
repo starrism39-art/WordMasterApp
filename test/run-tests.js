@@ -6,6 +6,7 @@ const path = require('path');
 const projectPath = path.resolve(__dirname, '..');
 const tests = [
   'test/page-contract.test.js',
+  'test/record-display.test.js',
   'test/learning-progress.test.js',
   'test/app-learning-progress.test.js',
   'test/cloud-wordbook-loading.test.js',
