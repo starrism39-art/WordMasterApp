@@ -205,7 +205,7 @@ async function settleMiniProgramLaunch(miniProgram) {
   } catch (error) {
     process.stdout.write(`Warm-up launch failed, continuing: ${formatValue(error)}\n`);
   }
-  await new Promise(resolve => setTimeout(resolve, smokeConfig.initialSettleMs || 3000));
+  await new Promise(resolve => setTimeout(resolve, smokeConfig.initialSettleMs || 6000));
 }
 
 async function checkScenario(miniProgram, scenario) {

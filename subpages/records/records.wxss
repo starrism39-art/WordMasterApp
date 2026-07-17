@@ -2,7 +2,7 @@
 .container {
   padding: 24rpx;
   padding-bottom: 140rpx;
-  background-color: #f4f2eb;
+  background: linear-gradient(180deg, #FFFDF8 0%, #FFFFFF 100%);
   min-height: 100vh;
 }
 
@@ -911,4 +911,195 @@
   .mastery-track {
     grid-column: 1;
   }
+}
+
+/* Align teacher records page with the current app visual system */
+.page-intro {
+  background: rgba(255, 255, 255, 0.96);
+  border: 1rpx solid rgba(255, 255, 255, 0.9);
+  border-radius: 24rpx;
+  box-shadow: 0 20rpx 50rpx rgba(84, 68, 28, 0.08);
+  color: #34404A;
+}
+
+.intro-eyebrow {
+  color: #07C160;
+}
+
+.intro-title {
+  color: #34404A;
+}
+
+.intro-subtitle {
+  color: #8E95A1;
+}
+
+.page-intro .data-manage-btn {
+  background: #F3F5F7;
+  border: none;
+  color: #34404A;
+}
+
+.filter-container {
+  background: rgba(255, 255, 255, 0.96);
+  border: 1rpx solid #EEF1F4;
+  border-radius: 24rpx;
+  box-shadow: 0 14rpx 30rpx rgba(84, 68, 28, 0.06);
+}
+
+.filter-label {
+  color: #6C727D;
+}
+
+.filter-tabs,
+.record-type-tabs {
+  background: #F7F8FA;
+}
+
+.filter-tab.active,
+.record-type-tab.active {
+  background: linear-gradient(135deg, #58CC87 0%, #07C160 100%);
+  box-shadow: 0 10rpx 22rpx rgba(7, 193, 96, 0.20);
+  color: #ffffff;
+}
+
+.tab-count {
+  background: rgba(7, 193, 96, 0.08);
+  color: #07C160;
+}
+
+.record-type-tab.active .tab-count {
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+}
+
+.wordbook-filter-chip {
+  background: #FFFFFF;
+  border-color: #EEF1F4;
+  color: #34404A;
+  box-shadow: 0 4rpx 12rpx rgba(15, 23, 42, 0.04);
+}
+
+.wordbook-filter-chip.tone-forest { border-left-color: #07C160; }
+.wordbook-filter-chip.tone-amber { border-left-color: #C49B5C; }
+.wordbook-filter-chip.tone-ocean { border-left-color: #4CA3FF; }
+.wordbook-filter-chip.tone-slate { border-left-color: #7D8695; }
+.wordbook-filter-chip.tone-all { border-left-color: #58CC87; }
+
+.wordbook-filter-chip.active {
+  background: #F3F8F5;
+  border-color: rgba(7, 193, 96, 0.18);
+  color: #07C160;
+}
+
+.wordbook-filter-count,
+.result-summary-meta {
+  color: #8E95A1;
+}
+
+.result-summary-title,
+.wordbook-title {
+  color: #34404A;
+}
+
+.record-item {
+  background: #FFFFFF;
+  border-color: #EEF1F4;
+  border-radius: 20rpx;
+  box-shadow: 0 14rpx 30rpx rgba(84, 68, 28, 0.06);
+}
+
+.record-item.book-tone-forest { border-left-color: #07C160; }
+.record-item.book-tone-amber { border-left-color: #C49B5C; }
+.record-item.book-tone-ocean { border-left-color: #4CA3FF; }
+.record-item.book-tone-slate { border-left-color: #7D8695; }
+.record-item-review { background: #FFFDF8; }
+
+.record-header {
+  border-bottom-color: #F1F3F5;
+}
+
+.record-type-badge.learning {
+  background: rgba(7, 193, 96, 0.10);
+  color: #07C160;
+}
+
+.record-type-badge.review {
+  background: rgba(196, 155, 92, 0.12);
+  color: #9B7438;
+}
+
+.record-date,
+.record-merge-label,
+.record-footer,
+.summary-label,
+.mastery-label,
+.summary-unit {
+  color: #8E95A1;
+}
+
+.record-header .delete-btn-text {
+  background: #F7F8FA;
+  color: #7D8695;
+}
+
+.total-block,
+.review-total {
+  background: #F7F8FA;
+}
+
+.summary-number {
+  color: #34404A;
+}
+
+.mastery-cell.mastered {
+  background: rgba(7, 193, 96, 0.08);
+}
+
+.mastery-cell.not-mastered {
+  background: #F7F8FA;
+}
+
+.mastery-cell.mastered .mastery-label,
+.mastery-cell.mastered .mastery-number {
+  color: #07C160;
+}
+
+.mastery-cell.not-mastered .mastery-label,
+.mastery-cell.not-mastered .mastery-number {
+  color: #7D8695;
+}
+
+.mastery-track {
+  background: #E9EEF2;
+}
+
+.mastery-track-mastered {
+  background: #07C160;
+}
+
+.mastery-track-not-mastered {
+  background: #C9D1DA;
+}
+
+.review-total .summary-number,
+.review-note-title {
+  color: #9B7438;
+}
+
+.review-note {
+  background: #FFFFFF;
+  border-color: rgba(196, 155, 92, 0.28);
+}
+
+.review-note-text {
+  color: #8E7A58;
+}
+
+.record-footer {
+  border-top-color: #F1F3F5;
+}
+
+.record-footer-arrow {
+  color: #07C160;
 }
