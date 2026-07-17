@@ -87,16 +87,16 @@ function enableAutomation() {
     'zh'
   ];
   const command = [cliPath, ...args].map(quoteCommandPart).join(' ');
-  const result = childProcess.spawnSync('cmd.exe', ['/d', '/s', '/c', command], {
-    stdio: 'inherit',
+  const child = childProcess.spawn('cmd.exe', ['/d', '/s', '/c', command], {
+    detached: true,
+    stdio: 'ignore',
     windowsHide: true
   });
 
-  if (result.error) {
-    throw result.error;
-  }
-  if (result.status !== 0) {
-    throw new Error(`启动微信开发者工具自动化失败，退出码 ${result.status}`);
+  child.unref();
+
+  if (child.pid) {
+    process.stdout.write(`WeChat DevTools automation starting on port ${autoPort} (pid ${child.pid})\n`);
   }
 }
 
@@ -153,7 +153,7 @@ async function run() {
   const miniProgram = await automator.connect({
     wsEndpoint: `ws://127.0.0.1:${autoPort}`
   });
-  await new Promise(resolve => setTimeout(resolve, 3000));
+  await settleMiniProgramLaunch(miniProgram);
 
   const runtimeEvents = [];
   let activeScenario = null;
@@ -197,6 +197,15 @@ async function run() {
   if (failed.length > 0) {
     throw new Error(`${failed.length} 个页面烟测失败`);
   }
+}
+
+async function settleMiniProgramLaunch(miniProgram) {
+  try {
+    await miniProgram.reLaunch('/pages/index/index');
+  } catch (error) {
+    process.stdout.write(`Warm-up launch failed, continuing: ${formatValue(error)}\n`);
+  }
+  await new Promise(resolve => setTimeout(resolve, smokeConfig.initialSettleMs || 3000));
 }
 
 async function checkScenario(miniProgram, scenario) {
