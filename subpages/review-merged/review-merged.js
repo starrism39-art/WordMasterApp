@@ -3,6 +3,7 @@ const { generateWordsForBook } = require('../../data/wordbook-loader.js');
 const { mergeWordbooks, createWordMap, findWord } = require('../../data/wordbook-utils.js');
 const { shouldIncludeAntiForgettingWord } = require('../../utils/anti-forgetting-filter.js');
 const { resolveCurrentStudent, resolveCurrentWordbook } = require('../../utils/learning-context.js');
+const { stripStableWordOccurrenceSuffix } = require('../../utils/learning-word-ids.js');
 
 // 初始化合并后的词书数据和单词映射表
 let mergedWords = mergeWordbooks();
@@ -697,6 +698,9 @@ Page({
         }
         // 情况5: 直接使用wordId作为单词
         
+        // 重复词条的稳定后缀只用于身份隔离，展示和查词时仍使用原单词。
+        word = stripStableWordOccurrenceSuffix(word);
+
         // 替换下划线为空格
         word = word.replace(/_/g, ' ');
         
@@ -1643,6 +1647,9 @@ Page({
         }
         // 情况5: 直接使用wordId作为单词
         
+        // 重复词条的稳定后缀只用于身份隔离，展示和查词时仍使用原单词。
+        word = stripStableWordOccurrenceSuffix(word);
+
         // 替换下划线为空格
         word = word.replace(/_/g, ' ');
         

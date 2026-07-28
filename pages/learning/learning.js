@@ -17,6 +17,10 @@ const {
   setCurrentWordbook
 } = require('../../utils/learning-context.js');
 const { resolveAntiForgettingSourceForUpdate } = require('../../utils/anti-forgetting-filter.js');
+const {
+  assignStableWordIds,
+  selectPreviewNotMasteredWords
+} = require('../../utils/learning-word-ids.js');
 
 const ENABLE_VERBOSE_LOG = false;
 const debugLog = (...args) => {
@@ -632,16 +636,11 @@ Page({
       // 初始计算totalBatches（后面会根据过滤结果重新计算）
       let totalBatches = Math.ceil(totalCount / batchSize);
 
-      // 为每个单词添加id属性，确保唯一标识
-      allWords = allWords.map((word, index) => {
-        // 使用word内容和wordbookId的组合作为ID，确保与新词学习模式生成的ID一致
-        const baseId = word.word ? `${wordbookId}_${word.word.toLowerCase().replace(/\s+/g, '_')}` : `${wordbookId}_unknown`;
-        return {
-          ...word,
-          phonetic: this.normalizePhoneticDisplay(word.phonetic),
-          id: baseId
-        };
-      });
+      // 首个词条保留旧ID；同词书中的重复词条使用确定性后缀，避免预习状态相互覆盖。
+      allWords = assignStableWordIds(allWords, wordbookId).map((word) => ({
+        ...word,
+        phonetic: this.normalizePhoneticDisplay(word.phonetic)
+      }));
 
       // ===== 预习顺序策略 =====
       // 课本类：保持数据文件的录入顺序（不随机）
@@ -2048,21 +2047,14 @@ Page({
       const notMasteredWords = [];
       const addedWordIds = new Set();
       
-      // 第一步：先遍历预览状态中的所有单词，找出所有明确标记为不会的单词ID
-      const explicitlyNotMasteredWordIds = [];
-      const currentWordIdSet = new Set((this.data.allWords || []).map(word => String(word.id || '')));
-      for (const wordId in previewMastery) {
-        if (!String(wordId).startsWith(`${wordbookId}_`)) {
-          continue;
-        }
-        if (!currentWordIdSet.has(String(wordId))) {
-          continue;
-        }
-        const wordStatus = previewMastery[wordId];
-        if (wordStatus === false || wordStatus === 'difficult') {
-          explicitlyNotMasteredWordIds.push(wordId);
-        }
-      }
+      // 只接受当前词书中精确命中的ID；不能去掉重复词后缀做模糊匹配，
+      // 否则标记一个重复词会把同名的所有词条一起加入学习。
+      const selectedNotMasteredWords = selectPreviewNotMasteredWords(
+        this.data.allWords || [],
+        previewMastery,
+        wordbookId
+      );
+      const explicitlyNotMasteredWordIds = selectedNotMasteredWords.map((word) => String(word.id));
       
       const explicitlyNotMasteredCount = explicitlyNotMasteredWordIds.length;
       console.log('明确标记为不会的单词ID:', explicitlyNotMasteredWordIds, '数量:', explicitlyNotMasteredCount);
@@ -2079,25 +2071,12 @@ Page({
       // 第二步：根据是否有明确标记为不会的单词来过滤学习单词
       if (explicitlyNotMasteredCount > 0) {
         // 如果有明确标记为不会的单词，则只学习这些单词
-        for (const word of wordsWithId) {
-          if (word && word.id) {
-            // 匹配逻辑：考虑预习模式中ID包含索引的情况
-            const isExplicitlyNotMastered = explicitlyNotMasteredWordIds.some(previewId => {
-              // 1. 直接匹配
-              if (previewId === String(word.id)) {
-                return true;
-              }
-              // 2. 预览ID包含索引，尝试去除索引后匹配
-              const basePreviewId = previewId.replace(/(_\d+)$/, '');
-              const baseWordId = word.id.replace(/(_\d+)$/, '');
-              return basePreviewId === baseWordId;
-            });
-            if (isExplicitlyNotMastered && !addedWordIds.has(word.id)) {
-              notMasteredWords.push(word);
-              addedWordIds.add(word.id);
-            }
+        selectedNotMasteredWords.forEach((word) => {
+          if (word && word.id && !addedWordIds.has(word.id)) {
+            notMasteredWords.push(word);
+            addedWordIds.add(word.id);
           }
-        }
+        });
       } else {
         // 如果没有明确标记为未掌握的单词，显示弹框提示用户
         wx.showModal({
