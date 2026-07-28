@@ -763,33 +763,48 @@ const migrateLocalDataToCloud = async () => {
       const studentId = student && student.id !== undefined && student.id !== null
         ? String(student.id)
         : '';
-        const cleanedStudent = stripMeta(student);
+      const cleanedStudent = stripMeta(student);
 
       return {
         docId: studentId,
         data: {
           teacher_id: openid,
           student_id: studentId,
-            ...cleanedStudent
+          ...cleanedStudent
         }
       };
     });
 
-    await runBatches(studentDocs, MAX_CONCURRENCY, async (doc) => {
-      const collection = db.collection('students');
-      if (doc.docId) {
-        return collection.doc(doc.docId).set({ data: doc.data });
-      }
-      return collection.add({ data: doc.data });
-    }, 'students');
+    const validStudentDocs = studentDocs.filter((doc) => !!doc.docId);
+    let studentSynced = 0;
+    let studentFailed = studentDocs.length - validStudentDocs.length;
+    if (studentFailed > 0) {
+      console.warn('[cloud-migration] 跳过缺少稳定 studentId 的学生记录:', studentFailed);
+    }
+    try {
+      studentSynced = await runBatches(validStudentDocs, MAX_CONCURRENCY, async (doc) => {
+        return db.collection('students').doc(doc.docId).set({ data: doc.data });
+      }, 'students');
+    } catch (error) {
+      studentFailed += validStudentDocs.length;
+      studentSynced = 0;
+      console.warn('[cloud-migration] students 同步未完整完成，将保留迁移重试机会:', error);
+    }
 
     // 2) learning_records：委托 syncLearningRecord（统一 scoped doc ID）
     let recordSynced = 0;
+    let recordFailed = 0;
     for (let i = 0; i < learningRecords.length; i++) {
       try {
-        await syncLearningRecord(learningRecords[i]);
-        recordSynced++;
+        const result = await syncLearningRecord(learningRecords[i]);
+        if (result && result.ok === true && !result.error) {
+          recordSynced++;
+        } else {
+          recordFailed++;
+          console.warn('[cloud-migration] learning_record 返回未成功:', i, result);
+        }
       } catch (e) {
+        recordFailed++;
         console.warn('[cloud-migration] learning_record 同步失败:', i, e);
       }
     }
@@ -800,37 +815,108 @@ const migrateLocalDataToCloud = async () => {
       var sp = learningProgress[sid];
       return sp && typeof sp === 'object' && !Array.isArray(sp);
     });
+    let progressSynced = 0;
+    let progressFailed = 0;
     for (let i = 0; i < progressStudentIds.length; i++) {
       var sid = progressStudentIds[i];
       try {
-        await syncLearningProgress(sid, learningProgress[sid]);
+        const result = await syncLearningProgress(sid, learningProgress[sid]);
+        if (result && result.ok === true && !result.error) {
+          progressSynced++;
+        } else {
+          progressFailed++;
+          console.warn('[cloud-migration] learning_progress 返回未成功:', sid, result);
+        }
       } catch (e) {
+        progressFailed++;
         console.warn('[cloud-migration] learning_progress 同步失败:', sid, e);
       }
     }
-    console.log('[cloud-migration] learning_progress:', progressStudentIds.length);
+    console.log('[cloud-migration] learning_progress:', progressSynced, '/', progressStudentIds.length);
 
     // 4) word_mastery：委托 syncWordMasteryBatch（统一 scoped doc ID）
     const masteryStudentIds = Object.keys(wordMastery).filter(function(sid) {
       var sm = wordMastery[sid];
       return sm && typeof sm === 'object' && !Array.isArray(sm);
     });
+    let masteryStudentsSynced = 0;
+    let masteryWordsSynced = 0;
+    let masteryWordsFailed = 0;
+    let masteryWordsTotal = 0;
     for (let i = 0; i < masteryStudentIds.length; i++) {
       var msid = masteryStudentIds[i];
       var studentMastery = wordMastery[msid] || {};
       var wbIds = Object.keys(studentMastery).filter(function(wid) {
         return studentMastery[wid] && typeof studentMastery[wid] === 'object' && !Array.isArray(studentMastery[wid]);
       });
+      let currentStudentFailed = 0;
       for (var j = 0; j < wbIds.length; j++) {
         var wbid = wbIds[j];
+        const wordCount = Object.keys(studentMastery[wbid]).length;
+        masteryWordsTotal += wordCount;
         try {
-          await syncWordMasteryBatch(msid, wbid, studentMastery[wbid]);
+          const result = await syncWordMasteryBatch(msid, wbid, studentMastery[wbid]);
+          if (result && typeof result.failed === 'number') {
+            const failedCount = Math.max(0, Math.min(wordCount, result.failed));
+            masteryWordsFailed += failedCount;
+            currentStudentFailed += failedCount;
+            masteryWordsSynced += wordCount - failedCount;
+          } else if (result && result.ok === true && !result.error) {
+            masteryWordsSynced += wordCount;
+          } else if (wordCount > 0) {
+            masteryWordsFailed += wordCount;
+            currentStudentFailed += wordCount;
+            console.warn('[cloud-migration] word_mastery 返回未成功:', msid, wbid, result);
+          }
         } catch (e) {
+          masteryWordsFailed += wordCount;
+          currentStudentFailed += wordCount;
           console.warn('[cloud-migration] word_mastery 同步失败:', msid, wbid, e);
         }
       }
+      if (currentStudentFailed === 0) {
+        masteryStudentsSynced++;
+      }
     }
-    console.log('[cloud-migration] word_mastery:', masteryStudentIds.length, 'students');
+    console.log('[cloud-migration] word_mastery:', masteryWordsSynced, '/', masteryWordsTotal, 'words');
+
+    const counts = {
+      students: studentSynced,
+      learningRecords: recordSynced,
+      learningProgress: progressSynced,
+      wordMastery: masteryStudentsSynced,
+      wordMasteryWords: masteryWordsSynced
+    };
+    const totals = {
+      students: studentDocs.length,
+      learningRecords: learningRecords.length,
+      learningProgress: progressStudentIds.length,
+      wordMastery: masteryStudentIds.length,
+      wordMasteryWords: masteryWordsTotal
+    };
+    const failures = {
+      students: studentFailed,
+      learningRecords: recordFailed,
+      learningProgress: progressFailed,
+      wordMasteryWords: masteryWordsFailed
+    };
+    const totalFailures = Object.keys(failures).reduce((sum, key) => sum + failures[key], 0);
+
+    if (totalFailures > 0) {
+      wx.showToast({
+        title: '部分数据待同步',
+        icon: 'none',
+        duration: 2500
+      });
+      return {
+        success: false,
+        partial: true,
+        reason: 'partial_sync_failed',
+        counts,
+        totals,
+        failures
+      };
+    }
 
     wx.setStorageSync('hasMigratedToCloud', true);
     wx.showToast({
@@ -841,12 +927,9 @@ const migrateLocalDataToCloud = async () => {
 
     return {
       success: true,
-      counts: {
-        students: studentDocs.length,
-        learningRecords: recordSynced,
-        learningProgress: progressStudentIds.length,
-        wordMastery: masteryStudentIds.length
-      }
+      counts,
+      totals,
+      failures
     };
   } catch (error) {
     console.error('[cloud-migration] failed:', error);

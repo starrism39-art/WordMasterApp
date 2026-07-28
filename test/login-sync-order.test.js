@@ -101,6 +101,30 @@ const loadLoginService = ({ storage, pull, migrate, retry }) => {
   assert.strictEqual(failedResult.ok, false);
   assert.deepStrictEqual(failedEvents, ['pull'], 'failed pull must block every write path');
 
+  const partialEvents = [];
+  const partialService = loadLoginService({
+    storage: { openid: 'openid-test', students: [{ id: 'student456' }] },
+    pull: () => {
+      partialEvents.push('pull');
+      return Promise.resolve({ success: true });
+    },
+    migrate: () => {
+      partialEvents.push('migrate');
+      return Promise.resolve({
+        success: false,
+        partial: true,
+        reason: 'partial_sync_failed'
+      });
+    },
+    retry: () => {
+      partialEvents.push('retry');
+      return Promise.resolve({ ok: true, pending: 1 });
+    }
+  });
+  const partialResult = await partialService.doSilentLogin();
+  assert.strictEqual(partialResult.ok, true, 'partial migration must not block normal login');
+  assert.deepStrictEqual(partialEvents, ['pull', 'migrate', 'retry']);
+
   console.log('login-sync-order: PASS');
 })().catch((error) => {
   console.error(error);
