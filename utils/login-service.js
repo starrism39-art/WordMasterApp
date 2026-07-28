@@ -10,7 +10,7 @@ const migrateLocalDataToCloud = require('./cloud-migration.js').migrateLocalData
 const retryPendingSyncs = require('./cloud-sync.js').retryPendingSyncs;
 const { createCloudReadOnlyResult, isCloudReadOnlyMode } = require('./cloud-mode.js');
 
-let _loginInProgress = false;
+let _loginPromise = null;
 
 // 是否已有登录凭证
 function isLoggedIn() {
@@ -100,67 +100,63 @@ function hasLocalDataToMigrate() {
 
 // 核心：静默登录（等待云端数据同步完成，确保数据就绪）
 function doSilentLogin() {
-  if (_loginInProgress) return Promise.resolve({ skipped: true });
-  _loginInProgress = true;
+  if (_loginPromise) return _loginPromise;
 
   console.log('[login-service] 开始静默登录');
 
-  function finish(result) {
-    _loginInProgress = false;
-    return result;
+  // 云端拉取必须成功，后续才允许迁移/重试本地待写数据，避免旧设备先覆盖新云端状态。
+  function pullFromCloud(openid) {
+    return syncDataFromCloud(openid).then(function(result) {
+      if (!result || result.error || result.success === false) {
+        throw new Error(result && result.error ? result.error : 'cloud_pull_failed');
+      }
+      try { getApp().emit('cloudSyncComplete'); } catch(e) {}
+      console.log('[login-service] 云端数据拉取并合并完成');
+      return result;
+    });
   }
 
-  // 后台下载完成后通知首页刷新（返回 promise，调用方可 await）
-  function backgroundDownload(openid) {
-    return syncDataFromCloud(openid).then(function() {
-      try { getApp().emit('cloudSyncComplete'); } catch(e) {}
-      console.log('[login-service] 后台拉取云端数据完成');
-    }).catch(function(err) {
-      console.warn('[login-service] 后台拉取云端数据失败:', err);
+  function pushAfterPull() {
+    var shouldMigrate = hasLocalDataToMigrate() && !wx.getStorageSync('hasMigratedToCloud');
+    var migration = shouldMigrate ? migrateLocalDataToCloud() : Promise.resolve({ skipped: true });
+    return migration.then(function(result) {
+      if (result && result.error) {
+        throw new Error(result.error);
+      }
+      return retryPendingSyncs();
     });
   }
 
   var cachedOpenId = wx.getStorageSync('openid');
-
-  // 上云与拉回之间留冷却时间，避免 CloudBase 请求限流
-  var coolDown = function() {
-    return new Promise(function(r) { setTimeout(r, 2000); });
-  };
-
+  var workflow;
   if (cachedOpenId) {
     console.log('[login-service] 使用缓存 openid:', cachedOpenId);
-    retryPendingSyncs();
-
-    var p = hasLocalDataToMigrate()
-      ? migrateLocalDataToCloud({ force: true }).then(coolDown)
-      : Promise.resolve();
-
-    return p.then(function() {
-      return backgroundDownload(cachedOpenId);
+    workflow = pullFromCloud(cachedOpenId).then(function() {
+      return pushAfterPull();
+    });
+  } else {
+    // 无缓存 openid → 获取身份、建立教师记录，再拉取云端；本地写入仍必须排在拉取成功之后。
+    workflow = fetchOpenId().then(function(openid) {
+      wx.setStorageSync('openid', openid);
+      return ensureTeacherRecord(openid).then(function() {
+        return pullFromCloud(openid);
+      });
     }).then(function() {
-      return finish({ ok: true });
-    }).catch(function(error) {
-      console.error('[login-service] 登录失败:', error);
-      return finish({ ok: false, error: error });
+      return pushAfterPull();
     });
   }
 
-  // 无缓存 openid → 调云函数获取（同步等待云端数据下载完成）
-  return fetchOpenId().then(function(openid) {
-    wx.setStorageSync('openid', openid);
-    return ensureTeacherRecord(openid).then(function() {
-      retryPendingSyncs();
-      return migrateLocalDataToCloud({ force: true });
-    });
-  }).then(function() {
-    var openid = wx.getStorageSync('openid');
-    if (openid) return coolDown().then(function() { return backgroundDownload(openid); });
-  }).then(function() {
-    return finish({ ok: true });
+  _loginPromise = workflow.then(function() {
+    return { ok: true };
   }).catch(function(error) {
-    console.error('[login-service] 登录失败:', error);
-    return finish({ ok: false, error: error });
+    console.error('[login-service] 登录或同步失败:', error);
+    return { ok: false, error: error };
+  }).then(function(result) {
+    _loginPromise = null;
+    return result;
   });
+
+  return _loginPromise;
 }
 
 module.exports = {

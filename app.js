@@ -9,7 +9,7 @@ const WordbookLoader = require('./data/wordbook-loader.js');
 const DataMigration = require('./utils/data-migration.js');
 
 // 引入云同步模块
-const { syncLearningRecord, syncLearningProgress, syncAllLocalLearningProgress, retryPendingSyncs } = require('./utils/cloud-sync.js');
+const { syncLearningRecord, syncLearningProgress } = require('./utils/cloud-sync.js');
 const {
   reconcileLearningProgressMap,
   reconcileStudentLearningProgress
@@ -75,16 +75,6 @@ App({
         this.checkStorageRegularly(true);
       }, 3000);
       
-      // 【V1.0.1 重试失败的云同步】延迟重试之前失败的同步任务
-      setTimeout(() => {
-        retryPendingSyncs();
-      }, 5000);
-
-      // 【V1.0.2 历史数据补推】将本地所有 learningProgress 一次性推到云端（幂等）
-      setTimeout(() => {
-        syncAllLocalLearningProgress();
-      }, 8000);
-
       // 【云端词书预下载】启动后在后台预下载配置为云端的词书数据
       setTimeout(() => {
         this.preloadCloudWordbooks();

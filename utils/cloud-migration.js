@@ -34,6 +34,10 @@ const {
 } = require('./cloud-sync.js');
 const { reconcileLearningProgressMap } = require('./learning-progress.js');
 const { createCloudReadOnlyResult, isCloudReadOnlyMode } = require('./cloud-mode.js');
+const {
+  mergeById,
+  mergeWordMasteryRecord
+} = require('./sync-merge.js');
 
 const chunkArray = (items, size) => {
   if (!Array.isArray(items) || items.length === 0) {
@@ -284,37 +288,6 @@ const buildWordMasteryMap = (docs) => {
   return map;
 };
 
-const mergeById = (localArr, cloudArr, idKey) => {
-  const map = new Map();
-  // 先放本地
-  (localArr || []).forEach((item) => {
-    if (item && item[idKey] !== undefined && item[idKey] !== null) {
-      map.set(String(item[idKey]), item);
-    }
-  });
-  // 云端补充：本地没有的直接加；本地有的按 updatedAt 时间戳比较，谁更新用谁
-  (cloudArr || []).forEach((item) => {
-    if (!item) return;
-    const id = item[idKey] !== undefined && item[idKey] !== null ? String(item[idKey]) : null;
-    if (!id) return;
-    const localItem = map.get(id);
-    if (!localItem) {
-      // 本地没有，直接用云端
-      map.set(id, item);
-    } else {
-      // 两边都有，比较 updatedAt，取时间戳更大的
-      const localTime = typeof localItem.updatedAt === 'number' ? localItem.updatedAt : 0;
-      const cloudTime = typeof item.updatedAt === 'number' ? item.updatedAt : 0;
-      if (cloudTime > localTime) {
-        // 云端更新，云端覆盖本地（但保留本地独有字段）
-        map.set(id, { ...localItem, ...item });
-      }
-      // 否则保留本地，不覆盖
-    }
-  });
-  return Array.from(map.values());
-};
-
 /**
  * 判断一个对象是否为单词掌握记录（包含 reviewCount 或 mastered 字段）
  */
@@ -332,74 +305,6 @@ const isLearningProgressRecord = (obj) => {
   const hasNumericCompleted = typeof obj.completedCount === 'number';
   const hasNumericLearned = typeof obj.learnedWords === 'number';
   return (hasNumericCompleted || hasNumericLearned) && 'wordbooks' in obj === false;
-};
-
-/**
- * 语义合并单词掌握记录（word-level）：用字段语义决定合并策略
- * 核心原则：进度只进不退
- */
-const mergeWordMasteryRecord = (localRecord, cloudRecord) => {
-  const local = localRecord || {};
-  const cloud = cloudRecord || {};
-
-  // 以双方所有字段为基底（local 优先保留未知字段），再覆盖语义合并的关键字段
-  const result = { ...cloud, ...local };
-
-  // reviewCount: 取最大值（更多复习=更先进）
-  result.reviewCount = Math.max(
-    typeof local.reviewCount === 'number' ? local.reviewCount : 0,
-    typeof cloud.reviewCount === 'number' ? cloud.reviewCount : 0
-  );
-
-  // lastReviewTime: 取最大值（更晚=更新）
-  result.lastReviewTime = Math.max(
-    typeof local.lastReviewTime === 'number' ? local.lastReviewTime : 0,
-    typeof cloud.lastReviewTime === 'number' ? cloud.lastReviewTime : 0
-  );
-
-  // nextReviewTime: 取最大值（更晚=进度更靠后）
-  result.nextReviewTime = Math.max(
-    typeof local.nextReviewTime === 'number' ? local.nextReviewTime : 0,
-    typeof cloud.nextReviewTime === 'number' ? cloud.nextReviewTime : 0
-  );
-
-  // firstMasteryTime: 取最小值（最早学习时间）
-  const localFirst = typeof local.firstMasteryTime === 'number' ? local.firstMasteryTime : Infinity;
-  const cloudFirst = typeof cloud.firstMasteryTime === 'number' ? cloud.firstMasteryTime : Infinity;
-  result.firstMasteryTime = Math.min(localFirst, cloudFirst) === Infinity ? (result.lastReviewTime || Date.now()) : Math.min(localFirst, cloudFirst);
-
-  // mastered: 逻辑或（任一方标记掌握即为掌握）
-  result.mastered = !!(local.mastered || cloud.mastered);
-
-  // difficult: 以 lastReviewTime 更晚者为准（最新评估）
-  const localLR = typeof local.lastReviewTime === 'number' ? local.lastReviewTime : 0;
-  const cloudLR = typeof cloud.lastReviewTime === 'number' ? cloud.lastReviewTime : 0;
-  result.difficult = cloudLR > localLR ? !!cloud.difficult : !!local.difficult;
-
-  // antiForgettingSeed: 逻辑或
-  result.antiForgettingSeed = !!(local.antiForgettingSeed || cloud.antiForgettingSeed);
-
-  // reviewTimeline: 合并数组，按 time+reviewCount+status 去重
-  const localTimeline = Array.isArray(local.reviewTimeline) ? local.reviewTimeline : [];
-  const cloudTimeline = Array.isArray(cloud.reviewTimeline) ? cloud.reviewTimeline : [];
-  const timelineMap = new Map();
-  localTimeline.forEach((entry) => {
-    if (entry && typeof entry.time === 'number') {
-      const dedupeKey = `${entry.time}_${entry.reviewCount || 0}_${entry.status || ''}`;
-      timelineMap.set(dedupeKey, entry);
-    }
-  });
-  cloudTimeline.forEach((entry) => {
-    if (entry && typeof entry.time === 'number') {
-      const dedupeKey = `${entry.time}_${entry.reviewCount || 0}_${entry.status || ''}`;
-      if (!timelineMap.has(dedupeKey)) {
-        timelineMap.set(dedupeKey, entry);
-      }
-    }
-  });
-  result.reviewTimeline = Array.from(timelineMap.values()).sort((a, b) => (a.time || 0) - (b.time || 0));
-
-  return result;
 };
 
 /**
@@ -581,7 +486,7 @@ const syncDataFromCloud = async (openid) => {
     const localProgress = wx.getStorageSync('learningProgress') || {};
     const localMastery = wx.getStorageSync('wordMastery') || {};
 
-    // 【V2.0 语义级智能合并】逐字段比较：reviewCount取最大、lastReviewTime取最新、mastered逻辑或等
+    // 【V2.1 状态安全合并】按整条记录版本选择状态，避免逐字段 max/or 拼出不存在的组合
     const normalizedLocalStudents = (localStudents || []).map(normalizeStudentForMerge);
     const normalizedCloudStudents = (cloudStudents || []).map(normalizeStudentForMerge);
 
