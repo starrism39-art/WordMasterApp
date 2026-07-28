@@ -1,162 +1,248 @@
+'use strict';
+
 /**
- * 云函数：syncMasteryAtom
- * 原子化合并 wordMastery 数据到云端 word_mastery 集合
- * 
- * ★ 与客户端直写相比的核心改进：
- *   1. 服务端合并，消除并发覆盖窗口
- *   2. 数值字段取 max、布尔字段 OR、时间线去重 → 数据只进不退
- *   3. 使用 db.serverDate() 消除客户端时间依赖
- *   4. difficult 按 lastReviewTime 决胜，确保最新评估生效
- * 
- * 调用: wx.cloud.callFunction({ name: 'syncMasteryAtom', data: { openid, records } })
- * 
- * 入参:
- *   openid: string (安全校验)
- *   records: array (每条包含 studentId, wordbookId, wordId 及掌握字段)
- * 
- * 降级: 云函数不可用时客户端自动退回原有 read→compare→write 逻辑
+ * Cloud function: syncMasteryAtom
+ *
+ * Safely merges changed word-mastery records for the current WeChat caller.
+ * Existing legacy scoped records without _openid are adopted only when their
+ * stored identity matches the caller and the requested student/book/word.
  */
 const cloud = require('wx-server-sdk');
+const {
+  mergeWordMasteryRecord,
+  resolveUpdatedAt
+} = require('./sync-merge');
+
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
-const _ = db.command;
 
-exports.main = async (event, context) => {
-  const { records, openid } = event || {};
+const MAX_BATCH_SIZE = 20;
+const PROTECTED_FIELDS = new Set([
+  '_id',
+  '_openid',
+  'teacher_id',
+  'teacherId',
+  'student_id',
+  'studentId',
+  'wordbook_id',
+  'wordbookId',
+  'word_id',
+  'wordId',
+  '__proto__',
+  'constructor',
+  'prototype'
+]);
 
-  if (!openid) {
-    return { success: false, error: 'missing_openid' };
+const normalizeIdentifier = (value) => (
+  String(value === undefined || value === null ? '' : value).trim()
+);
+
+const buildScopedDocId = (openid, ...parts) => {
+  const safe = (value) => normalizeIdentifier(value)
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .slice(0, 120);
+  return [safe(openid), ...parts.map(safe)].filter(Boolean).join('__').slice(0, 500);
+};
+
+const isNotFoundError = (error) => {
+  if (!error) return false;
+  if (error.errCode === -1) return true;
+  const message = String(error.errMsg || error.message || '');
+  return /not\s*found|not\s*exist|does\s*not\s*exist/i.test(message);
+};
+
+const makeSyncError = (code, message) => {
+  const error = new Error(message || code);
+  error.code = code;
+  return error;
+};
+
+const getRecordIdentifiers = (record) => ({
+  studentId: normalizeIdentifier(record && (record.studentId || record.student_id)),
+  wordbookId: normalizeIdentifier(record && (record.wordbookId || record.wordbook_id)),
+  wordId: normalizeIdentifier(record && (record.wordId || record.word_id))
+});
+
+const stripProtectedFields = (record) => {
+  const clean = {};
+  Object.keys(record || {}).forEach((key) => {
+    if (!PROTECTED_FIELDS.has(key)) {
+      clean[key] = record[key];
+    }
+  });
+  return clean;
+};
+
+const assertExistingIdentity = (
+  existing,
+  callerOpenid,
+  studentId,
+  wordbookId,
+  wordId
+) => {
+  if (!existing) return;
+
+  const existingOpenid = normalizeIdentifier(existing._openid);
+  const existingTeacherId = normalizeIdentifier(existing.teacher_id || existing.teacherId);
+  if (
+    (existingOpenid && existingOpenid !== callerOpenid)
+    || (existingTeacherId && existingTeacherId !== callerOpenid)
+  ) {
+    throw makeSyncError('ownership_mismatch');
+  }
+
+  const existingStudentId = normalizeIdentifier(existing.student_id || existing.studentId);
+  const existingWordbookId = normalizeIdentifier(existing.wordbook_id || existing.wordbookId);
+  const existingWordId = normalizeIdentifier(existing.word_id || existing.wordId);
+  if (
+    (existingStudentId && existingStudentId !== studentId)
+    || (existingWordbookId && existingWordbookId !== wordbookId)
+    || (existingWordId && existingWordId !== wordId)
+  ) {
+    throw makeSyncError('identity_mismatch');
+  }
+};
+
+const readExisting = async (transaction, docId) => {
+  try {
+    const result = await transaction.collection('word_mastery').doc(docId).get();
+    return result && result.data ? result.data : null;
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return null;
+    }
+    throw error;
+  }
+};
+
+const syncOneRecord = async (record, callerOpenid) => {
+  const { studentId, wordbookId, wordId } = getRecordIdentifiers(record);
+  if (!studentId || !wordbookId || !wordId) {
+    return {
+      wordId: wordId || 'unknown',
+      ok: false,
+      error: 'missing_identifiers'
+    };
+  }
+
+  const docId = buildScopedDocId(
+    callerOpenid,
+    'mastery',
+    studentId,
+    wordbookId,
+    wordId
+  );
+  const incomingData = stripProtectedFields(record);
+
+  try {
+    const transactionResult = await db.runTransaction(async (transaction) => {
+      const existing = await readExisting(transaction, docId);
+      assertExistingIdentity(
+        existing,
+        callerOpenid,
+        studentId,
+        wordbookId,
+        wordId
+      );
+
+      const merged = mergeWordMasteryRecord(existing || {}, incomingData);
+      const {
+        _id: ignoredId,
+        _openid: ignoredOpenid,
+        ...safeMerged
+      } = merged;
+      const mergedUpdatedAt = resolveUpdatedAt(safeMerged);
+      const incomingUpdatedAt = resolveUpdatedAt(incomingData);
+      const updatedAt = Math.max(mergedUpdatedAt, incomingUpdatedAt) || Date.now();
+      const writeData = {
+        ...safeMerged,
+        _openid: callerOpenid,
+        teacher_id: callerOpenid,
+        student_id: studentId,
+        wordbook_id: wordbookId,
+        word_id: wordId,
+        updatedAt
+      };
+
+      await transaction.collection('word_mastery').doc(docId).set({
+        data: writeData
+      });
+
+      return {
+        wordId,
+        ok: true,
+        adoptedLegacyOwnership: !!existing && !normalizeIdentifier(existing._openid)
+      };
+    });
+
+    return (
+      transactionResult
+      && transactionResult.result
+      && typeof transactionResult.result === 'object'
+    )
+      ? transactionResult.result
+      : {
+        wordId,
+        ok: true
+      };
+  } catch (error) {
+    console.error('[syncMasteryAtom] record sync failed:', wordId, error);
+    return {
+      wordId,
+      ok: false,
+      error: error && (error.code || error.message)
+        ? (error.code || error.message)
+        : 'unknown'
+    };
+  }
+};
+
+exports.main = async (event) => {
+  const wxContext = cloud.getWXContext();
+  const callerOpenid = normalizeIdentifier(wxContext && wxContext.OPENID);
+  const records = event && event.records;
+
+  if (!callerOpenid) {
+    return { success: false, error: 'missing_caller_openid' };
   }
   if (!Array.isArray(records) || records.length === 0) {
     return { success: false, error: 'empty_records' };
   }
-
-  // 安全校验：只能操作自己的数据（客户端调用时生效）
-  const wxContext = cloud.getWXContext();
-  const callerOpenid = wxContext.OPENID;
-  if (callerOpenid && openid !== callerOpenid) {
-    return { success: false, error: 'openid_mismatch' };
+  if (records.length > MAX_BATCH_SIZE) {
+    return {
+      success: false,
+      error: 'batch_too_large',
+      maxBatchSize: MAX_BATCH_SIZE
+    };
   }
 
-  const collection = db.collection('word_mastery');
   const results = [];
-
   for (const record of records) {
-    const { studentId, wordbookId, wordId, studentName, teacherName, ...wordData } = record;
-
-    if (!studentId || !wordbookId || !wordId) {
-      results.push({ wordId: wordId || 'unknown', ok: false, error: 'missing_identifiers' });
+    if (!record || typeof record !== 'object' || Array.isArray(record)) {
+      results.push({
+        wordId: 'unknown',
+        ok: false,
+        error: 'invalid_record'
+      });
       continue;
     }
-
-    const docId = buildScopedDocId(openid, 'mastery', studentId, wordbookId, wordId);
-
-    try {
-      // 1) 读取现有文档
-      let existing = null;
-      try {
-        const res = await collection.doc(docId).get();
-        existing = res.data || null;
-      } catch (e) {
-        if (e.errCode !== -1) {
-          console.warn('[syncMasteryAtom] read error (non-fatal):', wordId, e);
-        }
-        // errCode === -1 表示文档不存在，忽略
-      }
-
-      // 2) 构建合并数据（以本地为基准）
-      const merged = {
-        teacher_id: openid,
-        student_id: String(studentId),
-        wordbook_id: String(wordbookId),
-        word_id: String(wordId),
-        updatedAt: db.serverDate(),
-        ...wordData
-      };
-
-      // 显式传入的名称字段覆盖写入
-      if (studentName) merged.studentName = studentName;
-      if (teacherName) merged.teacherName = teacherName;
-
-      if (existing) {
-        // ---- 数值字段：取最大值（只进不退） ----
-        if (typeof existing.reviewCount === 'number' && typeof wordData.reviewCount === 'number') {
-          merged.reviewCount = Math.max(existing.reviewCount, wordData.reviewCount);
-        }
-        // ---- 时间字段：lastReviewTime 取最新 ----
-        const localTime = typeof wordData.lastReviewTime === 'number' ? wordData.lastReviewTime : 0;
-        const cloudTime = typeof existing.lastReviewTime === 'number' ? existing.lastReviewTime : 0;
-        if (localTime > 0 || cloudTime > 0) {
-          merged.lastReviewTime = Math.max(cloudTime, localTime);
-        }
-
-        // ---- 布尔字段：一旦 true 就保持 true（OR 逻辑） ----
-        if (existing.mastered === true) merged.mastered = true;
-        if (existing.isLearned === true) merged.isLearned = true;
-        if (existing.antiForgettingSeed === true) merged.antiForgettingSeed = true;
-
-        // ---- difficult：使用最新评估结果 ----
-        // 如果云端 lastReviewTime 比本地新，说明云端是更新近的评估
-        if (cloudTime > localTime && existing.difficult !== undefined) {
-          merged.difficult = existing.difficult;
-        }
-
-        // ---- 时间字段：firstMasteryTime 取最早，nextReviewTime 取最早（最紧迫优先） ----
-        if (typeof existing.firstMasteryTime === 'number' && typeof wordData.firstMasteryTime === 'number') {
-          merged.firstMasteryTime = Math.min(existing.firstMasteryTime, wordData.firstMasteryTime);
-        }
-        if (typeof existing.nextReviewTime === 'number' && typeof wordData.nextReviewTime === 'number') {
-          merged.nextReviewTime = Math.min(existing.nextReviewTime, wordData.nextReviewTime);
-        }
-
-        // ---- reviewTimeline：按 time 去重合并 ----
-        if (Array.isArray(existing.reviewTimeline) || Array.isArray(wordData.reviewTimeline)) {
-          const existTL = Array.isArray(existing.reviewTimeline) ? existing.reviewTimeline : [];
-          const localTL = Array.isArray(wordData.reviewTimeline) ? wordData.reviewTimeline : [];
-          const existTimes = new Set(existTL.map(t => t && t.time).filter(Boolean));
-          const newEntries = localTL.filter(t => t && t.time && !existTimes.has(t.time));
-          merged.reviewTimeline = [...existTL, ...newEntries];
-        }
-
-        // ---- studentName / teacherName：本地没传则保留云端 ----
-        if (!studentName && existing.studentName) merged.studentName = existing.studentName;
-        if (!teacherName && existing.teacherName) merged.teacherName = existing.teacherName;
-
-        // ---- 保留云端中本地没有传入的未知字段（排除系统字段） ----
-        for (const key of Object.keys(existing)) {
-          if (key.startsWith('_')) continue;
-          if (['teacher_id', 'student_id', 'wordbook_id', 'word_id'].includes(key)) continue;
-          if (merged[key] === undefined) {
-            merged[key] = existing[key];
-          }
-        }
-      }
-
-      // 3) 写入合并结果
-      await collection.doc(docId).set({ data: merged });
-      results.push({ wordId, ok: true });
-
-    } catch (error) {
-      // E11000 主键冲突 → 文档已存在，视为同步成功
-      if (error && error.message && error.message.indexOf('E11000') !== -1) {
-        console.log('[syncMasteryAtom] 忽略 E11000（文档已存在）:', wordId);
-        results.push({ wordId, ok: true, skipped: true, reason: 'already_exists' });
-      } else {
-        console.error('[syncMasteryAtom] failed:', wordId, error);
-        results.push({ wordId, ok: false, error: error.message || 'unknown' });
-      }
-    }
+    results.push(await syncOneRecord(record, callerOpenid));
   }
 
-  return { success: true, results };
+  const failed = results.filter((result) => !result.ok).length;
+  return {
+    success: failed === 0,
+    total: results.length,
+    succeeded: results.length - failed,
+    failed,
+    results
+  };
 };
 
-/**
- * 生成与客户端一致的 scoped doc ID
- */
-function buildScopedDocId(openid, ...parts) {
-  const safe = (v) => String(v === undefined || v === null ? '' : v)
-    .replace(/[^a-zA-Z0-9_-]/g, '_')
-    .slice(0, 120);
-  return [safe(openid), ...parts.map(safe)].filter(Boolean).join('__').slice(0, 500);
-}
+exports._test = {
+  MAX_BATCH_SIZE,
+  assertExistingIdentity,
+  buildScopedDocId,
+  getRecordIdentifiers,
+  stripProtectedFields
+};
