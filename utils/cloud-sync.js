@@ -97,6 +97,100 @@ const markSyncSuccess = (count) => {
   try { wx.setStorageSync(SYNC_STATUS_KEY, status); } catch (e) { /* ignore */ }
 };
 
+const PENDING_LEARNING_RECORDS_KEY = 'pendingLearningRecordSync';
+
+const readPendingLearningRecords = () => {
+  try {
+    const raw = wx.getStorageSync(PENDING_LEARNING_RECORDS_KEY);
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      return raw;
+    }
+  } catch (e) {
+    console.warn('[cloud-sync] failed to read pending learning records:', e);
+  }
+  return {};
+};
+
+const normalizePendingLearningRecord = (record) => {
+  if (!record || typeof record !== 'object' || Array.isArray(record)) {
+    return null;
+  }
+  const normalized = withUpdatedAt({ ...record });
+  const stableRecordId = ensureLearningRecordId(normalized);
+  if (!stableRecordId) {
+    return null;
+  }
+  normalized.id = stableRecordId;
+  delete normalized._wordKeyMap;
+  delete normalized.emit;
+  delete normalized._openid;
+  delete normalized._id;
+  return normalized;
+};
+
+const buildPendingLearningRecordKey = (record) => {
+  const normalized = normalizePendingLearningRecord(record);
+  if (!normalized) {
+    return '';
+  }
+  const studentId = normalized.studentId || normalized.student_id || normalized.userId || '';
+  const wordbookId = normalized.wordbookId || normalized.wordbook_id || '';
+  return JSON.stringify([String(studentId), String(wordbookId), String(normalized.id)]);
+};
+
+const queuePendingLearningRecord = (record) => {
+  const normalized = normalizePendingLearningRecord(record);
+  if (!normalized) {
+    return null;
+  }
+  const pendingKey = buildPendingLearningRecordKey(normalized);
+  if (!pendingKey) {
+    return null;
+  }
+  try {
+    const pendingRecords = readPendingLearningRecords();
+    const added = !Object.prototype.hasOwnProperty.call(pendingRecords, pendingKey);
+    pendingRecords[pendingKey] = normalized;
+    wx.setStorageSync(PENDING_LEARNING_RECORDS_KEY, pendingRecords);
+    return { added, pendingKey };
+  } catch (e) {
+    console.warn('[cloud-sync] failed to persist pending learning record:', e);
+    return null;
+  }
+};
+
+const markLearningRecordPending = (record) => {
+  const queued = queuePendingLearningRecord(record);
+  if (!queued || queued.added) {
+    markPendingSync();
+    return;
+  }
+  _updateSyncStatus({ lastFail: Date.now() });
+};
+
+const removePendingLearningRecord = (record) => {
+  const pendingKey = buildPendingLearningRecordKey(record);
+  if (!pendingKey) {
+    return false;
+  }
+  try {
+    const pendingRecords = readPendingLearningRecords();
+    if (!Object.prototype.hasOwnProperty.call(pendingRecords, pendingKey)) {
+      return false;
+    }
+    delete pendingRecords[pendingKey];
+    if (Object.keys(pendingRecords).length === 0) {
+      wx.removeStorageSync(PENDING_LEARNING_RECORDS_KEY);
+    } else {
+      wx.setStorageSync(PENDING_LEARNING_RECORDS_KEY, pendingRecords);
+    }
+    return true;
+  } catch (e) {
+    console.warn('[cloud-sync] failed to clear pending learning record:', e);
+    return false;
+  }
+};
+
 const retryPendingSyncs = async () => {
   if (isCloudReadOnlyMode()) {
     console.log('[cloud-sync] 只读模式：跳过待同步重试');
@@ -111,6 +205,21 @@ const retryPendingSyncs = async () => {
   }
 
   const promises = [];
+
+  // 学习记录使用稳定记录 ID 重试，确保重复尝试仍写入同一个云端文档。
+  try {
+    const pendingRecords = readPendingLearningRecords();
+    Object.keys(pendingRecords).forEach((pendingKey) => {
+      const pendingRecord = pendingRecords[pendingKey];
+      if (!pendingRecord || typeof pendingRecord !== 'object') {
+        console.warn('[cloud-sync] invalid pending learning record retained:', pendingKey);
+        return;
+      }
+      promises.push(syncLearningRecord(pendingRecord));
+    });
+  } catch (e) {
+    console.warn('[cloud-sync] retry pending learning records failed:', e);
+  }
 
   // 重试失败的 word_mastery 记录
   try {
@@ -216,28 +325,30 @@ const retryPendingSyncs = async () => {
     });
   } catch (e) { /* ignore */ }
 
-  // 清理 pending 标记
-  try {
-    if (wx.getStorageSync('pendingSyncProgress')) {
-      wx.removeStorageSync('pendingSyncProgress');
-    }
-  } catch (e) { /* ignore */ }
-
   await Promise.all(promises);
+  let realPending = 0;
   try {
     // 重试完成后，用实际待同步数据量更新计数器
+    const pendingRecords = readPendingLearningRecords();
     const pendingWords = wx.getStorageSync('pendingWordMasterySync') || {};
     const pendingProg = wx.getStorageSync('pendingLearningProgressSync') || {};
     const pendingProgressCount = pendingProg.studentId && pendingProg.progressData
       ? 1
       : Object.keys(pendingProg).length;
-    const realPending = Object.keys(pendingWords).length + pendingProgressCount;
+    realPending = Object.keys(pendingRecords).length +
+      Object.keys(pendingWords).length +
+      pendingProgressCount;
+    if (realPending === 0) {
+      wx.removeStorageSync('pendingSyncProgress');
+    } else {
+      wx.setStorageSync('pendingSyncProgress', true);
+    }
     const status = getSyncStatus();
     status.pending = realPending;
     status.lastOk = realPending === 0 ? Date.now() : status.lastOk;
     wx.setStorageSync(SYNC_STATUS_KEY, status);
   } catch (e) { /* ignore */ }
-  return { ok: true };
+  return { ok: true, pending: realPending };
 };
 
 const resolveUpdatedAt = (obj) => {
@@ -320,12 +431,17 @@ const syncLearningRecord = (record) => {
   const openid = getOpenId();
   if (!db || !openid || !record) {
     console.warn('[cloud-sync] syncLearningRecord 跳过: db=', !!db, 'openid=', !!openid, 'record=', !!record);
-    markPendingSync();
+    if (record) {
+      markLearningRecordPending(record);
+    } else {
+      markPendingSync();
+    }
     return Promise.resolve({ skipped: true, reason: 'precondition_failed' });
   }
 
   const cleanRecord = withUpdatedAt({ ...record });
   const stableRecordId = ensureLearningRecordId(cleanRecord);
+  cleanRecord.id = stableRecordId;
   const recordStudentId = cleanRecord.studentId || cleanRecord.student_id || '';
   const displayNames = recordStudentId ? getDisplayNames(recordStudentId) : { studentName: '', teacherName: '' };
   delete cleanRecord._wordKeyMap;
@@ -373,12 +489,17 @@ const syncLearningRecord = (record) => {
     })
     .then(() => {
       console.log('[cloud-sync] learning record synced:', stableRecordId);
-      markSyncSuccess(1);
+      const removedPendingRecord = removePendingLearningRecord(cleanRecord);
+      if (removedPendingRecord) {
+        markSyncSuccess(1);
+      } else {
+        _updateSyncStatus({ lastOk: Date.now() });
+      }
       return { ok: true };
     })
     .catch((error) => {
       console.warn('[cloud-sync] failed to sync learning record:', error);
-      markPendingSync();
+      markLearningRecordPending(cleanRecord);
       return { ok: false, error };
     });
 };
