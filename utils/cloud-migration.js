@@ -116,7 +116,13 @@ const fetchAllByTeacher = async (db, collectionName, openid, limit = MAX_QUERY_L
 
   for (let offset = 0; offset < total; offset += limit) {
     const batch = await withRetry(
-      () => collection.where({ teacher_id: openid }).skip(offset).limit(limit).get(),
+      () => {
+        const query = collection.where({ teacher_id: openid });
+        const orderedQuery = query && typeof query.orderBy === 'function'
+          ? query.orderBy('_id', 'asc')
+          : query;
+        return orderedQuery.skip(offset).limit(limit).get();
+      },
       `${collectionName}.page`
     );
     if (batch && Array.isArray(batch.data)) {
@@ -129,6 +135,14 @@ const fetchAllByTeacher = async (db, collectionName, openid, limit = MAX_QUERY_L
   }
 
   return items;
+};
+
+const compareCloudDocumentIdentity = (left, right) => {
+  const leftId = String((left && left._id) || '');
+  const rightId = String((right && right._id) || '');
+  if (leftId < rightId) return -1;
+  if (leftId > rightId) return 1;
+  return 0;
 };
 
 const ensureTeacher = async (db, openid) => {
@@ -246,25 +260,78 @@ const buildWordMasteryDocs = (wordMastery, openid) => {
 
 const buildProgressMap = (docs) => {
   const map = {};
-  (docs || []).forEach((doc) => {
+  let duplicateCount = 0;
+  (Array.isArray(docs) ? docs.slice().sort(compareCloudDocumentIdentity) : []).forEach((doc) => {
     const studentId = String(doc.student_id || doc.studentId || doc._id || '').trim();
     if (!studentId) {
       return;
     }
     const cleaned = stripMeta(doc, ['student_id', 'studentId']);
-    map[studentId] = {
+    const normalized = {
       ...cleaned,
       learnedWords: Number(cleaned.learnedWords || 0) || 0,
       totalWords: Number(cleaned.totalWords || 0) || 0,
       wordbooks: normalizeObject(cleaned.wordbooks)
     };
+    if (!map[studentId]) {
+      map[studentId] = normalized;
+      return;
+    }
+
+    duplicateCount++;
+    const existing = map[studentId];
+    const existingWordbooks = normalizeObject(existing.wordbooks);
+    const candidateWordbooks = normalizeObject(normalized.wordbooks);
+    const mergedWordbooks = {};
+    const wordbookIds = new Set([
+      ...Object.keys(existingWordbooks),
+      ...Object.keys(candidateWordbooks)
+    ]);
+    wordbookIds.forEach((wordbookId) => {
+      const existingBook = existingWordbooks[wordbookId];
+      const candidateBook = candidateWordbooks[wordbookId];
+      if (existingBook && candidateBook) {
+        mergedWordbooks[wordbookId] = mergeLearningProgressRecord(
+          existingBook,
+          candidateBook
+        );
+      } else {
+        mergedWordbooks[wordbookId] = existingBook || candidateBook;
+      }
+    });
+
+    const existingTime = toTimestamp(existing.updatedAt)
+      || toTimestamp(existing.lastUpdated)
+      || 0;
+    const candidateTime = toTimestamp(normalized.updatedAt)
+      || toTimestamp(normalized.lastUpdated)
+      || 0;
+    const winner = candidateTime >= existingTime ? normalized : existing;
+    const loser = candidateTime >= existingTime ? existing : normalized;
+    map[studentId] = {
+      ...loser,
+      ...winner,
+      learnedWords: Math.max(
+        Number(existing.learnedWords || 0) || 0,
+        Number(normalized.learnedWords || 0) || 0
+      ),
+      totalWords: Math.max(
+        Number(existing.totalWords || 0) || 0,
+        Number(normalized.totalWords || 0) || 0
+      ),
+      wordbooks: mergedWordbooks
+    };
   });
+  if (duplicateCount > 0) {
+    console.warn('[cloud-sync] merged duplicate learning_progress documents:', duplicateCount);
+  }
   return map;
 };
 
 const buildWordMasteryMap = (docs) => {
   const map = {};
-  (docs || []).forEach((doc) => {
+  let duplicateCount = 0;
+  (Array.isArray(docs) ? docs.slice().sort(compareCloudDocumentIdentity) : []).forEach((doc) => {
     const studentId = String(doc.student_id || doc.studentId || '').trim();
     const wordbookId = String(doc.wordbook_id || doc.wordbookId || '').trim();
     const wordId = String(doc.word_id || doc.wordId || '').trim();
@@ -277,15 +344,28 @@ const buildWordMasteryMap = (docs) => {
     if (!map[studentId][wordbookId]) {
       map[studentId][wordbookId] = {};
     }
-    map[studentId][wordbookId][wordId] = stripMeta(doc, [
+    const normalized = mergeWordMasteryRecord({}, stripMeta(doc, [
       'student_id',
       'studentId',
       'wordbook_id',
       'wordbookId',
       'word_id',
       'wordId'
-    ]);
+    ]));
+    const existing = map[studentId][wordbookId][wordId];
+    if (existing) {
+      duplicateCount++;
+      map[studentId][wordbookId][wordId] = mergeWordMasteryRecord(
+        existing,
+        normalized
+      );
+    } else {
+      map[studentId][wordbookId][wordId] = normalized;
+    }
   });
+  if (duplicateCount > 0) {
+    console.warn('[cloud-sync] merged duplicate word_mastery documents:', duplicateCount);
+  }
   return map;
 };
 
@@ -944,6 +1024,8 @@ const migrateLocalDataToCloud = async () => {
 module.exports = {
   migrateLocalDataToCloud,
   syncDataFromCloud,
+  buildProgressMap,
+  buildWordMasteryMap,
   // 导出语义合并工具，供 safe-merge-restore.js 等复用
   mergeObjectAtWordLevel,
   mergeWordMasteryRecord,

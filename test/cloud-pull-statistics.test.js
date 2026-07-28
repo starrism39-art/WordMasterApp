@@ -92,6 +92,9 @@ const createQuery = (items) => {
       limit = value;
       return query;
     },
+    orderBy() {
+      return query;
+    },
     get: async () => ({ data: items.slice(offset, offset + limit) })
   };
   return query;
