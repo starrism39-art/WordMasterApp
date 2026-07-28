@@ -775,7 +775,10 @@ const syncWordMasteryBatch = async (studentId, wordbookId, wordRecordsMap) => {
       masteryAtomCapability
     );
     allResults.push(...atomResults);
-  } else {
+  } else if (
+    masteryAtomCapability.reason === 'unsupported_protocol'
+    || masteryAtomCapability.reason === 'call_function_unavailable'
+  ) {
     for (let i = 0; i < wordIds.length; i += BATCH_SIZE) {
       const batch = wordIds.slice(i, i + BATCH_SIZE);
       const batchResults = await Promise.all(batch.map(syncOneWord));
@@ -784,6 +787,16 @@ const syncWordMasteryBatch = async (studentId, wordbookId, wordRecordsMap) => {
         await new Promise((r) => setTimeout(r, 500));
       }
     }
+  } else {
+    // 能力探测超时/失败时无法判断云函数是否已经收到请求或是否临时不可用。
+    // 为避免两台设备退回非事务直写后互相覆盖，保留本地待同步队列，稍后重试。
+    wordIds.forEach((wordId) => {
+      allResults.push({
+        wordId: String(wordId),
+        ok: false,
+        error: 'mastery_atom_capability_unknown'
+      });
+    });
   }
 
   const failed = allResults.filter((r) => r && !r.ok);

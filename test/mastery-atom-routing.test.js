@@ -230,6 +230,53 @@ const supportedCapabilities = {
   }
 
   {
+    let capabilityCalls = 0;
+    let directOperationCount = 0;
+    const { cloudSync, storage } = loadCloudSync({
+      callFunction: async () => {
+        capabilityCalls++;
+        throw new Error('capability_probe_timeout');
+      },
+      directDatabase: {
+        collection: () => ({
+          doc: () => ({
+            get: async () => {
+              directOperationCount++;
+            },
+            set: async () => {
+              directOperationCount++;
+            }
+          })
+        })
+      }
+    });
+    const result = await cloudSync.syncWordMasteryBatch(
+      'student456',
+      'senior_textbook_real',
+      {
+        probe_unknown: {
+          reviewCount: 1,
+          mastered: false,
+          difficult: true
+        }
+      }
+    );
+    assert.deepStrictEqual(result, { succeeded: 0, failed: 1 });
+    assert.strictEqual(capabilityCalls, 1);
+    assert.strictEqual(
+      directOperationCount,
+      0,
+      'an uncertain capability probe must be queued, not sent through the non-transactional direct path'
+    );
+    const pending = storage.pendingWordMasterySync || {};
+    assert.strictEqual(Object.keys(pending).length, 1);
+    assert.strictEqual(
+      pending['student456__senior_textbook_real__probe_unknown'].word_id,
+      'probe_unknown'
+    );
+  }
+
+  {
     let callCount = 0;
     const { cloudSync } = loadCloudSync({
       callFunction: async () => {
