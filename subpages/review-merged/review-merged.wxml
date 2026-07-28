@@ -61,6 +61,12 @@
             <text class="value">{{item.learningDate}}</text>
           </view>
 
+          <!-- 复习类型 -->
+          <view class="learning-date-info">
+            <text class="label">复习类型：</text>
+            <text class="value">{{item.reviewTypeLabel}}</text>
+          </view>
+
           <!-- 单词数量 -->
           <view class="word-count-info">
             <text class="label">单词数量：</text>

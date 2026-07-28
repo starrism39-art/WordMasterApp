@@ -15,7 +15,7 @@
 
     <!-- 复习列表标题 -->
     <view class="review-list-header">
-      <text class="review-list-title">待复习列表</text>
+      <text class="review-list-title">已到期复习列表</text>
       <text class="review-list-count">{{reviewRecords.length}}条</text>
     </view>
 
@@ -45,7 +45,10 @@
         <view class="record-header">
           <text class="record-date">{{item.date}}</text>
           <view class="record-header-right">
-            <text class="review-status {{item.canReview ? 'status-ready' : 'status-wait'}}">{{item.canReview ? '可复习' : '未到时间'}}</text>
+            <text
+              class="review-status status-ready"
+              style="{{item.reviewType === 'remedial' ? 'color:#E65100;background:rgba(230,81,0,0.12);' : 'color:#0B8F49;background:rgba(11,143,73,0.12);'}}"
+            >{{item.reviewTypeLabel}}</text>
             <view class="record-round">
             <text class="round-badge">第{{item.round}}轮</text>
             </view>

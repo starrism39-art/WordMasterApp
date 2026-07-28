@@ -27,18 +27,6 @@ Page({
   onLoad: function() {
     console.log('========== [首页] onLoad 开始 ==========');
     
-    // ★★★ 最早期修复：在页面加载第一时间修复缺失的 antiForgettingSeed ★★★
-    try {
-      const repaired = repairMissingAntiForgettingSeed();
-      console.log('========== [首页] 早期修复: 修复了', repaired, '个单词 ==========');
-      if (repaired > 0) {
-        wx.showToast({ title: '已修复' + repaired + '个单词记录', icon: 'none', duration: 3000 });
-      }
-    } catch (e) {
-      console.error('========== [首页] 早期修复失败:', e, '==========');
-      wx.showToast({ title: '修复失败:' + (e.message || '未知'), icon: 'none', duration: 3000 });
-    }
-    
     // 立即设置加载状态为true
     this.setData({ loading: true });
     
@@ -931,23 +919,19 @@ Page({
     try {
       console.log('开始更新实时统计数据:', new Date().toLocaleTimeString());
       
-      // ★ 每次打开首页时自动修复缺失的 antiForgettingSeed
-      try {
-        const repaired = repairMissingAntiForgettingSeed();
-        if (repaired > 0) {
-          console.log('[首页] 自动修复了', repaired, '个缺失 antiForgettingSeed 的单词');
-        } else {
-          console.log('[首页] antiForgettingSeed 数据正常，无需修复');
-        }
-      } catch (repairErr) {
-        console.error('[首页] 修复 antiForgettingSeed 失败:', repairErr);
-      }
-      
       // 获取最新的学习记录
       const learningRecords = wx.getStorageSync('learningRecords') || [];
       const app = getApp();
       const currentStudent = this.data.currentStudent || app.globalData.currentStudent;
       const currentWordbook = this.data.currentWordbook || resolveCurrentWordbook(app, currentStudent);
+
+      // 仅修复当前学生、当前词书的明确困难词，避免跨作用域批量写本地数据。
+      if (studentId && currentWordbook?.id) {
+        const repaired = repairMissingAntiForgettingSeed(studentId, currentWordbook.id);
+        if (repaired > 0) {
+          console.log('[首页] 当前作用域补回 antiForgettingSeed:', repaired, '个');
+        }
+      }
       const studentRecords = learningRecords.filter(record =>
         String(record.studentId) === String(studentId) &&
         currentWordbook &&

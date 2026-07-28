@@ -2,6 +2,7 @@
 const { generateWordsForBook } = require('../../data/wordbook-loader.js');
 const { mergeWordbooks, createWordMap, findWord } = require('../../data/wordbook-utils.js');
 const { shouldIncludeAntiForgettingWord, repairMissingAntiForgettingSeed: repairAntiForgettingSeedUtil } = require('../../utils/anti-forgetting-filter.js');
+const { resolveCurrentStudent, resolveCurrentWordbook } = require('../../utils/learning-context.js');
 
 // 初始化合并后的词书数据和单词映射表
 let mergedWords = mergeWordbooks();
@@ -107,96 +108,17 @@ Page({
       return wordMastery;
     }
 
-    const now = Date.now();
-    let wordbookMastery = wordMastery[studentId][wordbookId];
-
+    const wordbookMastery = wordMastery[studentId][wordbookId];
     if (Array.isArray(wordbookMastery)) {
-      if (wordbookMastery.length === 0) {
-        return wordMastery;
-      }
-
-      const upgradedMastery = {};
-      wordbookMastery.forEach((wordId) => {
-        if (!wordId) {
-          return;
-        }
-        upgradedMastery[String(wordId)] = {
-          mastered: false,
-          difficult: false,
-          reviewCount: 0,
-          firstMasteryTime: now,
-          lastReviewTime: now,
-          nextReviewTime: now,
-          antiForgettingSeed: true,
-          reviewTimeline: []
-        };
-      });
-
-      const backupKey = 'wordMastery_backup_seed_migration';
-      if (!this.safeGetStorageSync(backupKey, null)) {
-        wx.setStorageSync(backupKey, wordMastery);
-      }
-
-      wordMastery[studentId][wordbookId] = upgradedMastery;
-      wx.setStorageSync('wordMastery', wordMastery);
-      wx.setStorageSync(migrateKey, true);
-      return wordMastery;
+      console.warn(
+        '[ReviewMerged] 检测到旧数组掌握数据，保持只读兼容，不推断复习状态:',
+        studentId,
+        wordbookId
+      );
     }
 
-    const shouldSeed = (record) => {
-      if (!record || typeof record !== 'object') {
-        return false;
-      }
-      return (record.reviewCount || 0) > 0 ||
-        !!record.nextReviewTime ||
-        !!record.firstMasteryTime ||
-        (Array.isArray(record.reviewTimeline) && record.reviewTimeline.length > 0) ||
-        record.mastered === true ||
-        record.mastery === 'mastered' ||
-        record.masteryStatus === 'mastered' ||
-        record.difficult === true;
-    };
-
-    let needsMigration = false;
-    for (const wordId in wordbookMastery) {
-      const record = wordbookMastery[wordId];
-      if (record && record.antiForgettingSeed) {
-        continue;
-      }
-      if (shouldSeed(record)) {
-        needsMigration = true;
-        break;
-      }
-    }
-
-    if (!needsMigration) {
-      wx.setStorageSync(migrateKey, true);
-      return wordMastery;
-    }
-
-    const backupKey = 'wordMastery_backup_seed_migration';
-    if (!this.safeGetStorageSync(backupKey, null)) {
-      wx.setStorageSync(backupKey, wordMastery);
-    }
-
-    let updatedCount = 0;
-    for (const wordId in wordbookMastery) {
-      const record = wordbookMastery[wordId];
-      if (!record || record.antiForgettingSeed) {
-        continue;
-      }
-      if (shouldSeed(record)) {
-        wordbookMastery[wordId] = {
-          ...record,
-          antiForgettingSeed: true
-        };
-        updatedCount++;
-      }
-    }
-
-    if (updatedCount > 0) {
-      wx.setStorageSync('wordMastery', wordMastery);
-    }
+    // 旧数组只表达“已掌握ID集合”，无法安全推断学习时间和复习状态。
+    // 对象记录也不再按“存在历史”批量补种子，只由明确 difficult 记录做作用域内修复。
     wx.setStorageSync(migrateKey, true);
     return wordMastery;
   },
@@ -260,63 +182,30 @@ Page({
 
 
   syncFromGlobalData: function() {
-    console.log('从全局数据同步');
+    console.log('按统一学习上下文同步抗遗忘范围');
     try {
       const app = getApp();
       if (!app || !app.globalData) {
         console.warn('getApp/globalData 不可用，跳过全局数据同步');
         return;
       }
-      
-      // 同步学生信息
-      if (app.globalData.currentStudent) {
-        console.log('从globalData同步学生信息:', app.globalData.currentStudent.name);
-        this.setData({
-          currentStudent: app.globalData.currentStudent
-        });
-        // 同时保存到本地存储
-        wx.setStorageSync('selectedStudent', app.globalData.currentStudent);
-      } else {
-        // 从本地存储获取
-        const selectedStudent = this.safeGetStorageSync('selectedStudent', null);
-        if (selectedStudent) {
-          this.setData({
-            currentStudent: selectedStudent
-          });
-          console.log('从本地存储同步学生信息:', selectedStudent.name);
-        }
+
+      const currentStudent = resolveCurrentStudent(app);
+      const currentWordbook = resolveCurrentWordbook(app, currentStudent);
+      this.setData({
+        currentStudent: currentStudent || null,
+        currentWordbook: currentWordbook || null,
+        learningWordbooks: currentWordbook?.title || ''
+      });
+
+      if (currentStudent) {
+        app.globalData.currentStudent = currentStudent;
+        wx.setStorageSync('selectedStudent', currentStudent);
       }
-      
-      // 同步词书信息
-      if (app.globalData.currentWordbook) {
-        console.log('从globalData同步词书信息:', app.globalData.currentWordbook.title);
-        this.setData({
-          currentWordbook: app.globalData.currentWordbook,
-          learningWordbooks: app.globalData.currentWordbook.title || '未知词书'
-        });
-        // 同时保存到本地存储
-        wx.setStorageSync('selectedWordbook', app.globalData.currentWordbook);
-      } else if (app.globalData.selectedWordbook) {
-        // 兼容selectedWordbook字段
-        console.log('从globalData同步选中词书信息:', app.globalData.selectedWordbook.title);
-        this.setData({
-          currentWordbook: app.globalData.selectedWordbook,
-          learningWordbooks: app.globalData.selectedWordbook.title || '未知词书'
-        });
-        // 同时保存到本地存储
-        wx.setStorageSync('selectedWordbook', app.globalData.selectedWordbook);
-        // 同步到currentWordbook以保持一致性
-        app.globalData.currentWordbook = app.globalData.selectedWordbook;
-      } else {
-        // 从本地存储获取
-        const selectedWordbook = this.safeGetStorageSync('selectedWordbook', null);
-        if (selectedWordbook) {
-          this.setData({
-            currentWordbook: selectedWordbook,
-            learningWordbooks: selectedWordbook.title || '未知词书'
-          });
-          console.log('从本地存储同步词书信息:', selectedWordbook.title);
-        }
+      if (currentWordbook) {
+        app.globalData.currentWordbook = currentWordbook;
+        app.globalData.selectedWordbook = currentWordbook;
+        wx.setStorageSync('selectedWordbook', currentWordbook);
       }
     } catch (error) {
       console.error('同步全局数据失败:', error);
@@ -382,7 +271,7 @@ Page({
     let wordMastery = this.safeGetStorageSync('wordMastery', {});
     wordMastery = this.migrateAntiForgettingSeedIfNeeded(studentId, wordbookId, wordMastery);
     // ★ 修复：补回因 saveLearningRecord 兼容路径 bug 缺失的 antiForgettingSeed
-    const repaired = repairAntiForgettingSeedUtil();
+    const repaired = repairAntiForgettingSeedUtil(studentId, wordbookId);
     if (repaired > 0) {
       wordMastery = this.safeGetStorageSync('wordMastery', {});
     }
@@ -427,32 +316,34 @@ Page({
 
   generateAntiForgettingRecords: function(studentId, wordbookId, wordMastery) {
     console.log('生成抗遗忘复习记录');
-    
+
     const records = [];
-    const now = new Date().getTime();
-    
-    // 获取词书信息
-    const selectedWordbook = this.safeGetStorageSync('selectedWordbook', null);
-    const wordbookName = selectedWordbook?.title || '未知词书';
-    
+    const now = Date.now();
+    const wordbookName = this.data.currentWordbook?.title || '未知词书';
+
     // 检查是否有单词掌握记录
     if (!wordMastery[studentId] || !wordMastery[studentId][wordbookId]) {
       console.log('没有找到单词掌握记录，返回空数组');
       return records;
     }
-    
+
     const wordbookMastery = wordMastery[studentId][wordbookId];
-    
-    // 抗遗忘固定5轮复习间隔（天）
-    const intervals = [1, 2, 4, 7, 15];
-    const TOTAL_REVIEW_ROUNDS = 5;
-    const effectiveIntervals = intervals.slice(0, TOTAL_REVIEW_ROUNDS);
-    
+    if (!wordbookMastery || typeof wordbookMastery !== 'object' || Array.isArray(wordbookMastery)) {
+      return records;
+    }
+    const hasScopedWordIds = Object.keys(wordbookMastery)
+      .some((wordId) => String(wordId).startsWith(`${wordbookId}_`));
+
     // 遍历所有单词
     for (const wordId in wordbookMastery) {
       const wordRecord = wordbookMastery[wordId];
 
-      const filterResult = shouldIncludeAntiForgettingWord(wordId, wordRecord);
+      const filterResult = shouldIncludeAntiForgettingWord(wordId, wordRecord, {
+        studentId,
+        wordbookId,
+        now,
+        hasScopedWordIds
+      });
       if (!filterResult.include) {
         if (filterResult.reason === 'invalid_record' || filterResult.reason === 'missing_wordId') {
           console.warn('[generateAntiForgettingRecords] 跳过无效单词记录, wordId:', wordId);
@@ -460,70 +351,23 @@ Page({
         continue;
       }
 
-      const normalizedWordId = this.normalizeReviewWordId(wordId);
-      
-      // 获取首次学习时间（多级回退）
-      const firstMasteryTime = wordRecord.firstMasteryTime
-        || (Array.isArray(wordRecord.reviewTimeline) && wordRecord.reviewTimeline.length > 0 && wordRecord.reviewTimeline[0].time)
-        || wordRecord.createdAt
-        || wordRecord.firstStudyDate
-        || 0;
-
-      // 无法确定首次学习时间，跳过该单词，避免生成1970年等无意义日期
-      if (!firstMasteryTime) {
-        console.warn('[ReviewMerged] 跳过无首次学习时间的单词:', wordId);
-        continue;
-      }
-      
-      // 格式化学习日期
-      const learningDate = this.formatLocalDate(firstMasteryTime);
-      
-      // 获取已完成的复习次数（最多按5轮计算）
-      const reviewCount = Math.min(wordRecord.reviewCount || 0, TOTAL_REVIEW_ROUNDS);
-      
-      // 仅生成5轮中尚未完成的复习记录，已完成轮次会消失
-      for (let i = 0; i < effectiveIntervals.length; i++) {
-        const intervalDays = effectiveIntervals[i];
-        const reviewTime = firstMasteryTime + intervalDays * 24 * 60 * 60 * 1000;
-        
-        // 计算轮数
-        const round = i + 1;
-        
-        // 跳过已经完成的轮次
-        if (round <= reviewCount) {
-          continue;
-        }
-        
-        // 计算今天的开始时间（00:00:00）
-        const todayStart = new Date();
-        todayStart.setHours(0, 0, 0, 0);
-        const todayStartTime = todayStart.getTime();
-        
-        // 计算复习日期的开始时间（00:00:00）
-        const reviewDateStart = new Date(reviewTime);
-        reviewDateStart.setHours(0, 0, 0, 0);
-        const reviewDateStartTime = reviewDateStart.getTime();
-        
-        // 确定是否可以复习
-        const canReview = reviewDateStartTime <= todayStartTime;
-        
-        // 创建复习记录
-        const record = {
-          id: `${wordId}_round_${round}`,
-          date: this.formatLocalDate(reviewTime),
-          time: reviewTime,
-          round: round,
-          wordCount: 1,
-          canReview: canReview,
-          words: [wordId],
-          wordbookName: wordbookName,
-          learningDate: learningDate
-        };
-        
-        records.push(record);
-      }
+      records.push({
+        id: `${wordId}_round_${filterResult.round}`,
+        date: this.formatLocalDate(filterResult.scheduledTime),
+        time: filterResult.scheduledTime,
+        round: filterResult.round,
+        wordCount: 1,
+        canReview: true,
+        words: [wordId],
+        wordbookName,
+        learningDate: filterResult.firstStudyTime
+          ? this.formatLocalDate(filterResult.firstStudyTime)
+          : '旧数据',
+        reviewType: filterResult.reviewType,
+        reviewTypeLabel: filterResult.reviewTypeLabel
+      });
     }
-    
+
     // 按日期和轮数分组并合并记录
     const mergedRecords = this.mergeReviewRecords(records);
     
@@ -542,7 +386,7 @@ Page({
       return [];
     }
 
-    // 按日期和轮数分组
+    // 按日期、轮数和复习类型分组，避免未掌握复习与巩固复习混在同一卡片。
     const groupedRecords = {};
 
     records.forEach(record => {
@@ -556,7 +400,7 @@ Page({
         return;
       }
 
-      const key = `${record.date}_round_${record.round}`;
+      const key = `${record.date}_round_${record.round}_${record.reviewType || 'unknown'}`;
       
       if (!groupedRecords[key]) {
         groupedRecords[key] = {
@@ -636,6 +480,7 @@ Page({
           canReview: false,
           wordbookName: record.wordbookName,
           learningDates: new Set(),
+          reviewTypes: new Set(),
           recordCount: 0,
           _wordKeyMap: {}
         };
@@ -661,6 +506,9 @@ Page({
       if (record.learningDate) {
         groupedByDate[dateKey].learningDates.add(record.learningDate);
       }
+      if (record.reviewTypeLabel) {
+        groupedByDate[dateKey].reviewTypes.add(record.reviewTypeLabel);
+      }
       
       // 增加记录计数
       groupedByDate[dateKey].recordCount++;
@@ -670,19 +518,20 @@ Page({
     const mergedByDate = Object.values(groupedByDate).map(record => {
       // 将学习日期集合转换为排序后的数组
       const sortedLearningDates = Array.from(record.learningDates).sort();
+      const reviewTypeLabels = Array.from(record.reviewTypes);
       const cleanedRecord = { ...record };
       delete cleanedRecord._wordKeyMap;
+      delete cleanedRecord.reviewTypes;
       
-      // 计算是否到了复习日期
-      const now = new Date();
-      const reviewDate = new Date(record.date);
-      const reviewable = reviewDate <= now;
+      // 上游筛选器只会生成当天已到期记录，直接沿用其明确状态，避免 YYYY-MM-DD 的时区解析差异。
+      const reviewable = record.canReview === true;
       
       return {
         ...cleanedRecord,
         learningDate: sortedLearningDates.join(', '), // 合并学习日期
         learningDates: sortedLearningDates, // 保留排序后的学习日期数组
-        reviewable: reviewable // 是否可复习
+        reviewable: reviewable, // 是否可复习
+        reviewTypeLabel: reviewTypeLabels.join(' / ')
       };
     });
     
@@ -775,8 +624,8 @@ Page({
     console.log('加载复习单词:', wordIds);
     
     const words = [];
-    const studentId = wx.getStorageSync('selectedStudent')?.id;
-    const wordbookId = wx.getStorageSync('selectedWordbook')?.id;
+    const studentId = this.data.currentStudent?.id;
+    const wordbookId = this.data.currentWordbook?.id;
     
     console.log('当前学生ID:', studentId);
     console.log('当前词书ID:', wordbookId);
@@ -784,6 +633,9 @@ Page({
     // 获取单词掌握记录
     const wordMastery = this.safeGetStorageSync('wordMastery', {});
     const wordbookMastery = studentId && wordbookId ? wordMastery[studentId]?.[wordbookId] : {};
+    const hasScopedWordIds = wordbookMastery && typeof wordbookMastery === 'object' && !Array.isArray(wordbookMastery)
+      ? Object.keys(wordbookMastery).some((wordId) => String(wordId).startsWith(`${wordbookId}_`))
+      : false;
     
     console.log('单词掌握记录:', wordMastery);
     
@@ -834,7 +686,19 @@ Page({
     // 处理每个单词ID
     wordIds.forEach(wordId => {
       console.log('处理单词ID:', wordId);
-      
+
+      const wordRecord = wordbookMastery && wordbookMastery[wordId];
+      const filterResult = shouldIncludeAntiForgettingWord(wordId, wordRecord, {
+        studentId,
+        wordbookId,
+        now: Date.now(),
+        hasScopedWordIds
+      });
+      if (!filterResult.include) {
+        console.warn('[ReviewMerged] 复习会话跳过越界或未到期单词:', wordId, filterResult.reason);
+        return;
+      }
+
       // 从wordId中提取单词 - 改进的逻辑
       let word = wordId;
       
@@ -1346,7 +1210,7 @@ Page({
 
     if (studentId && wordbookId) {
       wordMastery = this.migrateAntiForgettingSeedIfNeeded(studentId, wordbookId, wordMastery);
-      repairAntiForgettingSeedUtil();
+      repairAntiForgettingSeedUtil(studentId, wordbookId);
       wordMastery = this.safeGetStorageSync('wordMastery', {});
     }
 
