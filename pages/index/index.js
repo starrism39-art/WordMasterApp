@@ -1,5 +1,5 @@
 // pages/index/index.js
-const { repairMissingAntiForgettingSeed } = require('../../utils/anti-forgetting-filter.js');
+const { shouldIncludeAntiForgettingWord } = require('../../utils/anti-forgetting-filter.js');
 const { getWordbookMasterySummary } = require('../../utils/learning-progress.js');
 const { resolveCurrentWordbook, setCurrentWordbook } = require('../../utils/learning-context.js');
 const { getWordbookStats } = require('../../utils/stats-engine.js');
@@ -933,13 +933,6 @@ Page({
       const currentStudent = this.data.currentStudent || app.globalData.currentStudent;
       const currentWordbook = this.data.currentWordbook || resolveCurrentWordbook(app, currentStudent);
 
-      // 仅修复当前学生、当前词书的明确困难词，避免跨作用域批量写本地数据。
-      if (studentId && currentWordbook?.id) {
-        const repaired = repairMissingAntiForgettingSeed(studentId, currentWordbook.id);
-        if (repaired > 0) {
-          console.log('[首页] 当前作用域补回 antiForgettingSeed:', repaired, '个');
-        }
-      }
       const studentRecords = learningRecords.filter(record =>
         String(record.studentId) === String(studentId) &&
         currentWordbook &&
@@ -1145,46 +1138,27 @@ Page({
         const now = new Date().getTime();
         let hasTodayReview = false;
         let nearestReviewTime = null;
-        
-        // 今天的开始和结束时间
-        const todayStart = new Date();
-        todayStart.setHours(0, 0, 0, 0);
-        const todayEnd = new Date();
-        todayEnd.setHours(23, 59, 59, 999);
-        const todayStartTime = todayStart.getTime();
-        const todayEndTime = todayEnd.getTime();
-        
-        // 检查当天是否有需要复习的单词，以及找到最近的复习时间
+        const hasScopedWordIds = Object.keys(masteredWords)
+          .some((wordId) => String(wordId).startsWith(`${wordbookId}_`));
+
+        // 首页提示与抗遗忘列表使用同一来源、作用域、五轮和到期口径。
         for (const wordId in masteredWords) {
-          if (masteredWords[wordId].nextReviewTime) {
-            const nextReviewTime = masteredWords[wordId].nextReviewTime;
-            console.log('首页：检查单词:', wordId, '复习时间:', new Date(nextReviewTime).toLocaleString());
-            
-            // 检查是否在今天范围内（包括精确到毫秒的当前时间之后）
-            if (nextReviewTime >= todayStartTime && nextReviewTime <= todayEndTime) {
-              hasTodayReview = true;
-            }
-            
-            // 新增：检查是否是新学单词（reviewCount <= 1），确保当天显示抗遗忘
-            if (masteredWords[wordId].reviewCount && masteredWords[wordId].reviewCount <= 1) {
-              console.log('首页：新学单词', wordId, '需要当天复习');
-              hasTodayReview = true;
-            }
-            
-            // 查找最近的复习时间（包括今天和未来）
-            if (nextReviewTime >= now) {
-              if (!nearestReviewTime || nextReviewTime < nearestReviewTime) {
-                nearestReviewTime = nextReviewTime;
-              }
-            }
-          } else {
-            // 新增：处理没有nextReviewTime的情况，确保新学单词能被识别
-            if (masteredWords[wordId].reviewCount && masteredWords[wordId].reviewCount <= 1) {
-              console.log('首页：新学单词', wordId, '没有复习时间，但需要当天复习');
-              hasTodayReview = true;
-              // 设置一个当天的复习时间
-              nearestReviewTime = now;
-            }
+          const filterResult = shouldIncludeAntiForgettingWord(wordId, masteredWords[wordId], {
+            studentId,
+            wordbookId,
+            now,
+            hasScopedWordIds
+          });
+          if (filterResult.include) {
+            hasTodayReview = true;
+            continue;
+          }
+          if (
+            filterResult.reason === 'not_due' &&
+            filterResult.scheduledTime >= now &&
+            (!nearestReviewTime || filterResult.scheduledTime < nearestReviewTime)
+          ) {
+            nearestReviewTime = filterResult.scheduledTime;
           }
         }
         

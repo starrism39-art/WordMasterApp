@@ -2,6 +2,11 @@
 
 const REVIEW_INTERVAL_DAYS = [1, 2, 4, 7, 15];
 const DAY_MS = 24 * 60 * 60 * 1000;
+const ANTI_FORGETTING_SOURCES = Object.freeze({
+  PREVIEW_NOT_MASTERED: 'preview_not_mastered',
+  PREVIEW_MASTERED: 'preview_mastered',
+  NON_PREVIEW_DIFFICULT: 'non_preview_difficult'
+});
 
 const isEmptyObject = (value) => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -43,6 +48,55 @@ const toBoolean = (value) => {
     if (normalized === 'false') return false;
   }
   return null;
+};
+
+const getAntiForgettingSource = (wordRecord) => (
+  wordRecord && typeof wordRecord.antiForgettingSource === 'string'
+    ? wordRecord.antiForgettingSource.trim()
+    : ''
+);
+
+/**
+ * 生成单词状态更新时要保存的抗遗忘来源。
+ *
+ * - 已有种子和已有“预习不会”来源继续兼容，避免旧五轮记录消失；
+ * - 新的预习不会写入明确来源；
+ * - 新的非预习困难词写入排除来源，不能仅凭 difficult 入池；
+ * - 没有来源字段的旧困难记录保持原样，由读取兼容规则处理，不迁移旧数据。
+ */
+const resolveAntiForgettingSourceForUpdate = (currentWordRecord, options = {}) => {
+  const currentRecord = currentWordRecord && typeof currentWordRecord === 'object'
+    ? currentWordRecord
+    : {};
+  const currentSource = getAntiForgettingSource(currentRecord);
+  const hasLegacySeed = toBoolean(currentRecord.antiForgettingSeed) === true;
+  const confirmedPreviewNotMastered = options.confirmedPreviewNotMastered === true;
+  const isPreviewDecision = options.isPreviewDecision === true;
+  const isDifficult = options.isDifficult === true;
+
+  if (
+    confirmedPreviewNotMastered ||
+    currentSource === ANTI_FORGETTING_SOURCES.PREVIEW_NOT_MASTERED ||
+    hasLegacySeed
+  ) {
+    return ANTI_FORGETTING_SOURCES.PREVIEW_NOT_MASTERED;
+  }
+
+  if (isPreviewDecision) {
+    return isDifficult
+      ? ANTI_FORGETTING_SOURCES.PREVIEW_NOT_MASTERED
+      : ANTI_FORGETTING_SOURCES.PREVIEW_MASTERED;
+  }
+
+  if (currentSource) {
+    return currentSource;
+  }
+
+  if (isDifficult && options.isExistingRecord === false) {
+    return ANTI_FORGETTING_SOURCES.NON_PREVIEW_DIFFICULT;
+  }
+
+  return '';
 };
 
 const getReviewState = (wordRecord) => {
@@ -122,8 +176,10 @@ const scopeMatches = (recordValue, expectedValue) => {
  * 返回当前学生、当前词书中一个单词是否应进入“现在可复习”的抗遗忘列表。
  *
  * 兼容规则：
- * - difficult / notMastered 记录属于未掌握复习；
- * - mastered 记录只有保留 antiForgettingSeed 且到期时才属于巩固复习；
+ * - 新记录只有明确来自“预习不会”才进入抗遗忘；
+ * - 旧记录保留 antiForgettingSeed 时继续完成原有五轮；
+ * - 缺少来源字段的旧 difficult / notMastered 记录按旧规则只读兼容，不迁移、不清空；
+ * - 明确来自预习会或其他困难来源的新记录不得进入；
  * - 旧数组误迁移产生的无明确状态对象不会进入列表；
  * - 到期判断沿用项目现有“当天即可复习”的产品口径。
  */
@@ -168,12 +224,16 @@ const shouldIncludeAntiForgettingWord = (wordId, wordRecord, context = {}) => {
   }
 
   const { isDifficult, isMastered } = getReviewState(wordRecord);
-  const hasSeed = wordRecord.antiForgettingSeed === true;
+  const source = getAntiForgettingSource(wordRecord);
+  const hasSeed = toBoolean(wordRecord.antiForgettingSeed) === true;
   if (!isDifficult && !isMastered) {
     return { include: false, reason: 'ambiguous_legacy_status' };
   }
-  if (isMastered && !hasSeed) {
-    return { include: false, reason: 'mastered_without_seed' };
+
+  const isPreviewNotMastered = source === ANTI_FORGETTING_SOURCES.PREVIEW_NOT_MASTERED;
+  const isLegacyDifficult = !source && !hasSeed && isDifficult;
+  if (!isPreviewNotMastered && !hasSeed && !isLegacyDifficult) {
+    return { include: false, reason: 'not_preview_not_mastered' };
   }
 
   const scheduledTime = getScheduledReviewTime(wordRecord, reviewCount);
@@ -203,56 +263,9 @@ const shouldIncludeAntiForgettingWord = (wordId, wordRecord, context = {}) => {
   };
 };
 
-/**
- * 仅在明确的当前学生/当前词书范围内补回 difficult 记录缺失的种子。
- * 不传作用域时不做任何写入，避免跨学生、跨词书批量修改本地数据。
- */
-const repairMissingAntiForgettingSeed = (studentId, wordbookId) => {
-  if (!studentId || !wordbookId || typeof wx === 'undefined') {
-    return 0;
-  }
-
-  try {
-    const wordMastery = wx.getStorageSync('wordMastery') || {};
-    const studentData = wordMastery[studentId];
-    const wordbookMastery = studentData && studentData[wordbookId];
-    if (!wordbookMastery || typeof wordbookMastery !== 'object' || Array.isArray(wordbookMastery)) {
-      return 0;
-    }
-
-    let repairedCount = 0;
-    Object.keys(wordbookMastery).forEach((wordId) => {
-      const record = wordbookMastery[wordId];
-      if (record && typeof record === 'object' && record.difficult === true && record.antiForgettingSeed !== true) {
-        wordbookMastery[wordId] = {
-          ...record,
-          antiForgettingSeed: true
-        };
-        repairedCount++;
-      }
-    });
-
-    if (repairedCount > 0) {
-      wx.setStorageSync('wordMastery', wordMastery);
-      console.log(
-        '[repairAntiForgettingSeed] 学生:',
-        studentId,
-        '词书:',
-        wordbookId,
-        '修复:',
-        repairedCount,
-        '个'
-      );
-    }
-    return repairedCount;
-  } catch (error) {
-    console.error('[repairAntiForgettingSeed] 修复失败:', error);
-    return 0;
-  }
-};
-
 module.exports = {
+  ANTI_FORGETTING_SOURCES,
   REVIEW_INTERVAL_DAYS,
+  resolveAntiForgettingSourceForUpdate,
   shouldIncludeAntiForgettingWord,
-  repairMissingAntiForgettingSeed
 };

@@ -19,6 +19,8 @@ const tests = [
   'test/cloud-pull-statistics.test.js',
   'test/page-stat-consistency.test.js',
   'test/anti-forgetting-filter.test.js',
+  'test/preview-anti-forgetting-source.test.js',
+  'test/home-anti-forgetting-source.test.js',
   'test/review-page-generation.test.js',
   'test/review-result-persistence.test.js',
   'test/test-cloud-sync.js'

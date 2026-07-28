@@ -2,7 +2,7 @@
 const { generateWordsForBook } = require('../../data/wordbook-loader.js');
 const { mergeWordbooks, createWordMap, findWord } = require('../../data/wordbook-utils.js');
 const { resolveDictionaryApiAudioUrl, buildYoudaoAudioUrl } = require('../../utils/audio-fallback.js');
-const { shouldIncludeAntiForgettingWord, repairMissingAntiForgettingSeed: repairAntiForgettingSeedUtil } = require('../../utils/anti-forgetting-filter.js');
+const { shouldIncludeAntiForgettingWord } = require('../../utils/anti-forgetting-filter.js');
 const { syncWordMasteryBatch } = require('../../utils/cloud-sync.js');
 const { resolveCurrentStudent, resolveCurrentWordbook } = require('../../utils/learning-context.js');
 
@@ -165,51 +165,9 @@ Page({
     }
 
     // 旧数组只表达“已掌握ID集合”，无法安全推断学习时间和复习状态。
-    // 对象记录也不再按“存在历史”批量补种子，只由明确 difficult 记录做作用域内修复。
+    // 对象记录仅通过筛选器做只读兼容，不再补种子或迁移用户掌握数据。
     wx.setStorageSync(migrateKey, true);
     return wordMastery;
-  },
-
-  /**
-   * ★ 修复：补回因 saveLearningRecord 兼容路径 bug 而缺失的 antiForgettingSeed
-   * 条件：单词被标记为 difficult，但 antiForgettingSeed 未设为 true
-   * 无门控，每次进入抗遗忘复习时自动检查修复
-   */
-  repairMissingAntiForgettingSeed: function(studentId, wordbookId, wordMastery) {
-    try {
-      if (!wordMastery[studentId] || !wordMastery[studentId][wordbookId]) {
-        return wordMastery;
-      }
-
-      const wordbookMastery = wordMastery[studentId][wordbookId];
-      if (Array.isArray(wordbookMastery)) {
-        return wordMastery; // 旧数组格式由 migrateAntiForgettingSeedIfNeeded 处理
-      }
-
-      let repairCount = 0;
-      for (const wordId in wordbookMastery) {
-        const record = wordbookMastery[wordId];
-        if (!record || typeof record !== 'object') continue;
-        // 单词被标记为 difficult 但缺少 antiForgettingSeed
-        if (record.difficult === true && !record.antiForgettingSeed) {
-          wordbookMastery[wordId] = {
-            ...record,
-            antiForgettingSeed: true
-          };
-          repairCount++;
-        }
-      }
-
-      if (repairCount > 0) {
-        wx.setStorageSync('wordMastery', wordMastery);
-        console.log('[repairMissingAntiForgettingSeed] 修复了', repairCount, '个缺失 antiForgettingSeed 的单词');
-      }
-
-      return wordMastery;
-    } catch (error) {
-      console.error('[repairMissingAntiForgettingSeed] 修复失败:', error);
-      return wordMastery;
-    }
   },
 
   normalizeReviewWordId: function(wordId) {
@@ -324,13 +282,6 @@ Page({
     let wordMastery = this.safeGetStorageSync('wordMastery', {});
     wordMastery = this.migrateAntiForgettingSeedIfNeeded(studentId, wordbookId, wordMastery);
 
-    // ★ 修复：补回因 saveLearningRecord 兼容路径 bug 缺失的 antiForgettingSeed
-    const repaired = repairAntiForgettingSeedUtil(studentId, wordbookId);
-    if (repaired > 0) {
-      // 重新读取修复后的数据
-      wordMastery = this.safeGetStorageSync('wordMastery', {});
-    }
-    
     // 生成抗遗忘复习记录
     const reviewRecords = this.generateAntiForgettingRecords(studentId, wordbookId, wordMastery);
     

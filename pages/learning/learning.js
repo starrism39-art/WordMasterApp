@@ -11,6 +11,7 @@ const {
   resolveCurrentWordbook,
   setCurrentWordbook
 } = require('../../utils/learning-context.js');
+const { resolveAntiForgettingSourceForUpdate } = require('../../utils/anti-forgetting-filter.js');
 
 const ENABLE_VERBOSE_LOG = false;
 const debugLog = (...args) => {
@@ -3176,6 +3177,7 @@ Page({
         const antiForgettingSeedSnapshot = {};
         const masteredIdSet = new Set(masteredWordIds.map(id => String(id)));
         const notMasteredIdSet = new Set(notMasteredWordIds.map(id => String(id)));
+        const previewNotMasteredIdSet = new Set(startSnapshotNotMasteredWordIds.map(id => String(id)));
 
         learnedWordIds.forEach((rawId) => {
           const wordId = String(rawId);
@@ -3188,6 +3190,9 @@ Page({
           }
           if (notMasteredIdSet.has(wordId)) {
             masterySnapshot[wordId] = 'difficult';
+            if (previewNotMasteredIdSet.has(wordId)) {
+              antiForgettingSeedSnapshot[wordId] = true;
+            }
             return;
           }
           if (masteredIdSet.has(wordId)) {
@@ -3195,13 +3200,11 @@ Page({
           }
         });
 
-        // 兼容历史链路：若状态仍为空，默认按未掌握处理，确保后续继续复习。
+        // 兼容历史链路：若状态仍为空，保留“未掌握”状态，但不能据此推断为预习不会。
         if (Object.keys(masterySnapshot).length === 0) {
           learnedWordIds.forEach((rawId) => {
             const wordId = String(rawId);
             masterySnapshot[wordId] = 'difficult';
-            // ★ 修复：同步设置 antiForgettingSeed，确保兜底路径也能生成抗遗忘记录
-            antiForgettingSeedSnapshot[wordId] = true;
           });
         }
 
@@ -3297,10 +3300,21 @@ Page({
         const keepAntiForgettingSeed = antiForgettingSeedSnapshot[wordId] === true;
 
         // 获取当前单词的掌握记录
+        const isExistingRecord = Object.prototype.hasOwnProperty.call(wordbookMastery, wordId);
         const currentWordRecord = wordbookMastery[wordId] || {};
-        // ★ 安全兜底：只要是 difficult 的单词，无条件设置 antiForgettingSeed
-        // 防止因调用链 flags 不完整导致抗遗忘记录缺失
-        const nextAntiForgettingSeed = currentWordRecord.antiForgettingSeed || shouldSeedAntiForgetting || keepAntiForgettingSeed || isDifficult;
+        const nextAntiForgettingSeed = currentWordRecord.antiForgettingSeed === true ||
+          currentWordRecord.antiForgettingSeed === 'true' ||
+          shouldSeedAntiForgetting ||
+          keepAntiForgettingSeed;
+        const nextAntiForgettingSource = resolveAntiForgettingSourceForUpdate(currentWordRecord, {
+          confirmedPreviewNotMastered: shouldSeedAntiForgetting || keepAntiForgettingSeed,
+          isPreviewDecision: markAntiForgettingSeed,
+          isDifficult,
+          isExistingRecord
+        });
+        const antiForgettingSourceFields = nextAntiForgettingSource
+          ? { antiForgettingSource: nextAntiForgettingSource }
+          : {};
         
         // 计算复习次数
         // 这里是“预习结果同步”，不是一次真实复习，不应推进复习轮次。
@@ -3337,6 +3351,7 @@ Page({
             mastered: isMastered,
             difficult: isDifficult,
             antiForgettingSeed: nextAntiForgettingSeed,
+            ...antiForgettingSourceFields,
             // 根据艾宾浩斯遗忘曲线计算下次复习时间
             nextReviewTime: this.calculateNextReviewTime(reviewCount, now, masteryLevel),
             reviewTimeline: reviewTimeline // 保存复习时间线
@@ -3352,6 +3367,7 @@ Page({
             mastered: isMastered,
             difficult: isDifficult,
             antiForgettingSeed: nextAntiForgettingSeed,
+            ...antiForgettingSourceFields,
             reviewTimeline: reviewTimeline // 保存复习时间线
           };
         }

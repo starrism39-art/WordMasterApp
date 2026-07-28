@@ -2,9 +2,10 @@
 
 const assert = require('assert');
 const {
+  ANTI_FORGETTING_SOURCES,
   REVIEW_INTERVAL_DAYS,
-  shouldIncludeAntiForgettingWord,
-  repairMissingAntiForgettingSeed
+  resolveAntiForgettingSourceForUpdate,
+  shouldIncludeAntiForgettingWord
 } = require('../utils/anti-forgetting-filter.js');
 
 const now = new Date(2026, 6, 27, 10, 0, 0, 0).getTime();
@@ -24,7 +25,7 @@ let result = shouldIncludeAntiForgettingWord('word_1', {
   reviewCount: 0,
   nextReviewTime: dueTime
 }, context);
-assert.strictEqual(result.include, true, '到期困难词应进入未掌握复习');
+assert.strictEqual(result.include, true, '缺少来源字段的旧困难词应只读兼容，不能因升级消失');
 assert.strictEqual(result.reviewType, 'remedial');
 assert.strictEqual(result.reviewTypeLabel, '未掌握复习');
 assert.strictEqual(result.round, 1);
@@ -56,7 +57,7 @@ result = shouldIncludeAntiForgettingWord('word_4', {
   nextReviewTime: dueTime
 }, context);
 assert.strictEqual(result.include, false, '没有抗遗忘种子的已掌握词不得进入');
-assert.strictEqual(result.reason, 'mastered_without_seed');
+assert.strictEqual(result.reason, 'not_preview_not_mastered');
 
 result = shouldIncludeAntiForgettingWord('word_5', {
   mastered: false,
@@ -91,6 +92,7 @@ assert.strictEqual(result.reason, 'wordbook_scope');
 
 result = shouldIncludeAntiForgettingWord('word_8', {
   masteryStatus: 'not_mastered',
+  antiForgettingSource: ANTI_FORGETTING_SOURCES.PREVIEW_NOT_MASTERED,
   reviewCount: 5,
   nextReviewTime: dueTime
 }, context);
@@ -135,56 +137,125 @@ result = shouldIncludeAntiForgettingWord('senior_unified_word_11', {
 assert.strictEqual(result.include, true, '字符串布尔值和字符串时间戳应兼容旧数据');
 assert.strictEqual(result.reviewType, 'remedial');
 
-const storage = {
-  wordMastery: {
-    student456: {
-      senior_unified: {
-        target: {
-          difficult: true,
-          nextReviewTime: dueTime
-        },
-        unchanged: {
-          mastered: true,
-          nextReviewTime: dueTime
-        }
-      },
-      senior_reading: {
-        otherBook: {
-          difficult: true,
-          nextReviewTime: dueTime
-        }
-      }
-    },
-    student789: {
-      senior_unified: {
-        otherStudent: {
-          difficult: true,
-          nextReviewTime: dueTime
-        }
-      }
-    }
-  }
-};
-let writeCount = 0;
-global.wx = {
-  getStorageSync: (key) => storage[key],
-  setStorageSync: (key, value) => {
-    storage[key] = value;
-    writeCount++;
-  }
-};
+result = shouldIncludeAntiForgettingWord('word_12', {
+  difficult: true,
+  antiForgettingSource: ANTI_FORGETTING_SOURCES.PREVIEW_MASTERED,
+  reviewCount: 0,
+  nextReviewTime: dueTime
+}, context);
+assert.strictEqual(result.include, false, '明确来自预习会的词即使后来变困难也不得生成抗遗忘');
+assert.strictEqual(result.reason, 'not_preview_not_mastered');
+
+result = shouldIncludeAntiForgettingWord('word_13', {
+  difficult: true,
+  antiForgettingSource: ANTI_FORGETTING_SOURCES.NON_PREVIEW_DIFFICULT,
+  reviewCount: 0,
+  nextReviewTime: dueTime
+}, context);
+assert.strictEqual(result.include, false, '其他流程新产生的困难词不得生成抗遗忘');
+assert.strictEqual(result.reason, 'not_preview_not_mastered');
+
+result = shouldIncludeAntiForgettingWord('word_14', {
+  mastered: true,
+  antiForgettingSource: ANTI_FORGETTING_SOURCES.PREVIEW_NOT_MASTERED,
+  reviewCount: 3,
+  nextReviewTime: dueTime
+}, context);
+assert.strictEqual(result.include, true, '预习不会入池后，即使后来掌握也应继续完成五轮');
+assert.strictEqual(result.round, 4);
 
 assert.strictEqual(
-  repairMissingAntiForgettingSeed('student456', 'senior_unified'),
-  1,
-  '只应修复当前学生当前词书的明确困难词'
+  resolveAntiForgettingSourceForUpdate({}, {
+    isPreviewDecision: true,
+    isDifficult: true,
+    isExistingRecord: false
+  }),
+  ANTI_FORGETTING_SOURCES.PREVIEW_NOT_MASTERED
 );
-assert.strictEqual(storage.wordMastery.student456.senior_unified.target.antiForgettingSeed, true);
-assert.strictEqual(storage.wordMastery.student456.senior_reading.otherBook.antiForgettingSeed, undefined);
-assert.strictEqual(storage.wordMastery.student789.senior_unified.otherStudent.antiForgettingSeed, undefined);
-assert.strictEqual(writeCount, 1);
+assert.strictEqual(
+  resolveAntiForgettingSourceForUpdate({}, {
+    isPreviewDecision: true,
+    isDifficult: false,
+    isExistingRecord: false
+  }),
+  ANTI_FORGETTING_SOURCES.PREVIEW_MASTERED
+);
+assert.strictEqual(
+  resolveAntiForgettingSourceForUpdate({}, {
+    isDifficult: true,
+    isExistingRecord: false
+  }),
+  ANTI_FORGETTING_SOURCES.NON_PREVIEW_DIFFICULT
+);
+assert.strictEqual(
+  resolveAntiForgettingSourceForUpdate({ difficult: true }, {
+    isDifficult: true,
+    isExistingRecord: true
+  }),
+  '',
+  '无来源的旧困难记录不得被迁移或改写'
+);
+assert.strictEqual(
+  resolveAntiForgettingSourceForUpdate({ antiForgettingSeed: true }, {
+    isDifficult: false,
+    isExistingRecord: true
+  }),
+  ANTI_FORGETTING_SOURCES.PREVIEW_NOT_MASTERED,
+  '已有抗遗忘种子必须继续兼容原五轮'
+);
 
-assert.strictEqual(repairMissingAntiForgettingSeed(), 0, '没有明确作用域时不得写入');
-assert.strictEqual(writeCount, 1);
+const immutableLegacyRecord = {
+  difficult: true,
+  reviewCount: 0,
+  nextReviewTime: dueTime
+};
+const legacySnapshot = JSON.stringify(immutableLegacyRecord);
+shouldIncludeAntiForgettingWord('word_15', immutableLegacyRecord, context);
+assert.strictEqual(JSON.stringify(immutableLegacyRecord), legacySnapshot, '筛选旧记录不得修改用户数据');
+
+const scopeMatrix = [
+  ['student456', 'senior_textbook_real'],
+  ['student456', 'gaokao_reading_words'],
+  ['student456', 'senior_book_1_ren_jiao'],
+  ['student789', 'junior_8th_first']
+];
+scopeMatrix.forEach(([studentId, wordbookId]) => {
+  const scopedContext = {
+    studentId,
+    wordbookId,
+    now,
+    hasScopedWordIds: true
+  };
+  const ownWordId = `${wordbookId}_word_1`;
+  const ownResult = shouldIncludeAntiForgettingWord(ownWordId, {
+    studentId,
+    wordbookId,
+    difficult: true,
+    antiForgettingSource: ANTI_FORGETTING_SOURCES.PREVIEW_NOT_MASTERED,
+    reviewCount: 0,
+    nextReviewTime: dueTime
+  }, scopedContext);
+  assert.strictEqual(ownResult.include, true, `${studentId}/${wordbookId} 的预习不会词应进入`);
+
+  const otherStudentResult = shouldIncludeAntiForgettingWord(ownWordId, {
+    studentId: `${studentId}_other`,
+    wordbookId,
+    difficult: true,
+    antiForgettingSource: ANTI_FORGETTING_SOURCES.PREVIEW_NOT_MASTERED,
+    reviewCount: 0,
+    nextReviewTime: dueTime
+  }, scopedContext);
+  assert.strictEqual(otherStudentResult.reason, 'student_scope');
+
+  const otherBookResult = shouldIncludeAntiForgettingWord(ownWordId, {
+    studentId,
+    wordbookId: `${wordbookId}_other`,
+    difficult: true,
+    antiForgettingSource: ANTI_FORGETTING_SOURCES.PREVIEW_NOT_MASTERED,
+    reviewCount: 0,
+    nextReviewTime: dueTime
+  }, scopedContext);
+  assert.strictEqual(otherBookResult.reason, 'wordbook_scope');
+});
 
 process.stdout.write('anti-forgetting-filter: PASS\n');

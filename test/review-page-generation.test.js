@@ -46,11 +46,13 @@ const verifyGenerator = (modulePath) => {
         book_a: {
           book_a_due: {
             difficult: true,
+            antiForgettingSource: 'preview_not_mastered',
             nextReviewTime: now - 1,
             reviewCount: 0
           },
           book_a_future: {
             difficult: true,
+            antiForgettingSource: 'preview_not_mastered',
             nextReviewTime: now + 24 * 60 * 60 * 1000,
             reviewCount: 0
           },
@@ -59,6 +61,23 @@ const verifyGenerator = (modulePath) => {
             antiForgettingSeed: true,
             nextReviewTime: now - 1,
             reviewCount: 1
+          },
+          book_a_legacy_difficult: {
+            difficult: true,
+            nextReviewTime: now - 1,
+            reviewCount: 1
+          },
+          book_a_preview_mastered: {
+            mastered: true,
+            antiForgettingSource: 'preview_mastered',
+            nextReviewTime: now - 1,
+            reviewCount: 0
+          },
+          book_a_non_preview: {
+            difficult: true,
+            antiForgettingSource: 'non_preview_difficult',
+            nextReviewTime: now - 1,
+            reviewCount: 0
           },
           foreign_due: {
             difficult: true,
@@ -71,9 +90,12 @@ const verifyGenerator = (modulePath) => {
   );
 
   const ids = records.flatMap((record) => record.words);
-  assert.ok(ids.includes('book_a_due'), `${modulePath} 应包含当前词书到期困难词`);
-  assert.ok(ids.includes('book_a_mastered'), `${modulePath} 应包含当前词书到期巩固词`);
+  assert.ok(ids.includes('book_a_due'), `${modulePath} 应包含当前词书到期的预习不会词`);
+  assert.ok(ids.includes('book_a_mastered'), `${modulePath} 应保留已有种子的历史五轮词`);
+  assert.ok(ids.includes('book_a_legacy_difficult'), `${modulePath} 不得清空缺少来源字段的旧困难词`);
   assert.ok(!ids.includes('book_a_future'), `${modulePath} 不应包含未到期词`);
+  assert.ok(!ids.includes('book_a_preview_mastered'), `${modulePath} 不应包含预习标记会的词`);
+  assert.ok(!ids.includes('book_a_non_preview'), `${modulePath} 不应包含其他流程新产生的困难词`);
   assert.ok(!ids.includes('foreign_due'), `${modulePath} 不应包含其他词书混入词`);
   assert.ok(records.some((record) => record.reviewType === 'remedial'));
   assert.ok(records.some((record) => record.reviewType === 'consolidation'));

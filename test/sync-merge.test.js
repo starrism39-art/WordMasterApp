@@ -15,6 +15,7 @@ const oldLocal = {
   mastered: true,
   difficult: false,
   antiForgettingSeed: true,
+  antiForgettingSource: 'preview_not_mastered',
   reviewTimeline: [{ time: 1000, reviewCount: 1, status: 'mastered' }]
 };
 const newerCloud = {
@@ -33,6 +34,11 @@ assert.strictEqual(cloudWinner.mastered, false, 'newer difficult state must not 
 assert.strictEqual(cloudWinner.difficult, true);
 assert.strictEqual(cloudWinner.nextReviewTime, 3000, 'next review time must come from the coherent winner');
 assert.deepStrictEqual(cloudWinner.reviewTimeline.map((item) => item.time), [1000, 2000]);
+assert.strictEqual(
+  cloudWinner.antiForgettingSource,
+  'preview_not_mastered',
+  '另一设备缺少新来源字段时，不得丢失已有预习不会来源'
+);
 
 const newestLocal = {
   reviewCount: 3,
