@@ -13,6 +13,11 @@ const {
   mergeWordMasteryRecord
 } = require('./sync-merge.js');
 const syncStudentStatistics = syncStudentStatsToCloud;
+const MASTERY_ATOM_FUNCTION_NAME = 'syncMasteryAtom';
+const MASTERY_ATOM_PROTOCOL_VERSION = 2;
+const MASTERY_ATOM_CAPABILITY_TTL_MS = 5 * 60 * 1000;
+const MASTERY_ATOM_RETRY_TTL_MS = 30 * 1000;
+let masteryAtomCapabilityCache = null;
 
 const toSafeDocIdPart = (value) => {
   return String(value === undefined || value === null ? '' : value)
@@ -72,6 +77,61 @@ const getOpenId = () => {
     console.warn('[cloud-sync] getOpenId 读取异常:', error);
     return null;
   }
+};
+
+const getMasteryAtomCapability = async () => {
+  if (!wx.cloud || typeof wx.cloud.callFunction !== 'function') {
+    return { supported: false, reason: 'call_function_unavailable' };
+  }
+
+  const now = Date.now();
+  if (
+    masteryAtomCapabilityCache
+    && now - masteryAtomCapabilityCache.checkedAt
+      < (masteryAtomCapabilityCache.supported
+        ? MASTERY_ATOM_CAPABILITY_TTL_MS
+        : MASTERY_ATOM_RETRY_TTL_MS)
+  ) {
+    return masteryAtomCapabilityCache;
+  }
+
+  try {
+    const response = await wx.cloud.callFunction({
+      name: MASTERY_ATOM_FUNCTION_NAME,
+      data: { action: 'capabilities' }
+    });
+    const result = response && response.result ? response.result : {};
+    const supported = result.success === true
+      && Number(result.protocolVersion) === MASTERY_ATOM_PROTOCOL_VERSION
+      && result.features
+      && result.features.transactionalMasteryMerge === true
+      && result.features.legacyOwnershipAdoption === true;
+    masteryAtomCapabilityCache = {
+      supported: !!supported,
+      maxBatchSize: supported
+        ? Math.max(1, Math.min(20, Number(result.maxBatchSize) || 20))
+        : 0,
+      checkedAt: now,
+      reason: supported ? 'supported' : 'unsupported_protocol'
+    };
+  } catch (error) {
+    masteryAtomCapabilityCache = masteryAtomCapabilityCache
+      && masteryAtomCapabilityCache.supported
+      ? {
+        ...masteryAtomCapabilityCache,
+        checkedAt: now,
+        reason: 'stale_supported_after_capability_error',
+        error
+      }
+      : {
+        supported: false,
+        maxBatchSize: 0,
+        checkedAt: now,
+        reason: 'capability_check_failed',
+        error
+      };
+  }
+  return masteryAtomCapabilityCache;
 };
 
 // 同步状态管理（全局持久化，供首页展示）
@@ -441,6 +501,87 @@ const getDisplayNames = (studentId) => {
   return { studentName, teacherName };
 };
 
+const syncWordMasteryViaAtom = async (
+  studentId,
+  wordbookId,
+  wordRecordsMap,
+  displayNames,
+  capability
+) => {
+  const wordIds = Object.keys(wordRecordsMap || {});
+  const batchSize = Math.max(1, Number(capability && capability.maxBatchSize) || 20);
+  const allResults = [];
+
+  for (let offset = 0; offset < wordIds.length; offset += batchSize) {
+    const batchWordIds = wordIds.slice(offset, offset + batchSize);
+    const records = batchWordIds.map((wordId) => {
+      const cleanRecord = withUpdatedAt(stripSystemFields(wordRecordsMap[wordId]));
+      [
+        'teacher_id', 'teacherId',
+        'student_id', 'studentId',
+        'wordbook_id', 'wordbookId',
+        'word_id', 'wordId'
+      ].forEach((key) => delete cleanRecord[key]);
+      return {
+        ...cleanRecord,
+        studentId: String(studentId),
+        wordbookId: String(wordbookId),
+        wordId: String(wordId),
+        ...displayNames
+      };
+    });
+
+    try {
+      const response = await wx.cloud.callFunction({
+        name: MASTERY_ATOM_FUNCTION_NAME,
+        data: { records }
+      });
+      const result = response && response.result ? response.result : {};
+      if (Number(result.protocolVersion) !== MASTERY_ATOM_PROTOCOL_VERSION) {
+        batchWordIds.forEach((wordId) => {
+          allResults.push({
+            wordId,
+            ok: false,
+            error: 'mastery_atom_protocol_mismatch'
+          });
+        });
+        continue;
+      }
+
+      const resultMap = new Map();
+      (Array.isArray(result.results) ? result.results : []).forEach((item) => {
+        if (item && item.wordId !== undefined && item.wordId !== null) {
+          resultMap.set(String(item.wordId), item);
+        }
+      });
+      batchWordIds.forEach((wordId) => {
+        const item = resultMap.get(String(wordId));
+        allResults.push(item
+          ? {
+            ...item,
+            wordId: String(wordId),
+            ok: item.ok === true
+          }
+          : {
+            wordId: String(wordId),
+            ok: false,
+            error: result.error || 'mastery_atom_missing_result'
+          });
+      });
+    } catch (error) {
+      batchWordIds.forEach((wordId) => {
+        allResults.push({
+          wordId: String(wordId),
+          ok: false,
+          error
+        });
+      });
+    }
+  }
+
+  return allResults;
+};
+
 const syncLearningRecord = (record) => {
   if (isCloudReadOnlyMode()) {
     return Promise.resolve(createCloudReadOnlyResult('syncLearningRecord'));
@@ -624,12 +765,24 @@ const syncWordMasteryBatch = async (studentId, wordbookId, wordRecordsMap) => {
   const BATCH_SIZE = 5;
   const allResults = [];
 
-  for (let i = 0; i < wordIds.length; i += BATCH_SIZE) {
-    const batch = wordIds.slice(i, i + BATCH_SIZE);
-    const batchResults = await Promise.all(batch.map(syncOneWord));
-    allResults.push(...batchResults);
-    if (i + BATCH_SIZE < wordIds.length) {
-      await new Promise((r) => setTimeout(r, 500));
+  const masteryAtomCapability = await getMasteryAtomCapability();
+  if (masteryAtomCapability.supported) {
+    const atomResults = await syncWordMasteryViaAtom(
+      studentId,
+      wordbookId,
+      wordRecordsMap,
+      displayNames,
+      masteryAtomCapability
+    );
+    allResults.push(...atomResults);
+  } else {
+    for (let i = 0; i < wordIds.length; i += BATCH_SIZE) {
+      const batch = wordIds.slice(i, i + BATCH_SIZE);
+      const batchResults = await Promise.all(batch.map(syncOneWord));
+      allResults.push(...batchResults);
+      if (i + BATCH_SIZE < wordIds.length) {
+        await new Promise((r) => setTimeout(r, 500));
+      }
     }
   }
 

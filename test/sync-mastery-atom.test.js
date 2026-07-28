@@ -81,6 +81,14 @@ const createHarness = (initialCallerOpenid = 'caller-openid') => {
 
 (async () => {
   const harness = createHarness('caller-a');
+  const capabilities = await harness.main({ action: 'capabilities' });
+  assert.strictEqual(capabilities.success, true);
+  assert.strictEqual(capabilities.protocolVersion, 2);
+  assert.strictEqual(capabilities.maxBatchSize, harness.testApi.MAX_BATCH_SIZE);
+  assert.strictEqual(capabilities.features.transactionalMasteryMerge, true);
+  assert.strictEqual(capabilities.features.legacyOwnershipAdoption, true);
+  assert.strictEqual(harness.getTransactionCount(), 0);
+
   const forgedResult = await harness.main({
     openid: 'forged-openid',
     records: [{

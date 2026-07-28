@@ -17,6 +17,7 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 
 const MAX_BATCH_SIZE = 20;
+const PROTOCOL_VERSION = 2;
 const PROTECTED_FIELDS = new Set([
   '_id',
   '_openid',
@@ -205,6 +206,17 @@ exports.main = async (event) => {
   if (!callerOpenid) {
     return { success: false, error: 'missing_caller_openid' };
   }
+  if (event && event.action === 'capabilities') {
+    return {
+      success: true,
+      protocolVersion: PROTOCOL_VERSION,
+      maxBatchSize: MAX_BATCH_SIZE,
+      features: {
+        transactionalMasteryMerge: true,
+        legacyOwnershipAdoption: true
+      }
+    };
+  }
   if (!Array.isArray(records) || records.length === 0) {
     return { success: false, error: 'empty_records' };
   }
@@ -232,6 +244,7 @@ exports.main = async (event) => {
   const failed = results.filter((result) => !result.ok).length;
   return {
     success: failed === 0,
+    protocolVersion: PROTOCOL_VERSION,
     total: results.length,
     succeeded: results.length - failed,
     failed,
@@ -241,6 +254,7 @@ exports.main = async (event) => {
 
 exports._test = {
   MAX_BATCH_SIZE,
+  PROTOCOL_VERSION,
   assertExistingIdentity,
   buildScopedDocId,
   getRecordIdentifiers,
