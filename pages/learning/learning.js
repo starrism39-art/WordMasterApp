@@ -3,7 +3,12 @@
 const wordbooksModule = require('../../data/wordbooks.js');
 const { generateWordsForBook } = wordbooksModule;
 const { resolveDictionaryApiAudioUrl, buildYoudaoAudioUrl } = require('../../utils/audio-fallback.js');
-const { syncPreviewState, loadPreviewStateFromCloud, syncWordMasteryBatch } = require('../../utils/cloud-sync.js');
+const {
+  syncPreviewState,
+  loadPreviewStateFromCloud,
+  syncWordMasteryBatch,
+  selectWordMasteryRecords
+} = require('../../utils/cloud-sync.js');
 const cloudWordbookLoader = require('../../utils/cloud-wordbook-loader.js');
 const {
   createLearningContextKey,
@@ -3217,10 +3222,13 @@ Page({
         const wordbookId = this.data.currentWordbook?.id;
         if (studentId && wordbookId) {
           const wordMastery = wx.getStorageSync('wordMastery') || {};
-          const changedRecords = wordMastery[studentId]?.[wordbookId] || {};
-          syncWordMasteryBatch(studentId, wordbookId, changedRecords).catch(err => {
-            console.warn('[saveLearningRecord] wordMastery 云端同步失败:', err);
-          });
+          const currentBookRecords = wordMastery[studentId]?.[wordbookId] || {};
+          const changedRecords = selectWordMasteryRecords(currentBookRecords, learnedWordIds);
+          if (Object.keys(changedRecords).length > 0) {
+            syncWordMasteryBatch(studentId, wordbookId, changedRecords).catch(err => {
+              console.warn('[saveLearningRecord] wordMastery 云端同步失败:', err);
+            });
+          }
         }
       }
       

@@ -30,6 +30,25 @@ const buildPendingMasteryKey = (studentId, wordbookId, wordId) => (
   [studentId, wordbookId, wordId].map(toSafeDocIdPart).join('__')
 );
 
+const selectWordMasteryRecords = (wordRecordsMap, wordIds) => {
+  const source = wordRecordsMap && typeof wordRecordsMap === 'object' && !Array.isArray(wordRecordsMap)
+    ? wordRecordsMap
+    : {};
+  const selected = {};
+  const seen = new Set();
+  (Array.isArray(wordIds) ? wordIds : []).forEach((rawWordId) => {
+    const wordId = String(rawWordId === undefined || rawWordId === null ? '' : rawWordId);
+    if (!wordId || seen.has(wordId)) {
+      return;
+    }
+    seen.add(wordId);
+    if (Object.prototype.hasOwnProperty.call(source, wordId) && source[wordId]) {
+      selected[wordId] = source[wordId];
+    }
+  });
+  return selected;
+};
+
 const ensureDb = () => {
   if (!wx.cloud) {
     return null;
@@ -989,6 +1008,7 @@ const syncAllLocalLearningRecords = () => {
 
 module.exports = {
   buildScopedDocId,
+  selectWordMasteryRecords,
   stripSystemFields,
   syncLearningRecord,
   syncWordMasteryRecord,
