@@ -29,27 +29,38 @@ function resolveCurrentStudent(app) {
   return globalStudent || readStorage('currentStudent', null) || readStorage('selectedStudent', null);
 }
 
-function resolveCurrentWordbook(app, student) {
-  const currentStudent = student || resolveCurrentStudent(app);
-  const studentId = currentStudent && currentStudent.id;
-  let scopedWordbook = null;
-
+function resolveScopedWordbook(studentId) {
   if (studentId !== undefined && studentId !== null && studentId !== '') {
     const storedSettings = readStorage('studentSettings', {});
     const studentSettings = storedSettings && typeof storedSettings === 'object' && !Array.isArray(storedSettings)
       ? storedSettings
       : {};
-    scopedWordbook = studentSettings[getStudentWordbookKey(studentId)] || null;
+    let scopedWordbook = studentSettings[getStudentWordbookKey(studentId)] || null;
 
     if (!scopedWordbook) {
       const pageState = readStorage(`${studentId}_pageState`, null);
       scopedWordbook = pageState && pageState.currentWordbook;
     }
+    return toWordbookSelection(scopedWordbook);
   }
+  return null;
+}
+
+function resolveCurrentWordbook(app, student) {
+  const currentStudent = student || resolveCurrentStudent(app);
+  const studentId = currentStudent && (currentStudent.id || currentStudent.student_id);
+  const scopedWordbook = resolveScopedWordbook(studentId);
+  if (scopedWordbook) return scopedWordbook;
 
   const globalData = app && app.globalData ? app.globalData : {};
+  const ownerStudentId = globalData.currentWordbookStudentId ||
+    readStorage('currentWordbookStudentId', '');
+  const allowLegacyFallback = !studentId ||
+    !ownerStudentId ||
+    String(ownerStudentId) === String(studentId);
+  if (!allowLegacyFallback) return null;
+
   const candidates = [
-    scopedWordbook,
     globalData.currentWordbook,
     globalData.selectedWordbook,
     readStorage('currentWordbook', null),
@@ -62,6 +73,51 @@ function resolveCurrentWordbook(app, student) {
   }
 
   return null;
+}
+
+function setCurrentStudent(app, student, options) {
+  if (!student || typeof student !== 'object') return null;
+  const rawStudentId = student.id || student.student_id;
+  if (rawStudentId === undefined || rawStudentId === null || rawStudentId === '') return null;
+
+  const normalizedStudent = {
+    ...student,
+    id: String(rawStudentId)
+  };
+  wx.setStorageSync('currentStudent', normalizedStudent);
+  wx.setStorageSync('selectedStudent', normalizedStudent);
+  if (app && app.globalData) {
+    app.globalData.currentStudent = normalizedStudent;
+  }
+
+  const scopedWordbook = resolveScopedWordbook(normalizedStudent.id);
+  let selectedWordbook = null;
+  if (scopedWordbook) {
+    selectedWordbook = setCurrentWordbook(app, normalizedStudent, scopedWordbook, { emit: false });
+  } else {
+    // 保留旧全局缓存以兼容旧数据，但通过归属标记阻止它泄漏给新学生。
+    const noSelectionOwner = `__none__:${normalizedStudent.id}`;
+    wx.setStorageSync('currentWordbookStudentId', noSelectionOwner);
+    if (app && app.globalData) {
+      app.globalData.currentWordbook = null;
+      app.globalData.selectedWordbook = null;
+      app.globalData.currentWordbookStudentId = noSelectionOwner;
+    }
+  }
+
+  const shouldEmit = !options || options.emit !== false;
+  if (shouldEmit && app && typeof app.emit === 'function') {
+    app.emit('currentStudentChanged', {
+      studentId: normalizedStudent.id,
+      student: normalizedStudent
+    });
+    app.emit('currentWordbookChanged', {
+      studentId: normalizedStudent.id,
+      wordbookId: selectedWordbook ? selectedWordbook.id : '',
+      wordbook: selectedWordbook
+    });
+  }
+  return normalizedStudent;
 }
 
 function setCurrentWordbook(app, student, wordbook, options) {
@@ -92,10 +148,12 @@ function setCurrentWordbook(app, student, wordbook, options) {
   wx.setStorageSync(pageStateKey, nextPageState);
   wx.setStorageSync('selectedWordbook', selection);
   wx.setStorageSync('currentWordbook', selection);
+  wx.setStorageSync('currentWordbookStudentId', String(currentStudent.id));
 
   if (app && app.globalData) {
     app.globalData.currentWordbook = selection;
     app.globalData.selectedWordbook = selection;
+    app.globalData.currentWordbookStudentId = String(currentStudent.id);
   }
 
   const shouldEmit = !options || options.emit !== false;
@@ -121,6 +179,7 @@ module.exports = {
   getStudentWordbookKey,
   resolveCurrentStudent,
   resolveCurrentWordbook,
+  setCurrentStudent,
   setCurrentWordbook,
   toWordbookSelection
 };

@@ -49,6 +49,7 @@ const app = {
 const {
   createLearningContextKey,
   resolveCurrentWordbook,
+  setCurrentStudent,
   setCurrentWordbook
 } = require('../utils/learning-context.js');
 
@@ -70,6 +71,7 @@ assert.strictEqual(selected.id, 'gaokao_reading_words');
 assert.strictEqual(selected.words, undefined, '当前词书选择只保存元数据，不能复制完整词表');
 assert.strictEqual(storage.selectedWordbook.id, 'gaokao_reading_words');
 assert.strictEqual(storage.currentWordbook.id, 'gaokao_reading_words');
+assert.strictEqual(storage.currentWordbookStudentId, 'student456');
 assert.strictEqual(storage.studentSettings.student_student456_wordbook.id, 'gaokao_reading_words');
 assert.strictEqual(storage.studentSettings.student_other_wordbook.id, 'junior_textbook_real', '不能覆盖其他学生设置');
 assert.deepStrictEqual(storage.student456_pageState.learningStats, { learnedWords: 12 }, '更新词书时必须保留页面状态中的其他字段');
@@ -116,5 +118,25 @@ assert.deepStrictEqual(
   { masteredCount: 1, notMasteredCount: 0, checkinDays: 1 },
   '高考阅读词书统计不能混入高中统编版或其他学生数据'
 );
+
+const noBookStudent = setCurrentStudent(app, { id: 'student789', name: '第二位测试学生' });
+assert.strictEqual(noBookStudent.id, 'student789');
+assert.strictEqual(storage.currentStudent.id, 'student789');
+assert.strictEqual(storage.selectedStudent.id, 'student789');
+assert.strictEqual(app.globalData.currentWordbook, null);
+assert.strictEqual(
+  resolveCurrentWordbook(app, noBookStudent),
+  null,
+  '切换到没有学生级词书设置的学生时，不能继承上一位学生的全局词书缓存'
+);
+assert.strictEqual(storage.currentWordbook.id, 'gaokao_reading_words', '兼容旧数据时不应破坏原缓存');
+
+const otherStudent = setCurrentStudent(app, { id: 'other', name: '其他学生' });
+assert.strictEqual(
+  resolveCurrentWordbook(app, otherStudent).id,
+  'junior_textbook_real',
+  '切换学生时应恢复该学生自己的词书设置'
+);
+assert.strictEqual(storage.currentWordbookStudentId, 'other');
 
 process.stdout.write('learning-context: PASS\n');

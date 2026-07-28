@@ -1,5 +1,6 @@
 // pages/student-list/student-list.js
 const { syncDataFromCloud } = require('../../utils/cloud-migration.js');
+const { setCurrentStudent } = require('../../utils/learning-context.js');
 
 const ACTION_BUTTON_WIDTH_RPX = 140;
 const ACTION_TOTAL_RPX = ACTION_BUTTON_WIDTH_RPX * 2;
@@ -181,8 +182,7 @@ Page({
     
     // 选择学生并保存到全局和本地存储
     const app = getApp();
-    app.globalData.currentStudent = student;
-    wx.setStorageSync('currentStudent', student);
+    setCurrentStudent(app, student);
     this.setData({ currentStudentId: student.id });
     
     // 显示成功提示
