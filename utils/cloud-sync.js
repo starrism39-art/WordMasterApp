@@ -7,6 +7,7 @@
 const DEFAULT_ENV = 'cloudbase-4gafzdch60ad597b';
 const { syncStudentStatsToCloud } = require('./stats-engine.js');
 const { reconcileStudentLearningProgress } = require('./learning-progress.js');
+const { createCloudReadOnlyResult, isCloudReadOnlyMode } = require('./cloud-mode.js');
 const syncStudentStatistics = syncStudentStatsToCloud;
 
 const toSafeDocIdPart = (value) => {
@@ -89,6 +90,11 @@ const markSyncSuccess = (count) => {
 };
 
 const retryPendingSyncs = () => {
+  if (isCloudReadOnlyMode()) {
+    console.log('[cloud-sync] 只读模式：跳过待同步重试');
+    return Promise.resolve(createCloudReadOnlyResult('retryPendingSyncs'));
+  }
+
   const db = ensureDb();
   const openid = getOpenId();
   if (!db || !openid) {
@@ -288,6 +294,10 @@ const getDisplayNames = (studentId) => {
 };
 
 const syncLearningRecord = (record) => {
+  if (isCloudReadOnlyMode()) {
+    return Promise.resolve(createCloudReadOnlyResult('syncLearningRecord'));
+  }
+
   const db = ensureDb();
   const openid = getOpenId();
   if (!db || !openid || !record) {
@@ -356,6 +366,10 @@ const syncLearningRecord = (record) => {
 };
 
 const syncWordMasteryRecord = (studentId, wordbookId, wordId, wordRecord) => {
+  if (isCloudReadOnlyMode()) {
+    return createCloudReadOnlyResult('syncWordMasteryRecord');
+  }
+
   const db = ensureDb();
   const openid = getOpenId();
   if (!db || !openid || !studentId || !wordbookId || !wordId || !wordRecord) {
@@ -383,6 +397,10 @@ const syncWordMasteryRecord = (studentId, wordbookId, wordId, wordRecord) => {
 };
 
 const syncWordMasteryBatch = async (studentId, wordbookId, wordRecordsMap) => {
+  if (isCloudReadOnlyMode()) {
+    return createCloudReadOnlyResult('syncWordMasteryBatch');
+  }
+
   const db = ensureDb();
   const openid = getOpenId();
   if (!db || !openid || !studentId || !wordbookId || !wordRecordsMap) {
@@ -568,6 +586,10 @@ const syncLearningProgress = (studentId, progressData) => {
     console.warn('[cloud-sync] 从 wordMastery 修正 learningProgress 失败，使用原值:', e);
   }
 
+  if (isCloudReadOnlyMode()) {
+    return Promise.resolve(createCloudReadOnlyResult('syncLearningProgress'));
+  }
+
   const db = ensureDb();
   const openid = getOpenId();
   if (!db || !openid || !studentId || !correctedProgress) {
@@ -648,6 +670,10 @@ const syncLearningProgress = (studentId, progressData) => {
 
 // 批量补推所有本地 learningProgress 到云端（幂等，用于历史数据恢复）
 const syncAllLocalLearningProgress = () => {
+  if (isCloudReadOnlyMode()) {
+    return Promise.resolve(createCloudReadOnlyResult('syncAllLocalLearningProgress'));
+  }
+
   const db = ensureDb();
   const openid = getOpenId();
   if (!db || !openid) {
@@ -696,6 +722,10 @@ const syncAllLocalLearningProgress = () => {
  * @param {object} previewData - { mastery: {...}, order: [...], excluded: [...] }
  */
 const syncPreviewState = (studentId, wordbookId, previewData) => {
+  if (isCloudReadOnlyMode()) {
+    return Promise.resolve(createCloudReadOnlyResult('syncPreviewState'));
+  }
+
   const db = ensureDb();
   const openid = getOpenId();
   if (!db || !openid || !studentId || !wordbookId) {
@@ -814,6 +844,10 @@ const loadPreviewStateFromCloud = (studentId, wordbookId) => {
 
 // 批量补推所有本地学习记录到云端（一次性，用于历史数据恢复）
 const syncAllLocalLearningRecords = () => {
+  if (isCloudReadOnlyMode()) {
+    return Promise.resolve(createCloudReadOnlyResult('syncAllLocalLearningRecords'));
+  }
+
   const db = ensureDb();
   const openid = getOpenId();
   if (!db || !openid) {

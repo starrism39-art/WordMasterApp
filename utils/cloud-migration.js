@@ -33,6 +33,7 @@ const {
   syncLearningProgress
 } = require('./cloud-sync.js');
 const { reconcileLearningProgressMap } = require('./learning-progress.js');
+const { createCloudReadOnlyResult, isCloudReadOnlyMode } = require('./cloud-mode.js');
 
 const chunkArray = (items, size) => {
   if (!Array.isArray(items) || items.length === 0) {
@@ -168,6 +169,18 @@ const ensureTeacher = async (db, openid) => {
   });
 
   return { created: true, userRole: 'external', memberLevel: 'free' };
+};
+
+const readTeacher = async (db, openid) => {
+  const existing = await db.collection('teachers').where({
+    teacher_id: openid
+  }).limit(1).get();
+  const teacherDoc = existing && Array.isArray(existing.data) ? existing.data[0] : null;
+  return {
+    created: false,
+    userRole: (teacherDoc && teacherDoc.userRole) || 'external',
+    memberLevel: (teacherDoc && teacherDoc.memberLevel) || 'free'
+  };
 };
 
 const buildProgressDocs = (learningProgress, openid) => {
@@ -504,8 +517,10 @@ const syncDataFromCloud = async (openid) => {
 
     const db = wx.cloud.database({ env: DEFAULT_ENV });
 
-    // 【权限基座-静默升级】同步前先拉取/补齐教师权限字段
-    const teacherResult = await ensureTeacher(db, openid);
+    // 开发者工具只读模式仅查询教师权限，不创建或升级真实云端记录。
+    const teacherResult = isCloudReadOnlyMode()
+      ? await readTeacher(db, openid)
+      : await ensureTeacher(db, openid);
     if (teacherResult.userRole) {
       try {
         const app = getApp();
@@ -709,6 +724,11 @@ const syncDataFromCloud = async (openid) => {
 };
 
 const migrateLocalDataToCloud = async () => {
+  if (isCloudReadOnlyMode()) {
+    console.log('[cloud-migration] 只读模式：跳过本地数据上云');
+    return createCloudReadOnlyResult('migrateLocalDataToCloud');
+  }
+
   try {
     if (wx.getStorageSync('hasMigratedToCloud')) {
       console.log('[cloud-migration] already migrated, skip');

@@ -15,9 +15,14 @@
 
 const DEFAULT_ENV = 'cloudbase-4gafzdch60ad597b';
 const { getWordbookMasterySummary } = require('./learning-progress.js');
+const { createCloudReadOnlyResult, isCloudReadOnlyMode } = require('./cloud-mode.js');
 
 // ===== 云端推送工具 =====
 const syncStudentStatsToCloud = async (studentId, stats) => {
+  if (isCloudReadOnlyMode()) {
+    return createCloudReadOnlyResult('syncStudentStatsToCloud');
+  }
+
   const openid = (() => {
     try { return wx.getStorageSync('openid') || null; } catch (e) { return null; }
   })();

@@ -11,6 +11,7 @@ const tests = [
   'test/learning-progress.test.js',
   'test/app-learning-progress.test.js',
   'test/cloud-wordbook-loading.test.js',
+  'test/cloud-read-only.test.js',
   'test/test-cloud-sync.js'
 ];
 

@@ -17,9 +17,13 @@ const {
 
 // 引入云端词书加载器
 const cloudWordbookLoader = require('./utils/cloud-wordbook-loader.js');
+const { resolveCloudReadOnlyMode } = require('./utils/cloud-mode.js');
 
 App({
   onLaunch: function () {
+    this.globalData.cloudReadOnly = resolveCloudReadOnlyMode();
+    console.log('[app] 云端写入模式:', this.globalData.cloudReadOnly ? '只读' : '正常');
+
     // 初始化云开发环境
     try {
       // 【V1.0.1 云环境初始化】确保 wx.cloud 在任何页面使用前已就绪
@@ -615,6 +619,7 @@ App({
     currentWordbook: null,
     selectedWordbook: null,
     isLoggedIn: false, // 初始化登录状态标志为未登录
+    cloudReadOnly: false,
     // 启用在线词典音频：优先有道，失败后走 dictionaryapi 兜底
     enableOnlineDictAudio: true
   },

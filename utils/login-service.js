@@ -8,6 +8,7 @@ const DEFAULT_ENV = 'cloudbase-4gafzdch60ad597b';
 const syncDataFromCloud = require('./cloud-migration.js').syncDataFromCloud;
 const migrateLocalDataToCloud = require('./cloud-migration.js').migrateLocalDataToCloud;
 const retryPendingSyncs = require('./cloud-sync.js').retryPendingSyncs;
+const { createCloudReadOnlyResult, isCloudReadOnlyMode } = require('./cloud-mode.js');
 
 let _loginInProgress = false;
 
@@ -40,6 +41,10 @@ function fetchOpenId() {
 
 // 确保教师记录存在
 function ensureTeacherRecord(openid) {
+  if (isCloudReadOnlyMode()) {
+    return Promise.resolve(createCloudReadOnlyResult('ensureTeacherRecord'));
+  }
+
   if (!wx.cloud) return Promise.resolve();
   var db = wx.cloud.database({ env: DEFAULT_ENV });
   var teachersCollection = db.collection('teachers');
