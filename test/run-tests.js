@@ -17,6 +17,7 @@ const tests = [
   'test/sync-mastery-atom.test.js',
   'test/mastery-atom-routing.test.js',
   'test/cloud-duplicate-merge.test.js',
+  'test/cross-client-convergence.test.js',
   'test/cloud-learning-record-retry.test.js',
   'test/cloud-migration-result.test.js',
   'test/mastery-sync-selection.test.js',
