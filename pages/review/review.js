@@ -1914,7 +1914,7 @@ Page({
     return nextReviewTime;
   },
 
-  updateWordMasteryStatus: function(wordIds, status) {
+  updateWordMasteryStatus: function(wordIds, status, options = {}) {
     console.log('更新单词掌握状态');
     try {
       const studentId = this.data.currentStudent.id;
@@ -1936,17 +1936,24 @@ Page({
       const now = new Date().getTime();
       
       // 更新每个单词的掌握状态
+      const statusByWordId = options.statusByWordId || {};
+      const shouldAdvanceReview = options.advanceReviewByStatus === true;
+
       wordIds.forEach(wordId => {
+        const nextStatus = statusByWordId[wordId] || status;
+        const advanceReview = shouldAdvanceReview
+          ? nextStatus === 'mastered'
+          : options.advanceReview !== false;
         // 获取当前单词的掌握记录
         const currentWordRecord = wordbookMastery[wordId] || {};
         
-        // 增加复习次数
-        const reviewCount = (currentWordRecord.reviewCount || 0) + 1;
+        // 答错时立即保存未掌握状态，但不推进抗遗忘轮次；本轮最终答对时只递增一次。
+        const reviewCount = (currentWordRecord.reviewCount || 0) + (advanceReview ? 1 : 0);
         
         // 创建复习记录对象
         const reviewRecord = {
           time: now,
-          status: status,
+          status: nextStatus,
           reviewCount: reviewCount
         };
         
@@ -1959,7 +1966,7 @@ Page({
         // 计算下次复习时间
         let nextReviewTime;
         
-        if (status === 'mastered') {
+        if (nextStatus === 'mastered') {
             // 标记为已掌握的单词，使用完全掌握的复习间隔
             nextReviewTime = this.calculateNextReviewTime(reviewCount, now, 'full');
             
@@ -1984,9 +1991,11 @@ Page({
             }
             
             wordbookMastery[wordId] = wordRecord;
-          } else if (status === 'difficult') {
+          } else if (nextStatus === 'difficult') {
             // 标记为困难的单词，使用不完全掌握的复习间隔
-            nextReviewTime = this.calculateNextReviewTime(reviewCount, now, 'partial');
+            nextReviewTime = advanceReview
+              ? this.calculateNextReviewTime(reviewCount, now, 'partial')
+              : currentWordRecord.nextReviewTime;
             
             const wordRecord = {
               ...currentWordRecord,
@@ -2110,10 +2119,17 @@ Page({
       }
     });
 
-    // 更新掌握状态：只更新已掌握的单词，错叉单词暂不写入
-    // 错叉单词会留在页面重新复习，最终掌握后再统一写入，避免同一轮次 reviewCount 被重复递增
-    if (masteredWordIds.length > 0) {
-      const writeResult = this.updateWordMasteryStatus(masteredWordIds, 'mastered');
+    // 一次性保存本轮结果：答错词立即转为未掌握但不推进轮次，
+    // 本轮最终答对时再递增 reviewCount，避免中途退出仍保留旧的“已掌握”状态。
+    const reviewedWordIds = masteredWordIds.concat(difficultWordIds);
+    if (reviewedWordIds.length > 0) {
+      const statusByWordId = {};
+      masteredWordIds.forEach(wordId => { statusByWordId[wordId] = 'mastered'; });
+      difficultWordIds.forEach(wordId => { statusByWordId[wordId] = 'difficult'; });
+      const writeResult = this.updateWordMasteryStatus(reviewedWordIds, null, {
+        statusByWordId,
+        advanceReviewByStatus: true
+      });
       if (!writeResult || !writeResult.success) {
         console.error('复习掌握状态写入失败');
         wx.showToast({ title: '保存失败，请重试', icon: 'none', duration: 2000 });
