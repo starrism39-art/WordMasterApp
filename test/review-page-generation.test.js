@@ -98,7 +98,7 @@ const verifyGenerator = (modulePath) => {
   assert.ok(!ids.includes('book_a_non_preview'), `${modulePath} 不应包含其他流程新产生的困难词`);
   assert.ok(!ids.includes('foreign_due'), `${modulePath} 不应包含其他词书混入词`);
   assert.ok(records.some((record) => record.reviewType === 'remedial'));
-  assert.ok(records.some((record) => record.reviewType === 'consolidation'));
+  assert.ok(records.every((record) => record.reviewType === 'remedial'));
 };
 
 verifyGenerator('../pages/review/review.js');

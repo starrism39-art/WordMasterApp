@@ -345,7 +345,7 @@ Page({
       return [];
     }
 
-    // 按日期、轮数和复习类型分组，避免未掌握复习与巩固复习混在同一卡片。
+    // 抗遗忘只保留未掌握复习，按日期和轮数合并同一批记录。
     const groupedRecords = {};
 
     records.forEach(record => {
@@ -359,7 +359,7 @@ Page({
         return;
       }
 
-      const key = `${record.date}_round_${record.round}_${record.reviewType || 'unknown'}`;
+      const key = `${record.date}_round_${record.round}`;
       
       if (!groupedRecords[key]) {
         groupedRecords[key] = {

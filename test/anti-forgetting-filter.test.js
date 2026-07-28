@@ -37,9 +37,9 @@ result = shouldIncludeAntiForgettingWord('word_2', {
   reviewCount: 2,
   nextReviewTime: dueTime
 }, context);
-assert.strictEqual(result.include, true, '保留种子且到期的已掌握词应进入巩固复习');
-assert.strictEqual(result.reviewType, 'consolidation');
-assert.strictEqual(result.reviewTypeLabel, '巩固复习');
+assert.strictEqual(result.include, true, '保留种子且到期的旧记录应兼容显示为未掌握复习');
+assert.strictEqual(result.reviewType, 'remedial');
+assert.strictEqual(result.reviewTypeLabel, '未掌握复习');
 assert.strictEqual(result.round, 3);
 
 result = shouldIncludeAntiForgettingWord('word_3', {

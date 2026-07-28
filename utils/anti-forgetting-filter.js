@@ -251,12 +251,12 @@ const shouldIncludeAntiForgettingWord = (wordId, wordRecord, context = {}) => {
     };
   }
 
-  const reviewType = isDifficult ? 'remedial' : 'consolidation';
+  const reviewType = 'remedial';
   return {
     include: true,
     reason: 'due',
     reviewType,
-    reviewTypeLabel: reviewType === 'remedial' ? '未掌握复习' : '巩固复习',
+    reviewTypeLabel: '未掌握复习',
     scheduledTime,
     round: reviewCount + 1,
     firstStudyTime: getFirstStudyTime(wordRecord)
