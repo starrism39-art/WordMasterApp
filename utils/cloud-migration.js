@@ -36,7 +36,8 @@ const { reconcileLearningProgressMap } = require('./learning-progress.js');
 const { createCloudReadOnlyResult, isCloudReadOnlyMode } = require('./cloud-mode.js');
 const {
   mergeById,
-  mergeWordMasteryRecord
+  mergeWordMasteryRecord,
+  toTimestamp
 } = require('./sync-merge.js');
 
 const chunkArray = (items, size) => {
@@ -451,10 +452,20 @@ const syncDataFromCloud = async (openid) => {
     const masteryDocs = await fetchAllByTeacher(db, 'word_mastery', openid);
     // ★ 拉取云端手动修正的统计数据（管理员可覆盖）
     let statsDocs = [];
+    let statsFetchSucceeded = false;
     try {
       statsDocs = await fetchAllByTeacher(db, 'student_statistics', openid);
+      statsFetchSucceeded = true;
     } catch (e) {
       console.warn('[cloud-sync] 拉取 student_statistics 失败（非阻塞）:', e);
+    }
+    let wordbookStatsDocs = [];
+    let wordbookStatsFetchSucceeded = false;
+    try {
+      wordbookStatsDocs = await fetchAllByTeacher(db, 'wordbook_statistics', openid);
+      wordbookStatsFetchSucceeded = true;
+    } catch (e) {
+      console.warn('[cloud-sync] 拉取 wordbook_statistics 失败（非阻塞）:', e);
     }
 
     const cloudStudents = (studentsDocs || []).map((doc) => {
@@ -533,9 +544,13 @@ const syncDataFromCloud = async (openid) => {
     wx.setStorageSync('learningProgress', mergedProgress);
     wx.setStorageSync('wordMastery', mergedMastery);
 
-    // ★ 处理云端统计数据（管理员修正 + 自动计算）
-    // 策略：云端值 > 本地值时采用云端值，否则保留本地（保证只进不退）
+    // ★ 统计缓存只由已合并的原始明细派生；云端仅提供显式管理员修正。
     try {
+      const {
+        applyManualStatsOverride,
+        calculateStudentCoreStats,
+        calculateWordbookStats
+      } = require('./stats-engine.js');
       const allStudentIds = new Set();
       (mergedStudents || []).forEach(s => {
         const sid = String(s.id || s.student_id || '').trim();
@@ -543,61 +558,97 @@ const syncDataFromCloud = async (openid) => {
       });
       Object.keys(mergedMastery || {}).forEach(sid => allStudentIds.add(String(sid)));
 
-      // 收集云端统计（含手动修正和自动计算）
+      const selectStatsDocument = (existing, candidate) => {
+        if (!existing) return candidate;
+        const existingManual = existing.isManualOverride === true;
+        const candidateManual = candidate.isManualOverride === true;
+        if (candidateManual && !existingManual) return candidate;
+        if (existingManual && !candidateManual) return existing;
+        const existingTime = toTimestamp(existing.updatedAt) || toTimestamp(existing.calculatedAt);
+        const candidateTime = toTimestamp(candidate.updatedAt) || toTimestamp(candidate.calculatedAt);
+        return candidateTime >= existingTime ? candidate : existing;
+      };
+
       const cloudStats = {};
       (statsDocs || []).forEach(doc => {
         const sid = String(doc.student_id || doc._id || '').trim();
         if (!sid) return;
-        cloudStats[sid] = {
-          masteredCount: Number(doc.masteredCount || 0),
-          notMasteredCount: Number(doc.notMasteredCount || 0),
-          checkinDays: Number(doc.checkinDays || 0),
-          calculatedAt: doc.calculatedAt || Date.now(),
-          isManualOverride: doc.isManualOverride === true
-        };
+        cloudStats[sid] = selectStatsDocument(cloudStats[sid], doc);
+        allStudentIds.add(sid);
       });
 
       allStudentIds.forEach(sid => {
         const cloud = cloudStats[sid];
-        if (!cloud) {
-          // 云端无数据 → 清除本地缓存，从 wordMastery 重新计算
-          try { wx.removeStorageSync(sid + '_stats'); } catch (e) { /* ignore */ }
-          try { wx.removeStorageSync('stats_' + sid); } catch (e) { /* ignore */ }
-          return;
-        }
-
-        // 云端有数据 → 与本地取 max（保证只进不退）
         const localKey = 'stats_' + sid;
-        let local = null;
-        try { local = wx.getStorageSync(localKey) || null; } catch (e) { /* ignore */ }
-
-        const finalMastered = local
-          ? Math.max(Number(local.masteredCount || 0), cloud.masteredCount)
-          : cloud.masteredCount;
-        const finalNotMastered = local
-          ? Math.max(Number(local.notMasteredCount || 0), cloud.notMasteredCount)
-          : cloud.notMasteredCount;
-        const finalCheckin = local
-          ? Math.max(Number(local.checkinDays || 0), cloud.checkinDays)
-          : cloud.checkinDays;
-
-        // 保留 isManualOverride 标记（云端或本地任一为 true 则保留）
-        const isManual = cloud.isManualOverride || (local && local.isManualOverride);
-
-        wx.setStorageSync(localKey, {
-          masteredCount: finalMastered,
-          notMasteredCount: finalNotMastered,
-          checkinDays: finalCheckin,
+        const local = wx.getStorageSync(localKey) || null;
+        const rawStats = calculateStudentCoreStats(sid);
+        // 云端有明确记录时以它决定是否保留/清除手动修正；无记录时保留本地旧修正。
+        const override = cloud
+          ? (cloud.isManualOverride === true ? cloud : null)
+          : (local && local.isManualOverride === true ? local : null);
+        const finalStats = applyManualStatsOverride(rawStats, override);
+        const payload = {
+          ...finalStats,
           calculatedAt: Date.now(),
-          isManualOverride: isManual
-        });
+          isManualOverride: !!override
+        };
+        if (override) {
+          [
+            'manualMasteredCount', 'manualNotMasteredCount', 'manualCheckinDays',
+            'baseMasteredCount', 'baseNotMasteredCount', 'baseCheckinDays'
+          ].forEach((field) => {
+            if (override[field] !== undefined && Number.isFinite(Number(override[field]))) {
+              payload[field] = Number(override[field]);
+            }
+          });
+        }
+        wx.setStorageSync(localKey, payload);
 
         // 同时清除旧版缓存
         try { wx.removeStorageSync(sid + '_stats'); } catch (e) { /* ignore */ }
       });
 
-      console.log('[cloud-sync] 统计数据同步完成, 云端记录:', Object.keys(cloudStats).length,
-        '个学生, 手动修正:', Object.values(cloudStats).filter(s => s.isManualOverride).length, '个');
+      const cloudWordbookStats = {};
+      (wordbookStatsDocs || []).forEach((doc) => {
+        const sid = String(doc.student_id || '').trim();
+        const wid = String(doc.wordbook_id || '').trim();
+        if (!sid || !wid) return;
+        const key = `${sid}|${wid}`;
+        cloudWordbookStats[key] = selectStatsDocument(cloudWordbookStats[key], doc);
+      });
+      Object.keys(cloudWordbookStats).forEach((scopeKey) => {
+        const doc = cloudWordbookStats[scopeKey];
+        const sid = String(doc.student_id);
+        const wid = String(doc.wordbook_id);
+        const localKey = `wordbook_stats_${sid}_${wid}`;
+        if (doc.isManualOverride !== true) {
+          wx.removeStorageSync(localKey);
+          return;
+        }
+        const rawStats = calculateWordbookStats(sid, wid);
+        const finalStats = applyManualStatsOverride(rawStats, doc);
+        const payload = {
+          ...finalStats,
+          isManualOverride: true,
+          calculatedAt: Date.now()
+        };
+        [
+          'manualMasteredCount', 'manualNotMasteredCount', 'manualCheckinDays',
+          'baseMasteredCount', 'baseNotMasteredCount', 'baseCheckinDays'
+        ].forEach((field) => {
+          if (doc[field] !== undefined && Number.isFinite(Number(doc[field]))) {
+            payload[field] = Number(doc[field]);
+          }
+        });
+        wx.setStorageSync(localKey, payload);
+      });
+
+      console.log('[cloud-sync] 统计数据同步完成:', {
+        studentStatsFetchSucceeded: statsFetchSucceeded,
+        studentStats: Object.keys(cloudStats).length,
+        wordbookStatsFetchSucceeded,
+        wordbookStats: Object.keys(cloudWordbookStats).length
+      });
     } catch (statsError) {
       console.warn('[cloud-sync] 处理云端统计失败:', statsError);
     }

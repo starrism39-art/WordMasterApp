@@ -2,6 +2,7 @@
 const { repairMissingAntiForgettingSeed } = require('../../utils/anti-forgetting-filter.js');
 const { getWordbookMasterySummary } = require('../../utils/learning-progress.js');
 const { resolveCurrentWordbook, setCurrentWordbook } = require('../../utils/learning-context.js');
+const { getWordbookStats } = require('../../utils/stats-engine.js');
 
 Page({
   data: {
@@ -817,15 +818,22 @@ Page({
       // 加载实时学习进度
       if (currentStudent && currentStudent.id) {
         try {
-          // 获取学习进度数据
+          // 词书卡片与首页核心统计使用相同的 wordMastery 优先口径。
           const learningProgress = wx.getStorageSync('learningProgress') || {};
+          const wordMastery = wx.getStorageSync('wordMastery') || {};
           const studentProgress = learningProgress[currentStudent.id] || {};
           const studentWordbooksProgress = studentProgress.wordbooks || {};
+          const studentMastery = wordMastery[currentStudent.id] || {};
           
           // 为每个推荐词书添加实时进度
           recommendedWordbooks = recommendedWordbooks.map(wordbook => {
             const bookProgress = studentWordbooksProgress[wordbook.id] || { completedCount: 0, totalCount: wordbook.totalWords };
-            const completedCount = bookProgress.completedCount || bookProgress.learnedWords || 0;
+            const masterySummary = getWordbookMasterySummary(wordbook.id, studentMastery[wordbook.id]);
+            const override = wx.getStorageSync(`wordbook_stats_${currentStudent.id}_${wordbook.id}`) || null;
+            const sharedStats = getWordbookStats(currentStudent.id, wordbook.id);
+            const completedCount = masterySummary.entryCount > 0 || (override && override.isManualOverride)
+              ? sharedStats.masteredCount
+              : (bookProgress.completedCount || bookProgress.learnedWords || 0);
             const totalCount = bookProgress.totalCount || wordbook.totalWords;
             const progressPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
             
@@ -840,17 +848,17 @@ Page({
           console.log('推荐词书加载完成，包含实时进度数据:', recommendedWordbooks);
       } catch (error) {
           console.error('加载学习进度失败:', error);
-          // 失败时使用随机进度
+          // 错误态保持确定性的 0，避免不同设备显示随机进度。
           recommendedWordbooks = recommendedWordbooks.map(wordbook => ({
             ...wordbook,
-            progress: Math.floor(Math.random() * 30)
+            progress: 0
           }));
         }
       } else {
-        // 没有学生时使用随机进度
+        // 没有学生时不展示虚构进度。
         recommendedWordbooks = recommendedWordbooks.map(wordbook => ({
           ...wordbook,
-          progress: Math.floor(Math.random() * 20)
+          progress: 0
         }));
       }
       
@@ -868,7 +876,7 @@ Page({
             description: '涵盖初中阶段核心英语词汇，适合初一至初三学生使用',
             totalWords: 1200,
             coverImage: '/images/avatar_default.png',
-            progress: 25
+            progress: 0
           }
         ] 
       });
@@ -978,33 +986,6 @@ Page({
         return recordDay.getTime() === today.getTime();
       }).length);
       
-      // 计算连续学习天数 - 保持原有逻辑
-      let streakDays = 0;
-      if (studentRecords.length > 0) {
-        const uniqueDates = new Set();
-        studentRecords.forEach(record => {
-          const recordDate = new Date(record.studyDate || record.learningDate || record.timestamp || record.date);
-          const recordDay = new Date(recordDate);
-          recordDay.setHours(0, 0, 0, 0);
-          uniqueDates.add(recordDay.getTime());
-        });
-        
-        const sortedDates = Array.from(uniqueDates).sort((a, b) => b - a);
-        let currentDate = new Date();
-        currentDate.setHours(0, 0, 0, 0);
-        
-        for (let i = 0; i < sortedDates.length; i++) {
-          let expectedDate = new Date(currentDate);
-          expectedDate.setDate(expectedDate.getDate() - i);
-          
-          if (sortedDates[i] === expectedDate.getTime()) {
-            streakDays++;
-          } else {
-            break;
-          }
-        }
-      }
-      
       // 获取学习进度数据
       const learningProgress = wx.getStorageSync('learningProgress') || {};
 
@@ -1016,6 +997,7 @@ Page({
       let totalWords = 0;
       let learnedWords = 0;
       let unmasteredWords = 0;
+      let checkinDays = 0;
 
       if (currentWordbook && currentWordbook.id) {
         totalWords =
@@ -1026,9 +1008,12 @@ Page({
         // 优先从 wordMastery 中计算「当前词书」已学/未掌握单词数
         const wordbookMastery = studentMastery && studentMastery[currentWordbook.id];
         const masterySummary = getWordbookMasterySummary(currentWordbook.id, wordbookMastery);
-        if (masterySummary.entryCount > 0) {
-          learnedWords = masterySummary.learnedCount;
-          unmasteredWords = masterySummary.unmasteredCount;
+        const override = wx.getStorageSync(`wordbook_stats_${studentId}_${currentWordbook.id}`) || null;
+        const sharedStats = getWordbookStats(studentId, currentWordbook.id);
+        checkinDays = sharedStats.checkinDays;
+        if (masterySummary.entryCount > 0 || (override && override.isManualOverride)) {
+          learnedWords = sharedStats.masteredCount;
+          unmasteredWords = sharedStats.notMasteredCount;
         } else {
           // 后备：使用 learningProgress[studentId].wordbooks[wordbookId]，不做跨词书汇总
           const studentProgress = learningProgress[studentId] || {};
@@ -1046,6 +1031,7 @@ Page({
         totalWords = 0;
         learnedWords = 0;
         unmasteredWords = 0;
+        checkinDays = 0;
       }
       
       console.log('首页统计数据诊断:', JSON.stringify({
@@ -1066,7 +1052,7 @@ Page({
         totalWords: totalWords,
         learnedWords: learnedWords,
         dailyLearning: todayWords,
-        weekStreak: streakDays
+        weekStreak: checkinDays
       };
       
       // 立即更新到页面数据

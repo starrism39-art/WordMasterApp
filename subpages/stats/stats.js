@@ -3,6 +3,7 @@ const loginService = require('../../utils/login-service.js');
 const cloudMigration = require('../../utils/cloud-migration.js');
 const { getWordbookMasterySummary } = require('../../utils/learning-progress.js');
 const { resolveCurrentStudent, resolveCurrentWordbook } = require('../../utils/learning-context.js');
+const { getWordbookStats } = require('../../utils/stats-engine.js');
 
 Page({
   data: {
@@ -441,14 +442,16 @@ Page({
         const studentMastery = wordMastery[currentStudent.id] || {};
         const wordbookMastery = studentMastery[currentWordbook.id] || {};
         const masterySummary = getWordbookMasterySummary(currentWordbook.id, wordbookMastery);
-        totalLearnedWords = masterySummary.learnedCount;
-        totalUnmasteredWords = masterySummary.unmasteredCount;
+        const override = wx.getStorageSync(`wordbook_stats_${currentStudent.id}_${currentWordbook.id}`) || null;
+        const sharedStats = getWordbookStats(currentStudent.id, currentWordbook.id);
+        totalLearnedWords = sharedStats.masteredCount;
+        totalUnmasteredWords = sharedStats.notMasteredCount;
 
         learnedWords = totalLearnedWords;
         reviewWords = todayNewWords;
 
         // 后备：若当前词书没有 mastery 记录，尝试从 learningRecords 恢复已学/未掌握
-        if (masterySummary.entryCount === 0) {
+        if (masterySummary.entryCount === 0 && !(override && override.isManualOverride)) {
           const studentProgress = learningProgress[currentStudent.id] || {};
           const studentWordbooksProgress = studentProgress.wordbooks || {};
           const bookProgress = studentWordbooksProgress[currentWordbook.id] || {};
@@ -478,43 +481,6 @@ Page({
             });
             totalUnmasteredWords = unmasteredSet.size;
           }
-        }
-      }
-
-      // 手动修正（词书级）= 手动值 + max(0, 当前计算 - base)
-      if (currentStudent && currentStudent.id && currentWordbook && currentWordbook.id) {
-        const overrideKey = `wordbook_stats_${currentStudent.id}_${currentWordbook.id}`;
-        const override = wx.getStorageSync(overrideKey) || null;
-        if (override && override.isManualOverride) {
-          const manualLearned = Number(
-            override.manualMasteredCount ?? override.masteredCount ?? totalLearnedWords
-          );
-          const manualUnmastered = Number(
-            override.manualNotMasteredCount ?? override.notMasteredCount ?? totalUnmasteredWords
-          );
-          const baseLearned = Number(override.baseMasteredCount);
-          const baseUnmastered = Number(override.baseNotMasteredCount);
-          const hasBase = Number.isFinite(baseLearned) && Number.isFinite(baseUnmastered);
-
-          if (hasBase) {
-            totalLearnedWords = manualLearned + Math.max(0, totalLearnedWords - baseLearned);
-            totalUnmasteredWords = manualUnmastered + Math.max(0, totalUnmasteredWords - baseUnmastered);
-          } else {
-            totalLearnedWords = Math.max(manualLearned, totalLearnedWords);
-            totalUnmasteredWords = Math.max(manualUnmastered, totalUnmasteredWords);
-          }
-
-          learnedWords = totalLearnedWords;
-          console.log('[stats] 应用词书手动修正:', {
-            studentId: currentStudent.id,
-            wordbookId: currentWordbook.id,
-            manualLearned,
-            manualUnmastered,
-            baseLearned: baseLearned,
-            baseUnmastered: baseUnmastered,
-            finalLearned: totalLearnedWords,
-            finalUnmastered: totalUnmasteredWords
-          });
         }
       }
 

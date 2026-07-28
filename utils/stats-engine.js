@@ -9,13 +9,58 @@
  *
  * 存储：
  *   本地: stats_{studentId}
- *   云端: student_statistics 集合 (doc._id = studentId)
+ *   云端: student_statistics 集合（自动统计使用 openid + studentId 作用域文档 ID）
  */
 'use strict';
 
 const DEFAULT_ENV = 'cloudbase-4gafzdch60ad597b';
 const { getWordbookMasterySummary } = require('./learning-progress.js');
 const { createCloudReadOnlyResult, isCloudReadOnlyMode } = require('./cloud-mode.js');
+
+const readNumber = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const normalizeCount = (value) => Math.max(0, readNumber(value) || 0);
+
+const applyManualMetric = (currentValue, override, manualKey, valueKey, baseKey) => {
+  const current = normalizeCount(currentValue);
+  let manual = readNumber(override && override[manualKey]);
+  if (manual === null) manual = readNumber(override && override[valueKey]);
+  if (manual === null) return current;
+
+  const base = readNumber(override && override[baseKey]);
+  // 有基准时保留管理员校准差值，同时允许真实数据增加或减少。
+  if (base !== null) return Math.max(0, manual + current - base);
+  // 旧版修正没有基准，无法安全推断差值，继续采用兼容性 max 策略。
+  return Math.max(0, manual, current);
+};
+
+const applyManualStatsOverride = (currentStats, override) => {
+  const current = currentStats || {};
+  if (!override || override.isManualOverride !== true) {
+    return {
+      masteredCount: normalizeCount(current.masteredCount),
+      notMasteredCount: normalizeCount(current.notMasteredCount),
+      checkinDays: normalizeCount(current.checkinDays)
+    };
+  }
+  return {
+    masteredCount: applyManualMetric(
+      current.masteredCount, override,
+      'manualMasteredCount', 'masteredCount', 'baseMasteredCount'
+    ),
+    notMasteredCount: applyManualMetric(
+      current.notMasteredCount, override,
+      'manualNotMasteredCount', 'notMasteredCount', 'baseNotMasteredCount'
+    ),
+    checkinDays: applyManualMetric(
+      current.checkinDays, override,
+      'manualCheckinDays', 'checkinDays', 'baseCheckinDays'
+    )
+  };
+};
 
 // ===== 云端推送工具 =====
 const syncStudentStatsToCloud = async (studentId, stats) => {
@@ -37,7 +82,15 @@ const syncStudentStatsToCloud = async (studentId, stats) => {
   let teacherName = '';
   try {
     const currentStudent = wx.getStorageSync('currentStudent') || {};
-    studentName = currentStudent.name || '';
+    const students = wx.getStorageSync('students') || [];
+    const matchedStudent = (Array.isArray(students) ? students : []).find((student) => (
+      String(student && (student.id || student.student_id || '')) === String(studentId)
+    ));
+    if (matchedStudent) {
+      studentName = matchedStudent.name || '';
+    } else if (String(currentStudent.id || currentStudent.student_id || '') === String(studentId)) {
+      studentName = currentStudent.name || '';
+    }
     teacherName = currentStudent.teacher_name || '';
   } catch (e) { /* 静默忽略 */ }
   if (!teacherName) {
@@ -83,8 +136,12 @@ const syncStudentStatsToCloud = async (studentId, stats) => {
       }
     }
 
+    const scopedDocId = [openid, studentId]
+      .map((value) => String(value || '').trim().replace(/[^a-zA-Z0-9_-]/g, '_'))
+      .join('__')
+      .slice(0, 500);
     await db.collection('student_statistics')
-      .doc(String(studentId))
+      .doc(scopedDocId)
       .set({ data: payload });
     console.log('[stats-engine] 云端统计已同步, studentId:', studentId);
   } catch (error) {
@@ -113,8 +170,12 @@ const calculateWordbookStats = (studentId, wordbookId) => {
 
     const uniqueDates = new Set();
     (Array.isArray(learningRecords) ? learningRecords : []).forEach((record) => {
-      if (!record || record.studentId !== studentId) return;
-      if (record.wordbookId && record.wordbookId !== wordbookId) return;
+      if (!record) return;
+      const recordStudentId = record.studentId || record.student_id || record.userId || '';
+      const recordWordbookId = record.wordbookId || record.wordbook_id || record.bookId || '';
+      if (String(recordStudentId) !== String(studentId)) return;
+      // 旧记录若无法确认词书归属，不猜测分配到当前词书，避免跨词书串数。
+      if (!recordWordbookId || String(recordWordbookId) !== String(wordbookId)) return;
       const dateStr = record.studyDate || record.learningDate || record.date || '';
       if (!dateStr) return;
       try {
@@ -169,7 +230,9 @@ const calculateStudentCoreStats = (studentId) => {
 
     const uniqueDates = new Set();
     (Array.isArray(learningRecords) ? learningRecords : []).forEach((record) => {
-      if (!record || record.studentId !== studentId) return;
+      if (!record) return;
+      const recordStudentId = record.studentId || record.student_id || record.userId || '';
+      if (String(recordStudentId) !== String(studentId)) return;
       const dateStr = record.studyDate || record.learningDate || record.date || '';
       if (!dateStr) return;
       try {
@@ -201,22 +264,17 @@ const calculateStudentCoreStats = (studentId) => {
 
 // ===== 保存到本地 + 云端 =====
 // 策略：
-//   1. 从 wordMastery 计算当前真实值
-//   2. 如果有管理员手动修正（isManualOverride），取 max(云端修正, 当前计算)
-//   3. 新数据在较大值基础上累加，保证"只进不退"
+//   1. 普通统计始终以 wordMastery + learningRecords 的当前派生值为准
+//   2. 管理员修正保留“手动值 + 当前值 - 基准值”的差值，允许真实状态增减
+//   3. 旧版无基准修正继续用 max 兼容，避免升级后突然降低
 //   4. 推送到云端时保留 isManualOverride 标记和基准值
 const saveStudentStats = async (studentId, stats) => {
   if (!studentId || !stats) return;
 
   const statsKey = `stats_${studentId}`;
-  const currentMastered = Number(stats.masteredCount || 0);
-  const currentNotMastered = Number(stats.notMasteredCount || 0);
-  const currentCheckin = Number(stats.checkinDays || 0);
-
-  const readNumber = (value) => {
-    const n = Number(value);
-    return Number.isFinite(n) ? n : null;
-  };
+  const currentMastered = normalizeCount(stats.masteredCount);
+  const currentNotMastered = normalizeCount(stats.notMasteredCount);
+  const currentCheckin = normalizeCount(stats.checkinDays);
 
   // ★ 读取已有的缓存（可能是管理员修正值）
   let existing = null;
@@ -249,18 +307,14 @@ const saveStudentStats = async (studentId, stats) => {
     baseNotMastered = readNumber(existing.baseNotMasteredCount);
     baseCheckin = readNumber(existing.baseCheckinDays);
 
-    const hasBase = baseMastered !== null && baseNotMastered !== null && baseCheckin !== null;
-
-    if (hasBase) {
-      finalMastered = manualMastered + Math.max(0, currentMastered - baseMastered);
-      finalNotMastered = manualNotMastered + Math.max(0, currentNotMastered - baseNotMastered);
-      finalCheckin = manualCheckin + Math.max(0, currentCheckin - baseCheckin);
-    } else {
-      // 兼容旧版手动修正：取 max(修正值, 当前计算值)，保证只进不退
-      finalMastered = Math.max(manualMastered, currentMastered);
-      finalNotMastered = Math.max(manualNotMastered, currentNotMastered);
-      finalCheckin = Math.max(manualCheckin, currentCheckin);
-    }
+    const adjusted = applyManualStatsOverride({
+      masteredCount: currentMastered,
+      notMasteredCount: currentNotMastered,
+      checkinDays: currentCheckin
+    }, existing);
+    finalMastered = adjusted.masteredCount;
+    finalNotMastered = adjusted.notMasteredCount;
+    finalCheckin = adjusted.checkinDays;
 
     isManualOverride = true;
 
@@ -269,11 +323,6 @@ const saveStudentStats = async (studentId, stats) => {
         '已学', manualMastered, '→', finalMastered,
         '未掌握', manualNotMastered, '→', finalNotMastered);
     }
-  } else if (existing) {
-    // 普通缓存：同样取 max，保证不退化
-    finalMastered = Math.max(Number(existing.masteredCount || 0), currentMastered);
-    finalNotMastered = Math.max(Number(existing.notMasteredCount || 0), currentNotMastered);
-    finalCheckin = Math.max(Number(existing.checkinDays || 0), currentCheckin);
   }
 
   const payload = {
@@ -288,11 +337,9 @@ const saveStudentStats = async (studentId, stats) => {
     payload.manualMasteredCount = manualMastered;
     payload.manualNotMasteredCount = manualNotMastered;
     payload.manualCheckinDays = manualCheckin;
-    if (baseMastered !== null && baseNotMastered !== null && baseCheckin !== null) {
-      payload.baseMasteredCount = baseMastered;
-      payload.baseNotMasteredCount = baseNotMastered;
-      payload.baseCheckinDays = baseCheckin;
-    }
+    if (baseMastered !== null) payload.baseMasteredCount = baseMastered;
+    if (baseNotMastered !== null) payload.baseNotMasteredCount = baseNotMastered;
+    if (baseCheckin !== null) payload.baseCheckinDays = baseCheckin;
   }
 
   try {
@@ -314,6 +361,19 @@ const saveStudentStats = async (studentId, stats) => {
 const refreshStudentStats = async (studentId) => {
   const stats = calculateStudentCoreStats(studentId);
   return saveStudentStats(studentId, stats);
+};
+
+const getWordbookStats = (studentId, wordbookId, options = {}) => {
+  const rawStats = calculateWordbookStats(studentId, wordbookId);
+  if (options.includeOverride === false) return rawStats;
+
+  let override = null;
+  try {
+    override = wx.getStorageSync(`wordbook_stats_${studentId}_${wordbookId}`) || null;
+  } catch (error) {
+    override = null;
+  }
+  return applyManualStatsOverride(rawStats, override);
 };
 
 // ===== 读取缓存统计（若缓存为空或过期则静默重算） =====
@@ -347,8 +407,10 @@ const getStudentStats = async (studentId, options = {}) => {
 };
 
 module.exports = {
+  applyManualStatsOverride,
   calculateStudentCoreStats,
   calculateWordbookStats,
+  getWordbookStats,
   saveStudentStats,
   refreshStudentStats,
   getStudentStats,

@@ -11,6 +11,8 @@ const generateWordsForBook = wordbookData.generateWordsForBook || function(wordb
 const { syncLearningProgress, markPendingSync } = require('../../utils/cloud-sync.js');
 const cloudWordbookLoader = require('../../utils/cloud-wordbook-loader.js');
 const { resolveCurrentStudent, resolveCurrentWordbook, setCurrentWordbook } = require('../../utils/learning-context.js');
+const { getWordbookMasterySummary } = require('../../utils/learning-progress.js');
+const { getWordbookStats } = require('../../utils/stats-engine.js');
 
 Page({
   data: {
@@ -372,9 +374,11 @@ Page({
       
       // 使用与app.js一致的存储键
       let learningProgress = {};
+      let wordMastery = {};
       
       try {
         learningProgress = wx.getStorageSync('learningProgress') || {};
+        wordMastery = wx.getStorageSync('wordMastery') || {};
       } catch (e) {
         console.error('获取存储数据失败:', e);
       }
@@ -384,7 +388,17 @@ Page({
         const studentProgress = studentId ? (learningProgress[studentId] || {}) : {};
         const studentWordbooksProgress = studentProgress.wordbooks || {};
         const bookProgress = studentWordbooksProgress[wordbook.id] || {};
-        const completedCount = bookProgress.completedCount || bookProgress.learnedWords || 0;
+        const wordbookMastery = studentId && wordMastery[studentId]
+          ? wordMastery[studentId][wordbook.id]
+          : null;
+        const masterySummary = getWordbookMasterySummary(wordbook.id, wordbookMastery);
+        const override = studentId
+          ? (wx.getStorageSync(`wordbook_stats_${studentId}_${wordbook.id}`) || null)
+          : null;
+        const sharedStats = studentId ? getWordbookStats(studentId, wordbook.id) : null;
+        const completedCount = masterySummary.entryCount > 0 || (override && override.isManualOverride)
+          ? sharedStats.masteredCount
+          : (bookProgress.completedCount || bookProgress.learnedWords || 0);
         const totalCount = bookProgress.totalCount || wordbook.totalWords || 0;
         const progressPercent = totalCount > 0 ? (completedCount / totalCount * 100) : 0;
         const isInProgress = completedCount > 0;
@@ -402,14 +416,14 @@ Page({
       });
     } catch (error) {
       console.error('处理词书数据失败:', error);
-      // 返回带有模拟进度的词书数据
+      // 错误态不生成随机进度，保证手机和电脑显示一致。
       return wordbooks.map(wordbook => {
         const { words, ...metadata } = wordbook;
         return {
           ...metadata,
-          learnedWords: Math.floor(Math.random() * 30) + 5,
-          progressPercent: Math.floor(Math.random() * 30) + 5,
-          isInProgress: Math.random() > 0.7
+          learnedWords: 0,
+          progressPercent: 0,
+          isInProgress: false
         };
       });
     }
@@ -483,19 +497,7 @@ Page({
         return allWordbooks;
       }
       
-      const learningProgress = wx.getStorageSync('learningProgress') || {};
-      const studentId = currentStudent.id;
-      const studentProgress = learningProgress[studentId] || {};
-      const studentWordbooksProgress = studentProgress.wordbooks || {};
-      
-      // 查找该学生有学习进度的词书
-      const inProgressIds = Object.keys(studentWordbooksProgress).filter((wordbookId) => {
-        const bookProgress = studentWordbooksProgress[wordbookId] || {};
-        return (bookProgress.completedCount || bookProgress.learnedWords || 0) > 0;
-      });
-      
-      console.log('学习中词书ID列表:', inProgressIds);
-      const filtered = allWordbooks.filter(wordbook => inProgressIds.includes(wordbook.id));
+      const filtered = allWordbooks.filter(wordbook => wordbook.isInProgress === true);
       console.log('筛选后学习中词书数量:', filtered.length);
       return filtered;
     } else {

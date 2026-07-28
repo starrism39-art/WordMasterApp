@@ -13,7 +13,11 @@ const tests = [
   'test/cloud-wordbook-loading.test.js',
   'test/cloud-read-only.test.js',
   'test/sync-merge.test.js',
+  'test/cloud-sync-isolation.test.js',
   'test/login-sync-order.test.js',
+  'test/stats-consistency.test.js',
+  'test/cloud-pull-statistics.test.js',
+  'test/page-stat-consistency.test.js',
   'test/anti-forgetting-filter.test.js',
   'test/review-page-generation.test.js',
   'test/test-cloud-sync.js'
