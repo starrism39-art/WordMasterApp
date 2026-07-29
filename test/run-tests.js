@@ -13,6 +13,7 @@ const tests = [
   'test/app-learning-progress.test.js',
   'test/cloud-wordbook-loading.test.js',
   'test/cloud-read-only.test.js',
+  'test/cloud-write-page-guards.test.js',
   'test/sync-merge.test.js',
   'test/cloud-mastery-merge-parity.test.js',
   'test/sync-mastery-atom.test.js',

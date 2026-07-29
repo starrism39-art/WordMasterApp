@@ -1,6 +1,7 @@
 ﻿// login.js - 双入口登录页（新用户体验 / 老用户登录）
 const { syncDataFromCloud, migrateLocalDataToCloud } = require('../../utils/cloud-migration');
 const { retryPendingSyncs, syncAllLocalLearningRecords } = require('../../utils/cloud-sync.js');
+const { isCloudReadOnlyMode } = require('../../utils/cloud-mode.js');
 
 Page({
   data: {
@@ -261,6 +262,11 @@ Page({
         return;
       }
 
+      if (isCloudReadOnlyMode()) {
+        console.warn('[cloud-read-only] skip createTeacherRecord');
+        return;
+      }
+
       console.log('教师档案不存在，准备创建...');
       await this.createTeacherRecord(openid, teachersCollection);
     } catch (error) {
@@ -272,6 +278,11 @@ Page({
    * 创建教师档案
    */
   async createTeacherRecord(openid, teachersCollection) {
+    if (isCloudReadOnlyMode()) {
+      console.warn('[cloud-read-only] skip createTeacherRecord');
+      return;
+    }
+
     const teacherData = {
       teacher_id: openid,
       openid: openid,

@@ -1,3 +1,5 @@
+const { isCloudReadOnlyMode } = require('../../utils/cloud-mode.js');
+
 Page({
   data: {
     userLabel: '未登录',
@@ -188,6 +190,11 @@ Page({
 
   repairCloudStudentNames: async function() {
     if (this.data.repairingCloudNames) return;
+    if (isCloudReadOnlyMode()) {
+      console.warn('[cloud-read-only] skip repairCloudStudentNames');
+      wx.showToast({ title: '云端只读模式，已跳过修复', icon: 'none' });
+      return;
+    }
     if (!wx.cloud) {
       wx.showToast({ title: '云能力不可用', icon: 'none' });
       return;

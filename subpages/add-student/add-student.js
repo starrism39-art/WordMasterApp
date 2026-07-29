@@ -1,5 +1,6 @@
 // pages/add-student/add-student.js
 const MAX_STUDENT_LIMIT = 30;
+const { isCloudReadOnlyMode } = require('../../utils/cloud-mode.js');
 
 Page({
 
@@ -247,7 +248,7 @@ Page({
             }
           });
       };
-      if (wx.cloud) {
+      if (wx.cloud && !isCloudReadOnlyMode()) {
         if (openid) {
           syncStudentToCloud(openid)
             .then(() => {

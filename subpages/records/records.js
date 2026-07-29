@@ -2,6 +2,7 @@
 const { mergeWordbooks, createWordMap, findWord, lookUpPhrase } = require('../../data/wordbook-utils.js');
 const { refreshStudentStats } = require('../../utils/stats-engine.js');
 const { createWordbookOptions, getWordbookTone, prepareRecordForDisplay } = require('../../utils/record-display.js');
+const { isCloudReadOnlyMode } = require('../../utils/cloud-mode.js');
 const {
   createLearningContextKey,
   resolveCurrentStudent,
@@ -1713,7 +1714,14 @@ Page({
         try {
           // ★ V1.0.2 第一步：尝试云端删除
           let cloudRemoved = 0;
-          const hasCloud = !!(wx.cloud && wx.getStorageSync('openid'));
+          const hasCloud = !!(
+            wx.cloud &&
+            wx.getStorageSync('openid') &&
+            !isCloudReadOnlyMode()
+          );
+          if (wx.cloud && wx.getStorageSync('openid') && !hasCloud) {
+            console.warn('[cloud-read-only] skip learning record cloud delete:', recordId);
+          }
           
           if (hasCloud) {
             try {

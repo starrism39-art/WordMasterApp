@@ -1,6 +1,7 @@
 ﻿﻿// pages/students/students.js
 const app = getApp();
 const loginService = require('../../utils/login-service.js');
+const { isCloudReadOnlyMode } = require('../../utils/cloud-mode.js');
 
 Page({
   data: {
@@ -101,7 +102,7 @@ Page({
 
       // 3. 更新云端 teachers 集合
       const openid = wx.getStorageSync('openid');
-      if (openid && wx.cloud) {
+      if (openid && wx.cloud && !isCloudReadOnlyMode()) {
         const db = wx.cloud.database({ env: 'cloudbase-4gafzdch60ad597b' });
         const teachersRef = db.collection('teachers');
         const existing = await teachersRef.where({ teacher_id: openid }).limit(1).get();
@@ -261,6 +262,8 @@ Page({
         } catch (cascadeError) {
           console.error('[Nickname] 级联更新 student_statistics 失败（非阻塞）:', cascadeError);
         }
+      } else if (openid && wx.cloud) {
+        console.warn('[cloud-read-only] skip saveNickname cloud cascade');
       }
 
       wx.hideLoading();
@@ -620,7 +623,7 @@ Page({
         success: function(res) {
           // 剪贴板成功后，同时写一份到云端（兜底剪贴板容量限制）
           const openid = wx.getStorageSync('openid');
-          if (openid && wx.cloud && backupJson.length < 800000) {
+          if (openid && wx.cloud && backupJson.length < 800000 && !isCloudReadOnlyMode()) {
             const db = wx.cloud.database({ env: 'cloudbase-4gafzdch60ad597b' });
             const backupId = `backup_${openid}_${Date.now()}`;
             db.collection('backups').doc(backupId).set({
@@ -636,6 +639,8 @@ Page({
             }).catch((cloudError) => {
               console.error('云端备份保存失败:', cloudError);
             });
+          } else if (openid && wx.cloud && backupJson.length < 800000) {
+            console.warn('[cloud-read-only] skip cloud backup');
           }
           wx.showToast({
             title: '数据备份成功，已复制到剪贴板',

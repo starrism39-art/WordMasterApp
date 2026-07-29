@@ -1,6 +1,7 @@
 // pages/student-list/student-list.js
 const { syncDataFromCloud } = require('../../utils/cloud-migration.js');
 const { setCurrentStudent } = require('../../utils/learning-context.js');
+const { isCloudReadOnlyMode } = require('../../utils/cloud-mode.js');
 
 const ACTION_BUTTON_WIDTH_RPX = 140;
 const ACTION_TOTAL_RPX = ACTION_BUTTON_WIDTH_RPX * 2;
@@ -315,7 +316,7 @@ Page({
           const openid = wx.getStorageSync('openid');
 
           // ★ 第一步：先删除云端（阻塞等待结果）
-          if (openid && wx.cloud) {
+          if (openid && wx.cloud && !isCloudReadOnlyMode()) {
             const db = wx.cloud.database({ env: 'cloudbase-4gafzdch60ad597b' });
 
             // 尝试按 _id（即 student.id）删除
@@ -337,6 +338,8 @@ Page({
                 console.warn('[Delete] 云端未找到对应学生，可能已被删除:', studentId);
               }
             }
+          } else if (openid && wx.cloud) {
+            console.warn('[cloud-read-only] skip student cloud delete:', studentId);
           } else if (!openid) {
             console.warn('[Delete] 缺少 openid，跳过云端删除');
           }
