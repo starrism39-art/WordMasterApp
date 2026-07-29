@@ -322,6 +322,7 @@ Page({
           scheduleStatus: roundPlan.scheduleStatus,
           words: [wordId],
           wordbookName,
+          learningBatchKey: roundPlan.learningBatchKey,
           learningDate: roundPlan.firstStudyTime
             ? this.formatLocalDate(roundPlan.firstStudyTime)
             : '旧数据',
@@ -349,7 +350,7 @@ Page({
       return [];
     }
 
-    // 抗遗忘只保留未掌握复习，按日期和轮数合并同一批记录。
+    // 先按学习批次保留独立五轮；本页后续仍可由 mergeRecordsByDate 按日期显式合并。
     const groupedRecords = {};
 
     records.forEach(record => {
@@ -363,7 +364,8 @@ Page({
         return;
       }
 
-      const key = `${record.date}_round_${record.round}_${record.scheduleStatus || 'scheduled'}`;
+      const batchKey = record.learningBatchKey || `legacy_${record.time}_${record.round}`;
+      const key = `${batchKey}_${record.date}_round_${record.round}_${record.scheduleStatus || 'scheduled'}`;
       
       if (!groupedRecords[key]) {
         groupedRecords[key] = {

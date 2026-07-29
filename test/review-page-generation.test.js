@@ -131,6 +131,39 @@ const verifyGenerator = (modulePath) => {
   assert.ok(batchRecords.every((record) => record.wordCount === 2));
   assert.ok(batchRecords.every((record) => record.canReview === false), '未到期的五轮都必须禁用');
 
+  const separateBatchRecords = page.generateAntiForgettingRecords.call(
+    page,
+    'student456',
+    'book_a',
+    {
+      student456: {
+        book_a: {
+          book_a_earlier_batch: {
+            difficult: true,
+            antiForgettingSource: 'preview_not_mastered',
+            firstMasteryTime: now - 60 * 60 * 1000,
+            nextReviewTime: firstRoundTime,
+            reviewCount: 0
+          },
+          book_a_later_batch: {
+            difficult: true,
+            antiForgettingSource: 'preview_not_mastered',
+            firstMasteryTime: now,
+            nextReviewTime: firstRoundTime,
+            reviewCount: 0
+          }
+        }
+      }
+    }
+  );
+  assert.strictEqual(separateBatchRecords.length, 10, `${modulePath} 同日期的两次学习必须各自保留五轮`);
+  assert.strictEqual(new Set(separateBatchRecords.map((record) => record.learningBatchKey)).size, 2);
+  assert.ok(separateBatchRecords.every((record) => record.wordCount === 1));
+
+  const mergedByDate = page.mergeRecordsByDate.call(page, separateBatchRecords);
+  assert.strictEqual(mergedByDate.length, 5, `${modulePath} 显式按日期合并时仍应合成五个日期`);
+  assert.ok(mergedByDate.every((record) => record.wordCount === 2));
+
   const remainingRecords = page.generateAntiForgettingRecords.call(
     page,
     'student456',

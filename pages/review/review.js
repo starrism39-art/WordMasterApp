@@ -365,6 +365,7 @@ Page({
           scheduleStatus: roundPlan.scheduleStatus,
           words: [wordId],
           wordbookName,
+          learningBatchKey: roundPlan.learningBatchKey,
           learningDate: roundPlan.firstStudyTime
             ? this.formatLocalDate(roundPlan.firstStudyTime)
             : '旧数据',
@@ -386,11 +387,12 @@ Page({
   mergeReviewRecords: function(records) {
     console.log('合并抗遗忘复习记录');
     
-    // 抗遗忘只保留未掌握复习，按日期和轮数合并同一批记录。
+    // 普通视图只合并同一次学习产生的词，避免不同批次的五轮计划互相吞并。
     const groupedRecords = {};
     
     records.forEach(record => {
-      const key = `${record.date}_round_${record.round}_${record.scheduleStatus || 'scheduled'}`;
+      const batchKey = record.learningBatchKey || `legacy_${record.time}_${record.round}`;
+      const key = `${batchKey}_${record.date}_round_${record.round}_${record.scheduleStatus || 'scheduled'}`;
       
       if (!groupedRecords[key]) {
         groupedRecords[key] = {

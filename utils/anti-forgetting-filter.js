@@ -299,6 +299,9 @@ const buildAntiForgettingSchedule = (wordId, wordRecord, context = {}) => {
   const projectionAnchor = currentRound.canReview && currentRound.scheduledTime < now
     ? now
     : currentRound.scheduledTime;
+  const learningBatchKey = currentRound.firstStudyTime
+    ? `study_${currentRound.firstStudyTime}`
+    : `legacy_${currentRound.scheduledTime}_${currentRound.reviewCount}`;
 
   return REVIEW_INTERVAL_DAYS
     .map((intervalDays, index) => {
@@ -318,7 +321,8 @@ const buildAntiForgettingSchedule = (wordId, wordRecord, context = {}) => {
         scheduleStatus: canReview ? 'ready' : 'scheduled',
         reviewType: currentRound.reviewType,
         reviewTypeLabel: currentRound.reviewTypeLabel,
-        firstStudyTime: currentRound.firstStudyTime
+        firstStudyTime: currentRound.firstStudyTime,
+        learningBatchKey
       };
     })
     .filter(Boolean);
