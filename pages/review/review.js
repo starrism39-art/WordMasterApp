@@ -387,7 +387,7 @@ Page({
   mergeReviewRecords: function(records) {
     console.log('合并抗遗忘复习记录');
     
-    // 普通视图只合并同一次学习产生的词，避免不同批次的五轮计划互相吞并。
+    // 普通视图按学习自然日合并：同一天多次学习共用一组五轮，不同日期互不吞并。
     const groupedRecords = {};
     
     records.forEach(record => {

@@ -66,7 +66,13 @@ assert.deepStrictEqual(schedule.map((item) => item.round), [1, 2, 3, 4, 5], '刚
 assert.strictEqual(schedule[0].canReview, true, '当前到期轮次必须可复习');
 assert.ok(schedule.slice(1).every((item) => item.canReview === false), '未来轮次只能展示，不能提前复习');
 assert.ok(schedule.every((item, index) => index === 0 || item.scheduledTime > schedule[index - 1].scheduledTime));
-assert.ok(schedule.every((item) => item.learningBatchKey === `study_${freshScheduleRecord.firstMasteryTime}`), '同一次学习的五轮必须保留稳定批次标识');
+const freshStudyDate = new Date(freshScheduleRecord.firstMasteryTime);
+const freshStudyDateKey = [
+  freshStudyDate.getFullYear(),
+  String(freshStudyDate.getMonth() + 1).padStart(2, '0'),
+  String(freshStudyDate.getDate()).padStart(2, '0')
+].join('-');
+assert.ok(schedule.every((item) => item.learningBatchKey === `study_day_${freshStudyDateKey}`), '同一学习日的五轮必须保留稳定日期标识');
 assert.strictEqual(JSON.stringify(freshScheduleRecord), freshScheduleSnapshot, '生成五轮时间表不得修改掌握记录');
 
 schedule = buildAntiForgettingSchedule('senior_unified_future', {
@@ -79,7 +85,7 @@ schedule = buildAntiForgettingSchedule('senior_unified_future', {
 }, context);
 assert.strictEqual(schedule.length, 5, '未到第一轮时间也必须展示五轮计划');
 assert.ok(schedule.every((item) => item.canReview === false));
-assert.notStrictEqual(schedule[0].learningBatchKey, `study_${freshScheduleRecord.firstMasteryTime}`, '不同学习时间不得错误合并成同一批');
+assert.notStrictEqual(schedule[0].learningBatchKey, `study_day_${freshStudyDateKey}`, '不同学习日期不得错误合并成同一天');
 
 schedule = buildAntiForgettingSchedule('senior_unified_round_3', {
   mastered: true,

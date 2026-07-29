@@ -350,7 +350,7 @@ Page({
       return [];
     }
 
-    // 先按学习批次保留独立五轮；本页后续仍可由 mergeRecordsByDate 按日期显式合并。
+    // 先按学习自然日合并五轮；本页后续仍可由 mergeRecordsByDate 按复习日期显式合并。
     const groupedRecords = {};
 
     records.forEach(record => {
