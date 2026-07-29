@@ -153,6 +153,50 @@
       {
         "value": "senior_real_words.js",
         "type": "file"
+      },
+      {
+        "value": ".agents",
+        "type": "folder"
+      },
+      {
+        "value": ".codebuddy",
+        "type": "folder"
+      },
+      {
+        "value": ".codex",
+        "type": "folder"
+      },
+      {
+        "value": ".github",
+        "type": "folder"
+      },
+      {
+        "value": ".rules",
+        "type": "folder"
+      },
+      {
+        "value": ".trae",
+        "type": "folder"
+      },
+      {
+        "value": ".vscode",
+        "type": "folder"
+      },
+      {
+        "value": "portfolio",
+        "type": "folder"
+      },
+      {
+        "value": "specs",
+        "type": "folder"
+      },
+      {
+        "value": "test",
+        "type": "folder"
+      },
+      {
+        "value": "test-results",
+        "type": "folder"
       }
     ],
     "include": []

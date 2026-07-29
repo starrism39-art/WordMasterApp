@@ -495,12 +495,12 @@ const seniorWordbooks = [
   {
     "id": "new_curriculum_senior",
     "title": "新课标高中英语词汇",
-    "description": "基于新课标要求的高中英语核心词汇，包含3816个必备单词",
+    "description": "基于新课标要求的高中英语核心词汇，包含3815个必备单词",
     "category": "senior",
     "grade": "senior",
     "region": "全国",
     "version": "新课标",
-    "totalWords": 3816,
+    "totalWords": 3815,
     "words": [
       { "word": "a (an)", "phonetic": "ə, eɪ(ən)", "meaning": "一（个、件……）" },
       { "word": "abandon", "phonetic": "əˈbændən", "meaning": "抛弃，舍弃，放弃" },
@@ -738,7 +738,6 @@ const generateWordsForBook = function (bookCategory, bookId, startIndex, count) 
           './new_standard_9th_grade_words.js',
           './new_standard_9th_grade_first_complete.js',
           './junior_real_words.js',
-          './new_curriculum_senior_words.js',
           // 人教版初中重录版（v2）
           './ren_jiao_7th_grade_first_v2.js',
           './ren_jiao_7th_grade_second_v2.js',
@@ -951,7 +950,16 @@ const generateWordsForBook = function (bookCategory, bookId, startIndex, count) 
           words = require('./ren_jiao_senior_book_1.js');
           console.log('成功加载人教版高中必修一单词，数量：', words.length);
         } else if (bookId.includes('new_curriculum')) {
-          words = require('./new_curriculum_senior_words.js');
+          // 【云端迁移】优先从本地缓存读取云端词书数据
+          const cloudWords = cloudWordbookLoader.getWordsSync('new_curriculum_senior');
+          if (cloudWords && cloudWords.length > 0) {
+            words = cloudWords;
+            console.log('成功从云端缓存加载新课标高中英语词汇，数量：', words.length);
+          } else {
+            // 缓存未命中，使用词书定义中的默认单词
+            console.log('新课标高中英语词汇云端缓存未命中，使用词书默认单词，数量：', book.words ? book.words.length : 0);
+            words = book.words || [];
+          }
         } else if (bookId.includes('gaokao')) {
           // 【云端迁移】优先从本地缓存读取云端词书数据
           const cloudWords = cloudWordbookLoader.getWordsSync('gaokao_reading_words');

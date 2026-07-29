@@ -19,6 +19,12 @@ const CLOUD_WORDBOOK_MAP = {
     version: 1,
     totalWords: 4209
   },
+  new_curriculum_senior: {
+    path: 'wordbooks/new_curriculum_senior_words.json',
+    cloudFileID: `cloud://${CLOUD_ENV_ID}.${CLOUD_BUCKET}/wordbooks/new_curriculum_senior_words.json`,
+    version: 1,
+    totalWords: 3815
+  },
   gaokao_reading_words: {
     path: 'wordbooks/gaokao_reading_words.json',
     cloudFileID: `cloud://${CLOUD_ENV_ID}.${CLOUD_BUCKET}/wordbooks/gaokao_reading_words.json`,

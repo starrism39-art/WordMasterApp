@@ -1,6 +1,8 @@
 'use strict';
 
 const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
 
 const storage = {
   cloud_wb_gaokao_reading_words: Array.from({ length: 30 }, (_, index) => ({
@@ -39,6 +41,34 @@ const loader = require('../utils/cloud-wordbook-loader.js');
 
 async function run() {
   assert.strictEqual(
+    fs.existsSync(path.resolve(__dirname, '../data/new_curriculum_senior_words.js')),
+    false,
+    'new curriculum senior source data must stay out of the mini program package'
+  );
+
+  assert.deepStrictEqual(
+    loader.CLOUD_WORDBOOK_MAP.new_curriculum_senior,
+    {
+      path: 'wordbooks/new_curriculum_senior_words.json',
+      cloudFileID: 'cloud://cloudbase-4gafzdch60ad597b.636c-cloudbase-4gafzdch60ad597b-1390590336/wordbooks/new_curriculum_senior_words.json',
+      version: 1,
+      totalWords: 3815
+    },
+    'new curriculum senior wordbook should use the verified CloudBase object'
+  );
+  assert.strictEqual(loader.isCloudWordbook('new_curriculum_senior'), true);
+  assert.strictEqual(
+    loader.isCompleteWordList('new_curriculum_senior', Array.from({ length: 3814 })),
+    false,
+    '3814 words must not be treated as a complete new curriculum wordbook'
+  );
+  assert.strictEqual(
+    loader.isCompleteWordList('new_curriculum_senior', Array.from({ length: 3815 })),
+    true,
+    '3815 words should be treated as a complete new curriculum wordbook'
+  );
+
+  assert.strictEqual(
     loader.getCachedWords('gaokao_reading_words'),
     null,
     '不完整缓存不能作为整本词书使用'
@@ -57,6 +87,15 @@ async function run() {
   const cached = await loader.ensureWordsLoaded('gaokao_reading_words');
   assert.strictEqual(cached.length, 687, '后续加载应直接使用完整缓存');
   assert.strictEqual(downloadCalls, 1, '命中完整缓存后不应再次下载');
+
+  downloadedWords = Array.from({ length: 3815 }, (_, index) => ({
+    word: `new-curriculum-${index}`,
+    meaning: `meaning-${index}`
+  }));
+  const newCurriculumWords = await loader.ensureWordsLoaded('new_curriculum_senior');
+  assert.strictEqual(newCurriculumWords.length, 3815);
+  assert.strictEqual(storage.cloud_wb_new_curriculum_senior.length, 3815);
+  assert.strictEqual(downloadCalls, 2, 'new curriculum senior wordbook should download once');
 
   downloadedWords = Array.from({ length: 100 }, (_, index) => ({ word: `short-${index}` }));
   const incomplete = await loader.downloadWordsFromCloud('senior_textbook_real');
