@@ -243,6 +243,19 @@ const shouldIncludeAntiForgettingWord = (wordId, wordRecord, context = {}) => {
 
   const now = toTimestamp(context.now) || Date.now();
   if (scheduledTime > getDayEndTimestamp(now)) {
+    if (context.includeNotDue === true) {
+      return {
+        include: true,
+        reason: 'scheduled',
+        canReview: false,
+        reviewType: 'remedial',
+        reviewTypeLabel: '未掌握复习',
+        scheduledTime,
+        round: reviewCount + 1,
+        reviewCount,
+        firstStudyTime: getFirstStudyTime(wordRecord)
+      };
+    }
     return {
       include: false,
       reason: 'not_due',
@@ -255,17 +268,66 @@ const shouldIncludeAntiForgettingWord = (wordId, wordRecord, context = {}) => {
   return {
     include: true,
     reason: 'due',
+    canReview: true,
     reviewType,
     reviewTypeLabel: '未掌握复习',
     scheduledTime,
     round: reviewCount + 1,
+    reviewCount,
     firstStudyTime: getFirstStudyTime(wordRecord)
   };
+};
+
+/**
+ * 只读生成当前单词尚未完成的五轮时间表。
+ *
+ * 当前轮以 nextReviewTime 为准；后续轮次基于当前轮向后投影，避免用户延期
+ * 复习时把多个历史日期同时开放。此函数不修改 wordRecord。
+ */
+const buildAntiForgettingSchedule = (wordId, wordRecord, context = {}) => {
+  const now = toTimestamp(context.now) || Date.now();
+  const currentRound = shouldIncludeAntiForgettingWord(wordId, wordRecord, {
+    ...context,
+    now,
+    includeNotDue: true
+  });
+  if (!currentRound.include) {
+    return [];
+  }
+
+  const currentIndex = currentRound.round - 1;
+  const projectionAnchor = currentRound.canReview && currentRound.scheduledTime < now
+    ? now
+    : currentRound.scheduledTime;
+
+  return REVIEW_INTERVAL_DAYS
+    .map((intervalDays, index) => {
+      if (index < currentIndex) {
+        return null;
+      }
+      const isCurrentRound = index === currentIndex;
+      const scheduledTime = isCurrentRound
+        ? currentRound.scheduledTime
+        : projectionAnchor + (intervalDays - REVIEW_INTERVAL_DAYS[currentIndex]) * DAY_MS;
+      const canReview = isCurrentRound && currentRound.canReview === true;
+
+      return {
+        round: index + 1,
+        scheduledTime,
+        canReview,
+        scheduleStatus: canReview ? 'ready' : 'scheduled',
+        reviewType: currentRound.reviewType,
+        reviewTypeLabel: currentRound.reviewTypeLabel,
+        firstStudyTime: currentRound.firstStudyTime
+      };
+    })
+    .filter(Boolean);
 };
 
 module.exports = {
   ANTI_FORGETTING_SOURCES,
   REVIEW_INTERVAL_DAYS,
+  buildAntiForgettingSchedule,
   resolveAntiForgettingSourceForUpdate,
   shouldIncludeAntiForgettingWord,
 };

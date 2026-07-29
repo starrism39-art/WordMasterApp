@@ -2,7 +2,10 @@
 const { generateWordsForBook } = require('../../data/wordbook-loader.js');
 const { mergeWordbooks, createWordMap, findWord } = require('../../data/wordbook-utils.js');
 const { resolveDictionaryApiAudioUrl, buildYoudaoAudioUrl } = require('../../utils/audio-fallback.js');
-const { shouldIncludeAntiForgettingWord } = require('../../utils/anti-forgetting-filter.js');
+const {
+  buildAntiForgettingSchedule,
+  shouldIncludeAntiForgettingWord
+} = require('../../utils/anti-forgetting-filter.js');
 const { syncWordMasteryBatch } = require('../../utils/cloud-sync.js');
 const { resolveCurrentStudent, resolveCurrentWordbook } = require('../../utils/learning-context.js');
 const { stripStableWordOccurrenceSuffix } = require('../../utils/learning-word-ids.js');
@@ -341,33 +344,33 @@ Page({
     for (const wordId in wordbookMastery) {
       const wordRecord = wordbookMastery[wordId];
 
-      const filterResult = shouldIncludeAntiForgettingWord(wordId, wordRecord, {
+      const schedule = buildAntiForgettingSchedule(wordId, wordRecord, {
         studentId,
         wordbookId,
         now,
         hasScopedWordIds
       });
-      if (!filterResult.include) {
-        if (filterResult.reason === 'invalid_record' || filterResult.reason === 'missing_wordId') {
-          console.warn('[Review] 跳过无效单词掌握记录, wordId:', wordId, 'type:', typeof wordRecord);
-        }
+      if (schedule.length === 0) {
         continue;
       }
 
-      records.push({
-        id: `${wordId}_round_${filterResult.round}`,
-        date: this.formatLocalDate(filterResult.scheduledTime),
-        time: filterResult.scheduledTime,
-        round: filterResult.round,
-        wordCount: 1,
-        canReview: true,
-        words: [wordId],
-        wordbookName,
-        learningDate: filterResult.firstStudyTime
-          ? this.formatLocalDate(filterResult.firstStudyTime)
-          : '旧数据',
-        reviewType: filterResult.reviewType,
-        reviewTypeLabel: filterResult.reviewTypeLabel
+      schedule.forEach((roundPlan) => {
+        records.push({
+          id: `${wordId}_round_${roundPlan.round}`,
+          date: this.formatLocalDate(roundPlan.scheduledTime),
+          time: roundPlan.scheduledTime,
+          round: roundPlan.round,
+          wordCount: 1,
+          canReview: roundPlan.canReview,
+          scheduleStatus: roundPlan.scheduleStatus,
+          words: [wordId],
+          wordbookName,
+          learningDate: roundPlan.firstStudyTime
+            ? this.formatLocalDate(roundPlan.firstStudyTime)
+            : '旧数据',
+          reviewType: roundPlan.reviewType,
+          reviewTypeLabel: roundPlan.reviewTypeLabel
+        });
       });
     }
 
@@ -387,7 +390,7 @@ Page({
     const groupedRecords = {};
     
     records.forEach(record => {
-      const key = `${record.date}_round_${record.round}`;
+      const key = `${record.date}_round_${record.round}_${record.scheduleStatus || 'scheduled'}`;
       
       if (!groupedRecords[key]) {
         groupedRecords[key] = {

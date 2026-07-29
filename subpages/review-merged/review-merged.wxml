@@ -29,7 +29,7 @@
   <!-- 合并视图内容 -->
   <view wx:elif="{{!loading && !hasError && mergedViewRecords.length > 0}}" class="merged-view-container">
     <view class="header">
-      <text class="header-title">按日期合并</text>
+      <text class="header-title">五轮计划 · 按日期合并</text>
       <text class="header-count">{{mergedViewRecords.length}}天</text>
     </view>
 
@@ -67,6 +67,11 @@
             <text class="value">{{item.reviewTypeLabel}}</text>
           </view>
 
+          <view class="learning-date-info">
+            <text class="label">复习状态：</text>
+            <text class="value">{{item.reviewable ? '已到期' : '计划中'}}</text>
+          </view>
+
           <!-- 单词数量 -->
           <view class="word-count-info">
             <text class="label">单词数量：</text>
@@ -81,7 +86,7 @@
               data-record-id="{{item.id}}"
               disabled="{{!item.reviewable}}"
             >
-              开始复习
+              {{item.reviewable ? '开始复习' : '未到时间'}}
             </button>
           </view>
 

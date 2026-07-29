@@ -4,6 +4,7 @@ const assert = require('assert');
 const {
   ANTI_FORGETTING_SOURCES,
   REVIEW_INTERVAL_DAYS,
+  buildAntiForgettingSchedule,
   resolveAntiForgettingSourceForUpdate,
   shouldIncludeAntiForgettingWord
 } = require('../utils/anti-forgetting-filter.js');
@@ -50,6 +51,50 @@ result = shouldIncludeAntiForgettingWord('word_3', {
 }, context);
 assert.strictEqual(result.include, false, '未到期的已掌握词不得提前出现');
 assert.strictEqual(result.reason, 'not_due');
+
+const freshScheduleRecord = {
+  mastered: false,
+  difficult: true,
+  antiForgettingSource: ANTI_FORGETTING_SOURCES.PREVIEW_NOT_MASTERED,
+  reviewCount: 0,
+  firstMasteryTime: now - 24 * 60 * 60 * 1000,
+  nextReviewTime: dueTime
+};
+const freshScheduleSnapshot = JSON.stringify(freshScheduleRecord);
+let schedule = buildAntiForgettingSchedule('senior_unified_fresh', freshScheduleRecord, context);
+assert.deepStrictEqual(schedule.map((item) => item.round), [1, 2, 3, 4, 5], '刚学习完成必须显示完整五轮');
+assert.strictEqual(schedule[0].canReview, true, '当前到期轮次必须可复习');
+assert.ok(schedule.slice(1).every((item) => item.canReview === false), '未来轮次只能展示，不能提前复习');
+assert.ok(schedule.every((item, index) => index === 0 || item.scheduledTime > schedule[index - 1].scheduledTime));
+assert.strictEqual(JSON.stringify(freshScheduleRecord), freshScheduleSnapshot, '生成五轮时间表不得修改掌握记录');
+
+schedule = buildAntiForgettingSchedule('senior_unified_future', {
+  mastered: false,
+  difficult: true,
+  antiForgettingSource: ANTI_FORGETTING_SOURCES.PREVIEW_NOT_MASTERED,
+  reviewCount: 0,
+  firstMasteryTime: now,
+  nextReviewTime: tomorrow
+}, context);
+assert.strictEqual(schedule.length, 5, '未到第一轮时间也必须展示五轮计划');
+assert.ok(schedule.every((item) => item.canReview === false));
+
+schedule = buildAntiForgettingSchedule('senior_unified_round_3', {
+  mastered: true,
+  antiForgettingSource: ANTI_FORGETTING_SOURCES.PREVIEW_NOT_MASTERED,
+  reviewCount: 2,
+  firstMasteryTime: now - 10 * 24 * 60 * 60 * 1000,
+  nextReviewTime: tomorrow
+}, context);
+assert.deepStrictEqual(schedule.map((item) => item.round), [3, 4, 5], '完成两轮后只显示剩余三轮');
+
+schedule = buildAntiForgettingSchedule('senior_unified_completed', {
+  mastered: true,
+  antiForgettingSource: ANTI_FORGETTING_SOURCES.PREVIEW_NOT_MASTERED,
+  reviewCount: 5,
+  nextReviewTime: dueTime
+}, context);
+assert.deepStrictEqual(schedule, [], '五轮完成后不得继续生成计划');
 
 result = shouldIncludeAntiForgettingWord('word_4', {
   mastered: true,
