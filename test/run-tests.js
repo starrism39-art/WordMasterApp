@@ -27,6 +27,7 @@ const tests = [
   'test/login-sync-order.test.js',
   'test/stats-consistency.test.js',
   'test/cloud-pull-statistics.test.js',
+  'test/cloud-pull-pagination.test.js',
   'test/page-stat-consistency.test.js',
   'test/anti-forgetting-filter.test.js',
   'test/preview-anti-forgetting-source.test.js',

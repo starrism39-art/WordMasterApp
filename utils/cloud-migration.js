@@ -1,7 +1,9 @@
 const DEFAULT_ENV = 'cloudbase-4gafzdch60ad597b';
 const DEFAULT_TEACHER_NAME = 'Default Teacher';
 const MAX_CONCURRENCY = 5;
-const MAX_QUERY_LIMIT = 100;
+// Mini Program client database queries return at most 20 documents per request.
+// Keep the requested page size aligned with that cap so skip offsets stay contiguous.
+const MAX_QUERY_LIMIT = 20;
 const BATCH_DELAY_MS = 800;
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
