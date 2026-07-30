@@ -11,6 +11,7 @@ const {
 
 const now = new Date(2026, 6, 27, 10, 0, 0, 0).getTime();
 const dueTime = now - 60 * 1000;
+const sameDayFuture = now + 60 * 60 * 1000;
 const tomorrow = new Date(2026, 6, 28, 0, 0, 0, 0).getTime();
 const context = {
   studentId: 'student456',
@@ -51,6 +52,30 @@ result = shouldIncludeAntiForgettingWord('word_3', {
 }, context);
 assert.strictEqual(result.include, false, '未到期的已掌握词不得提前出现');
 assert.strictEqual(result.reason, 'not_due');
+
+result = shouldIncludeAntiForgettingWord('word_same_day_future', {
+  mastered: false,
+  difficult: true,
+  antiForgettingSource: ANTI_FORGETTING_SOURCES.PREVIEW_NOT_MASTERED,
+  reviewCount: 0,
+  nextReviewTime: sameDayFuture
+}, context);
+assert.strictEqual(result.include, false, 'a review must not become due before its exact timestamp');
+assert.strictEqual(result.reason, 'not_due');
+assert.strictEqual(result.scheduledTime, sameDayFuture);
+
+result = shouldIncludeAntiForgettingWord('word_exact_boundary', {
+  mastered: false,
+  difficult: true,
+  antiForgettingSource: ANTI_FORGETTING_SOURCES.PREVIEW_NOT_MASTERED,
+  reviewCount: 0,
+  nextReviewTime: sameDayFuture
+}, {
+  ...context,
+  now: sameDayFuture
+});
+assert.strictEqual(result.include, true, 'a review must become due at its exact timestamp');
+assert.strictEqual(result.canReview, true);
 
 const freshScheduleRecord = {
   mastered: false,

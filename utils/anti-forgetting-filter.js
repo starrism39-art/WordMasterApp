@@ -124,12 +124,6 @@ const getReviewState = (wordRecord) => {
   };
 };
 
-const getDayEndTimestamp = (timestamp) => {
-  const date = new Date(timestamp);
-  date.setHours(23, 59, 59, 999);
-  return date.getTime();
-};
-
 const getLocalDateKey = (timestamp) => {
   const date = new Date(timestamp);
   const year = date.getFullYear();
@@ -189,7 +183,7 @@ const scopeMatches = (recordValue, expectedValue) => {
  * - 缺少来源字段的旧 difficult / notMastered 记录按旧规则只读兼容，不迁移、不清空；
  * - 明确来自预习会或其他困难来源的新记录不得进入；
  * - 旧数组误迁移产生的无明确状态对象不会进入列表；
- * - 到期判断沿用项目现有“当天即可复习”的产品口径。
+ * - 到期判断使用精确时间戳，未到 scheduledTime 时只能展示计划、不能开始复习。
  */
 const shouldIncludeAntiForgettingWord = (wordId, wordRecord, context = {}) => {
   const normalizedWordId = String(wordId || '').trim();
@@ -250,7 +244,7 @@ const shouldIncludeAntiForgettingWord = (wordId, wordRecord, context = {}) => {
   }
 
   const now = toTimestamp(context.now) || Date.now();
-  if (scheduledTime > getDayEndTimestamp(now)) {
+  if (scheduledTime > now) {
     if (context.includeNotDue === true) {
       return {
         include: true,
