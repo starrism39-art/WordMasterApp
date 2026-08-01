@@ -36,6 +36,7 @@ const {
 } = require('./cloud-sync.js');
 const { reconcileLearningProgressMap } = require('./learning-progress.js');
 const { createCloudReadOnlyResult, isCloudReadOnlyMode } = require('./cloud-mode.js');
+const { restoreCurrentContextFromSyncedData } = require('./learning-context.js');
 const {
   mergeById,
   mergeWordMasteryRecord,
@@ -559,6 +560,9 @@ const syncDataFromCloud = async (openid) => {
       if (!cleaned.student_id && fallbackId) {
         cleaned.student_id = String(fallbackId);
       }
+      // 云查询已经按 teacher_id 严格隔离；恢复本地归属字段，供首页按当前教师筛选学生。
+      cleaned.ownerId = String(openid);
+      cleaned.ownerUsername = String(openid);
       return cleaned;
     });
 
@@ -625,6 +629,26 @@ const syncDataFromCloud = async (openid) => {
     wx.setStorageSync('learningRecords', mergedRecords);
     wx.setStorageSync('learningProgress', mergedProgress);
     wx.setStorageSync('wordMastery', mergedMastery);
+
+    // 新客户端没有 currentStudent/currentWordbook 本地缓存。
+    // 在云数据全部落地后，按最近一次有效学习活动只恢复本地上下文，绝不写云。
+    let restoredContext = null;
+    try {
+      restoredContext = restoreCurrentContextFromSyncedData(getApp(), {
+        students: mergedStudents,
+        learningRecords: mergedRecords,
+        learningProgress: mergedProgress,
+        wordMastery: mergedMastery
+      });
+      console.log('[cloud-sync] 学习上下文恢复结果:', {
+        restored: restoredContext.restored,
+        reason: restoredContext.reason,
+        studentId: restoredContext.student && restoredContext.student.id,
+        wordbookId: restoredContext.wordbook && restoredContext.wordbook.id
+      });
+    } catch (contextError) {
+      console.warn('[cloud-sync] 恢复学习上下文失败（非阻塞）:', contextError);
+    }
 
     // ★ 统计缓存只由已合并的原始明细派生；云端仅提供显式管理员修正。
     try {
@@ -753,7 +777,15 @@ const syncDataFromCloud = async (openid) => {
         learningRecords: mergedRecords.length,
         learningProgress: Object.keys(mergedProgress).length,
         wordMastery: Object.keys(mergedMastery).length
-      }
+      },
+      context: restoredContext
+        ? {
+          restored: restoredContext.restored,
+          reason: restoredContext.reason,
+          studentId: restoredContext.student && restoredContext.student.id,
+          wordbookId: restoredContext.wordbook && restoredContext.wordbook.id
+        }
+        : null
     };
   } catch (error) {
     console.error('[cloud-migration] pull failed:', error);

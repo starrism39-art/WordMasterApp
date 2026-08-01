@@ -197,6 +197,10 @@
       {
         "value": "test-results",
         "type": "folder"
+      },
+      {
+        "value": "test-output",
+        "type": "folder"
       }
     ],
     "include": []

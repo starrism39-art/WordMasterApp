@@ -150,4 +150,45 @@ bookIds.forEach((wordbookId, bookIndex) => {
   assert.notStrictEqual(card.learnedWords, 99, '存在 wordMastery 时不能使用旧 learningProgress');
 });
 
+const syncedStudent = {
+  id: 'student_1785337316821',
+  name: 'E2E-CROSS-CLIENT-ONLY',
+  grade: '高一'
+};
+const syncedWordbook = wordbooks.getBookById('senior_textbook_real');
+storage.currentStudent = syncedStudent;
+storage.selectedStudent = syncedStudent;
+storage.currentWordbook = syncedWordbook;
+storage.selectedWordbook = syncedWordbook;
+storage.currentWordbookStudentId = syncedStudent.id;
+storage.studentSettings[`student_${syncedStudent.id}_wordbook`] = syncedWordbook;
+app.globalData.currentStudent = syncedStudent;
+app.globalData.currentWordbook = syncedWordbook;
+app.globalData.selectedWordbook = syncedWordbook;
+app.globalData.currentWordbookStudentId = syncedStudent.id;
+
+const syncRefreshCalls = [];
+const syncedIndexPage = createPage(indexDefinition, {
+  currentStudent: null,
+  currentWordbook: null
+});
+syncedIndexPage.loadLearningStats = () => syncRefreshCalls.push('stats');
+syncedIndexPage.updateRealTimeStats = (studentId) => syncRefreshCalls.push(`realtime:${studentId}`);
+syncedIndexPage.loadRecentRecords = () => syncRefreshCalls.push('records');
+syncedIndexPage.loadRecommendedWordbooks = () => syncRefreshCalls.push('wordbooks');
+syncedIndexPage.calculateAntiForgotTime = () => syncRefreshCalls.push('review');
+
+const refreshedContext = syncedIndexPage.refreshAfterCloudSync();
+assert.strictEqual(refreshedContext.student.id, syncedStudent.id);
+assert.strictEqual(refreshedContext.wordbook.id, syncedWordbook.id);
+assert.strictEqual(syncedIndexPage.data.currentStudent.id, syncedStudent.id);
+assert.strictEqual(syncedIndexPage.data.currentWordbook.id, syncedWordbook.id);
+assert.deepStrictEqual(syncRefreshCalls, [
+  'stats',
+  `realtime:${syncedStudent.id}`,
+  'records',
+  'wordbooks',
+  'review'
+], '云同步晚于首页加载时必须立即刷新首页、记录和抗遗忘摘要');
+
 console.log('page-stat-consistency: PASS');

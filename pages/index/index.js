@@ -99,7 +99,9 @@ Page({
 
     // 注册 cloudSyncComplete 事件作为兜底（静默登录可能晚于 onLoad）
     if (app && app.on && !this._syncHandler) {
-      this._syncHandler = function() {
+      this._syncHandler = () => {
+        this.refreshAfterCloudSync();
+
         if (app.globalData.syncFreshCompleted) {
           wx.showToast({
             title: '可以开始学习了',
@@ -134,6 +136,44 @@ Page({
       app.on('wordMasteryUpdated', this.wordMasteryUpdateHandler);
       console.log('已注册学习记录更新和删除事件监听器，以及单词掌握状态更新事件监听器');
     }
+  },
+
+  refreshAfterCloudSync: function() {
+    // 新客户端的云拉取发生在首页 onLoad/onShow 之后时，必须重新恢复
+    // 学生/词书上下文并立即重算；否则原始记录已到本地但首页仍停留在 0。
+    const app = getApp();
+    const syncedStudent = this.resolveCurrentStudentWithFallback();
+    const syncedWordbook = syncedStudent
+      ? resolveCurrentWordbook(app, syncedStudent)
+      : null;
+
+    if (!syncedStudent) {
+      return { student: null, wordbook: null };
+    }
+
+    this.setData({
+      currentStudent: syncedStudent,
+      currentWordbook: syncedWordbook || null,
+      learningWordbooks: syncedWordbook
+        ? (syncedWordbook.title || syncedWordbook.name || '未知词书')
+        : '未知词书'
+    });
+    app.globalData.currentStudent = syncedStudent;
+    if (syncedWordbook) {
+      app.globalData.currentWordbook = syncedWordbook;
+      app.globalData.selectedWordbook = syncedWordbook;
+    }
+
+    this.loadLearningStats();
+    this.updateRealTimeStats(syncedStudent.id);
+    this.loadRecentRecords();
+    this.loadRecommendedWordbooks();
+    this.calculateAntiForgotTime();
+
+    return {
+      student: syncedStudent,
+      wordbook: syncedWordbook || null
+    };
   },
 
   onUnload: function() {

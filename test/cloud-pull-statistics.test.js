@@ -155,6 +155,10 @@ const { syncDataFromCloud } = require('../utils/cloud-migration.js');
   const result = await syncDataFromCloud('openid-test');
   assert.strictEqual(result.success, true);
   assert.strictEqual(cloudWriteCount, 0, 'cloud pull regression must not write real cloud data');
+  assert.strictEqual(storage.currentStudent.id, 'student456');
+  assert.strictEqual(storage.currentWordbook.id, 'senior_textbook_real');
+  assert.strictEqual(result.context.studentId, 'student456');
+  assert.strictEqual(result.context.wordbookId, 'senior_textbook_real');
 
   const merged = storage.wordMastery.student456.senior_textbook_real.alpha;
   assert.strictEqual(merged.reviewCount, 2);
