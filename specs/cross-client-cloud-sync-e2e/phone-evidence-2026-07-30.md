@@ -55,3 +55,14 @@
 - Screenshot evidence was explicitly waived by the user, so this section records interactive user confirmation rather than a new image artifact.
 - The phone check was read-only: no new learning or review flow was started before the exact first-round due time.
 - Exact first-round due time remains `2026-07-30 23:19:55.653 +08:00`; the post-due review/test completion is tracked separately.
+
+## Final fixed-build acceptance on 2026-08-01
+
+- Fixed client commit: `5f8f85f` (`fix(sync): keep cross-client learning state consistent`).
+- Fixed `syncMasteryAtom` cloud function deployed at `2026-08-01 19:49:54 +08:00`; status `Active/Available`.
+- The real phone completed anti-forgetting round 1 through the normal preview-client flow. Read-only CloudBase verification found exactly 20 scoped mastery documents, exactly 10 active `preview_not_mastered` seeds, and all 10 at `reviewCount=1` with the same `lastReviewTime=1785580779540` and `nextReviewTime=1785667179540`.
+- The PC client pulled the phone write and showed two scoped learning records (`learning`, `anti_forgetting_review`), 20 mastery entries, 10 active seeds, and no pending mastery/record/progress/preview queues.
+- A fresh preview containing the statistics, timestamp, and preview-state fixes was generated at `test-output/cross-client-final-fixes-20260801.png`.
+- The user scanned that preview on a real phone and confirmed the current `senior_textbook_real` pages matched the expected values: learned 20, unmastered 10, two learning-history entries, and four remaining anti-forgetting rounds of 10 words each.
+- A subsequent PC cold-start pull converged to the same values with `cloudReadOnly=true` and all pending queues still empty.
+- No non-test teacher or student data was written or modified during this acceptance.
