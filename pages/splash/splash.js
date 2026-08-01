@@ -17,6 +17,7 @@ Page({
     // 启动静默登录（拉取云端数据）
     const syncPromise = loginService.doSilentLogin().catch(function(err) {
       console.warn('[splash] doSilentLogin 失败（非阻塞）:', err);
+      return { ok: false, error: err };
     });
 
     // 等同步完成 & 最短展示时间后跳转
@@ -27,10 +28,14 @@ Page({
       Promise.all([
         syncPromise,
         new Promise(function(r) { setTimeout(r, remaining); })
-      ]).then(function() {
+      ]).then(function(results) {
         try {
           const app = getApp();
-          app.globalData.syncFreshCompleted = true;
+          const syncResult = results && results[0];
+          const pending = Number(syncResult && syncResult.pending) || 0;
+          app.globalData.syncFreshCompleted = !!(syncResult && syncResult.ok === true && pending === 0);
+          app.globalData.syncFreshPendingCount = pending;
+          app.globalData.syncFreshFailed = !(syncResult && syncResult.ok === true);
         } catch (e) {
           // ignore
         }
@@ -43,7 +48,9 @@ Page({
       console.warn('[splash] 同步超时，强制跳转首页');
       try {
         const app = getApp();
-        app.globalData.syncFreshCompleted = true;
+        app.globalData.syncFreshCompleted = false;
+        app.globalData.syncFreshPendingCount = 0;
+        app.globalData.syncFreshFailed = true;
       } catch (e) {
         // ignore
       }

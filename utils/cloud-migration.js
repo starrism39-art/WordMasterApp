@@ -778,6 +778,14 @@ const syncDataFromCloud = async (openid) => {
         learningProgress: Object.keys(mergedProgress).length,
         wordMastery: Object.keys(mergedMastery).length
       },
+      // 仅供本次启动判断“启动前本地缓存是否已经被云端覆盖”。
+      // 返回的是当前教师查询得到的原始云端快照，不会落盘，也不会触发写入。
+      cloudSnapshot: {
+        students: cloudStudents,
+        learningRecords: cloudRecords,
+        learningProgress: cloudProgress,
+        wordMastery: cloudMastery
+      },
       context: restoredContext
         ? {
           restored: restoredContext.restored,
@@ -835,7 +843,8 @@ const selectLocalDataForMigration = (openid, source) => {
   };
 };
 
-const migrateLocalDataToCloud = async () => {
+const migrateLocalDataToCloud = async (options = {}) => {
+  const suppressToast = options && options.suppressToast === true;
   if (isCloudReadOnlyMode()) {
     console.log('[cloud-migration] 只读模式：跳过本地数据上云');
     return createCloudReadOnlyResult('migrateLocalDataToCloud');
@@ -1064,11 +1073,13 @@ const migrateLocalDataToCloud = async () => {
     const totalFailures = Object.keys(failures).reduce((sum, key) => sum + failures[key], 0);
 
     if (totalFailures > 0) {
-      wx.showToast({
-        title: '部分数据待同步',
-        icon: 'none',
-        duration: 2500
-      });
+      if (!suppressToast) {
+        wx.showToast({
+          title: '部分数据待同步',
+          icon: 'none',
+          duration: 2500
+        });
+      }
       return {
         success: false,
         partial: true,
@@ -1080,11 +1091,13 @@ const migrateLocalDataToCloud = async () => {
     }
 
     wx.setStorageSync('hasMigratedToCloud', true);
-    wx.showToast({
-      title: '数据上云成功',
-      icon: 'success',
-      duration: 2000
-    });
+    if (!suppressToast) {
+      wx.showToast({
+        title: '数据上云成功',
+        icon: 'success',
+        duration: 2000
+      });
+    }
 
     return {
       success: true,

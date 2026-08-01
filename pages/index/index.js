@@ -87,29 +87,15 @@ Page({
       console.error('恢复学生信息失败:', error);
     }
     
-    // 检测同步完成标记，弹"同步完成"提示（仅首次进入时）
-    if (app.globalData.syncFreshCompleted) {
-      wx.showToast({
-        title: '可以开始学习了',
-        icon: 'success',
-        duration: 2000
-      });
-      app.globalData.syncFreshCompleted = false;
-    }
+    // 启动同步只展示最终状态，禁止先报“待同步”又紧接着报成功。
+    this.consumeStartupSyncNotice(app);
 
     // 注册 cloudSyncComplete 事件作为兜底（静默登录可能晚于 onLoad）
     if (app && app.on && !this._syncHandler) {
       this._syncHandler = () => {
         this.refreshAfterCloudSync();
 
-        if (app.globalData.syncFreshCompleted) {
-          wx.showToast({
-            title: '可以开始学习了',
-            icon: 'success',
-            duration: 2000
-          });
-          app.globalData.syncFreshCompleted = false;
-        }
+        this.consumeStartupSyncNotice(app);
       };
       app.on('cloudSyncComplete', this._syncHandler);
     }
@@ -135,6 +121,41 @@ Page({
       // 新增：监听单词掌握状态更新事件
       app.on('wordMasteryUpdated', this.wordMasteryUpdateHandler);
       console.log('已注册学习记录更新和删除事件监听器，以及单词掌握状态更新事件监听器');
+    }
+  },
+
+  consumeStartupSyncNotice: function(app) {
+    if (!app || !app.globalData) return;
+    const pending = Number(app.globalData.syncFreshPendingCount) || 0;
+    const failed = app.globalData.syncFreshFailed === true;
+    const completed = app.globalData.syncFreshCompleted === true;
+
+    app.globalData.syncFreshPendingCount = 0;
+    app.globalData.syncFreshFailed = false;
+    app.globalData.syncFreshCompleted = false;
+
+    if (pending > 0) {
+      wx.showToast({
+        title: '部分数据待同步',
+        icon: 'none',
+        duration: 2500
+      });
+      return;
+    }
+    if (failed) {
+      wx.showToast({
+        title: '云端同步失败，已使用本地数据',
+        icon: 'none',
+        duration: 2500
+      });
+      return;
+    }
+    if (completed) {
+      wx.showToast({
+        title: '可以开始学习了',
+        icon: 'success',
+        duration: 2000
+      });
     }
   },
 

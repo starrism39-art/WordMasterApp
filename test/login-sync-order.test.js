@@ -38,6 +38,7 @@ const loadLoginService = ({ storage, pull, migrate, retry }) => {
   global.wx = {
     getStorageSync: (key) => storage[key],
     setStorageSync: (key, value) => { storage[key] = value; },
+    removeStorageSync: (key) => { delete storage[key]; },
     cloud: {}
   };
   global.getApp = () => ({
@@ -136,6 +137,110 @@ const loadLoginService = ({ storage, pull, migrate, retry }) => {
     'repeated launches must preserve the original migration state'
   );
 
+  const mirroredEvents = [];
+  const mirroredStorage = {
+    openid: 'openid-mirrored',
+    students: [{ id: 'student-mirrored', ownerId: 'openid-mirrored', updatedAt: 100 }],
+    learningRecords: [{
+      id: 'record-mirrored',
+      studentId: 'student-mirrored',
+      wordbookId: 'senior_textbook_real',
+      updatedAt: 100
+    }],
+    learningProgress: {
+      'student-mirrored': { learnedWords: 20, updatedAt: 100 }
+    },
+    wordMastery: {
+      'student-mirrored': {
+        senior_textbook_real: {
+          word_mirrored: { mastered: true, updatedAt: 100 }
+        }
+      }
+    }
+  };
+  const mirroredCloudSnapshot = {
+    students: [{ id: 'student-mirrored', ownerId: 'openid-mirrored', updatedAt: 100 }],
+    learningRecords: [{
+      id: 'record-mirrored',
+      studentId: 'student-mirrored',
+      wordbookId: 'senior_textbook_real',
+      updatedAt: 100
+    }],
+    learningProgress: {
+      'student-mirrored': { learnedWords: 20, updatedAt: 100 }
+    },
+    wordMastery: {
+      'student-mirrored': {
+        senior_textbook_real: {
+          word_mirrored: { mastered: true, updatedAt: 100 }
+        }
+      }
+    }
+  };
+  const mirroredService = loadLoginService({
+    storage: mirroredStorage,
+    pull: () => {
+      mirroredEvents.push('pull');
+      return Promise.resolve({ success: true, cloudSnapshot: mirroredCloudSnapshot });
+    },
+    migrate: () => {
+      mirroredEvents.push('migrate');
+      return Promise.resolve({ success: true });
+    },
+    retry: () => {
+      mirroredEvents.push('retry');
+      return Promise.resolve({ ok: true, pending: 0 });
+    }
+  });
+  const mirroredResult = await mirroredService.doSilentLogin();
+  assert.strictEqual(mirroredResult.ok, true);
+  assert.strictEqual(mirroredResult.pending, 0);
+  assert.deepStrictEqual(
+    mirroredEvents,
+    ['pull', 'retry'],
+    'an existing client whose local cache is already covered by cloud must not bulk-write it again'
+  );
+  assert.strictEqual(
+    mirroredStorage.cloudMigrationStateByOpenId['openid-mirrored'].source,
+    'cloud_reconciled'
+  );
+
+  const newerEvents = [];
+  const newerStorage = {
+    openid: 'openid-newer',
+    students: [{ id: 'student-newer', ownerId: 'openid-newer', updatedAt: 200 }]
+  };
+  const newerService = loadLoginService({
+    storage: newerStorage,
+    pull: () => {
+      newerEvents.push('pull');
+      return Promise.resolve({
+        success: true,
+        cloudSnapshot: {
+          students: [{ id: 'student-newer', ownerId: 'openid-newer', updatedAt: 100 }],
+          learningRecords: [],
+          learningProgress: {},
+          wordMastery: {}
+        }
+      });
+    },
+    migrate: (options) => {
+      newerEvents.push(options && options.suppressToast === true ? 'migrate-silent' : 'migrate-visible');
+      return Promise.resolve({ success: true });
+    },
+    retry: () => {
+      newerEvents.push('retry');
+      return Promise.resolve({ ok: true, pending: 0 });
+    }
+  });
+  const newerResult = await newerService.doSilentLogin();
+  assert.strictEqual(newerResult.ok, true);
+  assert.deepStrictEqual(
+    newerEvents,
+    ['pull', 'migrate-silent', 'retry'],
+    'a genuinely newer local entry must remain eligible for legacy migration'
+  );
+
   const failedEvents = [];
   const failedService = loadLoginService({
     storage: { openid: 'openid-test', students: [{ id: 'student456' }] },
@@ -179,11 +284,49 @@ const loadLoginService = ({ storage, pull, migrate, retry }) => {
   });
   const partialResult = await partialService.doSilentLogin();
   assert.strictEqual(partialResult.ok, true, 'partial migration must not block normal login');
+  assert.strictEqual(partialResult.pending, 1, 'unresolved retry queue must be reported to the UI');
   assert.deepStrictEqual(partialEvents, ['pull', 'migrate', 'retry']);
   assert.strictEqual(
     partialStorage.cloudMigrationStateByOpenId,
     undefined,
     'partial migration must remain retryable'
+  );
+
+  const recoveredEvents = [];
+  const recoveredStorage = { openid: 'openid-recovered', students: [{ id: 'student456' }] };
+  const recoveredService = loadLoginService({
+    storage: recoveredStorage,
+    pull: () => {
+      recoveredEvents.push('pull');
+      return Promise.resolve({ success: true });
+    },
+    migrate: (options) => {
+      recoveredEvents.push(options && options.suppressToast === true ? 'migrate-silent' : 'migrate-visible');
+      return Promise.resolve({
+        success: false,
+        partial: true,
+        reason: 'partial_sync_failed',
+        failures: {
+          students: 0,
+          learningRecords: 1,
+          learningProgress: 0,
+          wordMasteryWords: 0
+        }
+      });
+    },
+    retry: () => {
+      recoveredEvents.push('retry');
+      return Promise.resolve({ ok: true, pending: 0 });
+    }
+  });
+  const recoveredResult = await recoveredService.doSilentLogin();
+  assert.strictEqual(recoveredResult.ok, true);
+  assert.strictEqual(recoveredResult.pending, 0);
+  assert.deepStrictEqual(recoveredEvents, ['pull', 'migrate-silent', 'retry']);
+  assert.strictEqual(
+    recoveredStorage.cloudMigrationStateByOpenId['openid-recovered'].source,
+    'legacy_migration_recovered',
+    'a queue-backed partial migration that fully recovers must not repeat on every launch'
   );
 
   console.log('login-sync-order: PASS');

@@ -26,6 +26,7 @@ const tests = [
   'test/mastery-sync-selection.test.js',
   'test/cloud-sync-isolation.test.js',
   'test/login-sync-order.test.js',
+  'test/startup-sync-notice.test.js',
   'test/stats-consistency.test.js',
   'test/cloud-pull-statistics.test.js',
   'test/cloud-pull-pagination.test.js',

@@ -174,6 +174,15 @@ const loadMigration = ({ allSuccessful, readOnly = false }) => {
   assert.ok(!progressSyncIds.includes('student-foreign'));
   assert.ok(!masterySyncIds.includes('student-foreign'));
 
+  const toastCountBeforeSilentRetry = toasts.length;
+  const silentPartialResult = await partialMigration({ suppressToast: true });
+  assert.strictEqual(silentPartialResult.partial, true);
+  assert.strictEqual(
+    toasts.length,
+    toastCountBeforeSilentRetry,
+    'silent startup migration must defer user messaging until retry outcome is known'
+  );
+
   const successfulMigration = loadMigration({ allSuccessful: true });
   const successResult = await successfulMigration();
   assert.strictEqual(successResult.success, true);
