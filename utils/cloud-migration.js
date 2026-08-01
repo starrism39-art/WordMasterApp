@@ -793,6 +793,48 @@ const syncDataFromCloud = async (openid) => {
   }
 };
 
+const getLocalOwnerId = (value) => String(
+  (value && (value.teacher_id || value.teacherId || value.ownerId || value.ownerUsername)) || ''
+).trim();
+
+const getLocalStudentId = (value) => String(
+  (value && (value.student_id || value.studentId || value.id)) || ''
+).trim();
+
+const selectLocalDataForMigration = (openid, source) => {
+  const normalizedOpenId = String(openid || '').trim();
+  const allStudents = Array.isArray(source.students) ? source.students : [];
+  const students = allStudents.filter((student) => {
+    const ownerId = getLocalOwnerId(student);
+    return !ownerId || ownerId === normalizedOpenId;
+  });
+  const allowedStudentIds = new Set(students.map(getLocalStudentId).filter(Boolean));
+
+  const learningRecords = (Array.isArray(source.learningRecords) ? source.learningRecords : [])
+    .filter((record) => {
+      const ownerId = getLocalOwnerId(record);
+      if (ownerId && ownerId !== normalizedOpenId) return false;
+      return allowedStudentIds.has(getLocalStudentId(record));
+    });
+
+  const filterStudentMap = (value) => {
+    const result = {};
+    const map = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    Object.keys(map).forEach((studentId) => {
+      if (allowedStudentIds.has(String(studentId))) result[studentId] = map[studentId];
+    });
+    return result;
+  };
+
+  return {
+    students,
+    learningRecords,
+    learningProgress: filterStudentMap(source.learningProgress),
+    wordMastery: filterStudentMap(source.wordMastery),
+    skippedForeignStudents: allStudents.length - students.length
+  };
+};
+
 const migrateLocalDataToCloud = async () => {
   if (isCloudReadOnlyMode()) {
     console.log('[cloud-migration] 只读模式：跳过本地数据上云');
@@ -861,14 +903,19 @@ const migrateLocalDataToCloud = async () => {
       console.warn('[Permission] migrateLocalDataToCloud: 权限同步到本地失败（非阻塞）:', permSyncError);
     }
 
-    const students = Array.isArray(wx.getStorageSync('students'))
-      ? wx.getStorageSync('students')
-      : [];
-    const learningRecords = Array.isArray(wx.getStorageSync('learningRecords'))
-      ? wx.getStorageSync('learningRecords')
-      : [];
-    const learningProgress = wx.getStorageSync('learningProgress') || {};
-    const wordMastery = wx.getStorageSync('wordMastery') || {};
+    const selectedLocalData = selectLocalDataForMigration(openid, {
+      students: wx.getStorageSync('students'),
+      learningRecords: wx.getStorageSync('learningRecords'),
+      learningProgress: wx.getStorageSync('learningProgress'),
+      wordMastery: wx.getStorageSync('wordMastery')
+    });
+    const students = selectedLocalData.students;
+    const learningRecords = selectedLocalData.learningRecords;
+    const learningProgress = selectedLocalData.learningProgress;
+    const wordMastery = selectedLocalData.wordMastery;
+    if (selectedLocalData.skippedForeignStudents > 0) {
+      console.warn('[cloud-migration] skipped foreign-owned local students:', selectedLocalData.skippedForeignStudents);
+    }
 
     // ★ 委托 cloud-sync 统一写路径，确保文档 ID 与增量同步一致
 
@@ -882,9 +929,9 @@ const migrateLocalDataToCloud = async () => {
       return {
         docId: studentId,
         data: {
+          ...cleanedStudent,
           teacher_id: openid,
-          student_id: studentId,
-          ...cleanedStudent
+          student_id: studentId
         }
       };
     });

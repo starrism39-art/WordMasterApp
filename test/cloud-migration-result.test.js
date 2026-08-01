@@ -10,15 +10,18 @@ const storage = {
   openid: 'openid-test',
   students: [
     { id: 'student456', name: '456' },
-    { id: 'student-cloud-01', name: '云端测试01' }
+    { id: 'student-cloud-01', name: '云端测试01', teacher_id: 'openid-test' },
+    { id: 'student-foreign', name: '其他老师学生', teacher_id: 'openid-other' }
   ],
   learningRecords: [
     { id: 'record-good', studentId: 'student456', wordbookId: 'senior_textbook_real' },
-    { id: 'record-fail', studentId: 'student-cloud-01', wordbookId: 'gaokao_reading_words' }
+    { id: 'record-fail', studentId: 'student-cloud-01', wordbookId: 'gaokao_reading_words' },
+    { id: 'record-foreign', studentId: 'student-foreign', wordbookId: 'senior_textbook_real' }
   ],
   learningProgress: {
     student456: { learnedWords: 20 },
-    'student-cloud-01': { learnedWords: 10 }
+    'student-cloud-01': { learnedWords: 10 },
+    'student-foreign': { learnedWords: 99 }
   },
   wordMastery: {
     student456: {
@@ -31,12 +34,21 @@ const storage = {
       gaokao_reading_words: {
         word_c: { difficult: true }
       }
+    },
+    'student-foreign': {
+      senior_textbook_real: {
+        foreign_word: { mastered: true }
+      }
     }
   }
 };
 
 const toasts = [];
 let studentWrites = 0;
+const studentWriteIds = [];
+const recordSyncIds = [];
+const progressSyncIds = [];
+const masterySyncIds = [];
 
 const createDb = () => ({
   collection: (collectionName) => {
@@ -59,9 +71,10 @@ const createDb = () => ({
     }
     if (collectionName === 'students') {
       return {
-        doc: () => ({
+        doc: (docId) => ({
           set: () => {
             studentWrites++;
+            studentWriteIds.push(docId);
             return Promise.resolve({ ok: true });
           }
         })
@@ -93,17 +106,22 @@ const loadMigration = ({ allSuccessful, readOnly = false }) => {
     filename: cloudSyncPath,
     loaded: true,
     exports: {
-      syncLearningRecord: (record) => Promise.resolve(
-        allSuccessful || record.id === 'record-good'
+      syncLearningRecord: (record) => {
+        recordSyncIds.push(record.id);
+        return Promise.resolve(allSuccessful || record.id === 'record-good'
           ? { ok: true }
           : { ok: false, error: new Error('record offline') }
-      ),
-      syncLearningProgress: (studentId) => Promise.resolve(
-        allSuccessful || studentId === 'student456'
+        );
+      },
+      syncLearningProgress: (studentId) => {
+        progressSyncIds.push(studentId);
+        return Promise.resolve(allSuccessful || studentId === 'student456'
           ? { ok: true }
           : { ok: false, error: new Error('progress offline') }
-      ),
+        );
+      },
       syncWordMasteryBatch: (studentId, wordbookId, records) => {
+        masterySyncIds.push(studentId);
         const total = Object.keys(records).length;
         if (allSuccessful || studentId === 'student-cloud-01') {
           return Promise.resolve({ succeeded: total, failed: 0 });
@@ -151,6 +169,10 @@ const loadMigration = ({ allSuccessful, readOnly = false }) => {
     wordMasteryWords: 2
   });
   assert.strictEqual(toasts[toasts.length - 1].title, '部分数据待同步');
+  assert.ok(!studentWriteIds.includes('student-foreign'));
+  assert.ok(!recordSyncIds.includes('record-foreign'));
+  assert.ok(!progressSyncIds.includes('student-foreign'));
+  assert.ok(!masterySyncIds.includes('student-foreign'));
 
   const successfulMigration = loadMigration({ allSuccessful: true });
   const successResult = await successfulMigration();
