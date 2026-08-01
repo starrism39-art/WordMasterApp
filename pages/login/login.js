@@ -2,6 +2,7 @@
 const { syncDataFromCloud, migrateLocalDataToCloud } = require('../../utils/cloud-migration');
 const { retryPendingSyncs, syncAllLocalLearningRecords } = require('../../utils/cloud-sync.js');
 const { isCloudReadOnlyMode } = require('../../utils/cloud-mode.js');
+const loginService = require('../../utils/login-service.js');
 
 Page({
   data: {
@@ -79,47 +80,22 @@ Page({
     this._autoChecked = true;
 
     try {
-      const cachedOpenId = wx.getStorageSync('openid');
-      if (cachedOpenId) {
-        console.log('检测到本地 OpenID 缓存:', cachedOpenId);
-        retryPendingSyncs();
-
-        const hasLocalData = this.hasLocalDataToMigrate();
-        if (hasLocalData) {
-          this.setData({ isLoading: true });
-          await this.runBlockingMigrate();
-        }
-
-        this.setData({ isLoading: true });
-        const syncResult = await this.runBlockingSync(cachedOpenId);
-        if (syncResult && syncResult.error) {
-          wx.showToast({ title: '云端同步失败，数据仅保存在本地', icon: 'none', duration: 3000 });
-        }
-        // 补推历史学习记录到云端
-        syncAllLocalLearningRecords();
-        this.navigateToHome();
-        return;
-      }
-
-      // 无缓存，走完整登录
+      const hadCachedOpenId = !!wx.getStorageSync('openid');
       if (!wx.cloud) {
         this.handleLoginError('当前基础库不支持云开发');
         return;
       }
 
       this.setData({ isLoading: true });
-      const openid = await this.fetchOpenId();
-      wx.setStorageSync('openid', openid);
-      await this.ensureTeacherRecord(openid);
-      retryPendingSyncs();
-      await this.runBlockingMigrate();
-
-      const syncResult = await this.runBlockingSync(openid);
-      if (syncResult && syncResult.error) {
+      const result = await loginService.doSilentLogin();
+      if (!result || result.ok !== true) {
+        if (!hadCachedOpenId) {
+          this.handleLoginError('登录失败，请稍后重试');
+          return;
+        }
         wx.showToast({ title: '云端同步失败，数据仅保存在本地', icon: 'none', duration: 3000 });
       }
-      // 补推历史学习记录到云端
-      syncAllLocalLearningRecords();
+
       this.navigateToHome();
     } catch (error) {
       console.error('登录流程失败:', error);

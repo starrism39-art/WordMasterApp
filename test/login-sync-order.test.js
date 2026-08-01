@@ -80,6 +80,61 @@ const loadLoginService = ({ storage, pull, migrate, retry }) => {
   const result = await first;
   assert.strictEqual(result.ok, true);
   assert.deepStrictEqual(events, ['pull', 'migrate', 'retry']);
+  assert.strictEqual(
+    storage.cloudMigrationStateByOpenId['openid-test'].source,
+    'legacy_migration',
+    'successful legacy migration must be recorded for the current account'
+  );
+
+  const freshEvents = [];
+  const freshStorage = { openid: 'openid-fresh' };
+  const freshService = loadLoginService({
+    storage: freshStorage,
+    pull: () => {
+      freshEvents.push('pull');
+      // Simulate a real fresh-client pull populating local storage.
+      freshStorage.students = [{ id: 'student-cloud', ownerId: 'openid-fresh' }];
+      freshStorage.learningRecords = [{
+        id: 'cloud-record-1',
+        studentId: 'student-cloud'
+      }];
+      return Promise.resolve({ success: true });
+    },
+    migrate: () => {
+      freshEvents.push('migrate');
+      return Promise.resolve({ success: true });
+    },
+    retry: () => {
+      freshEvents.push('retry');
+      return Promise.resolve({ ok: true });
+    }
+  });
+  const freshResult = await freshService.doSilentLogin();
+  assert.strictEqual(freshResult.ok, true);
+  assert.deepStrictEqual(
+    freshEvents,
+    ['pull', 'retry'],
+    'data downloaded by a fresh client must never be bulk-migrated back to cloud'
+  );
+  assert.strictEqual(
+    freshStorage.cloudMigrationStateByOpenId['openid-fresh'].source,
+    'cloud_bootstrap',
+    'fresh cloud bootstrap must be remembered across launches'
+  );
+
+  freshEvents.length = 0;
+  const secondFreshResult = await freshService.doSilentLogin();
+  assert.strictEqual(secondFreshResult.ok, true);
+  assert.deepStrictEqual(
+    freshEvents,
+    ['pull', 'retry'],
+    'a second launch must not misclassify previously pulled cloud data as legacy data'
+  );
+  assert.strictEqual(
+    freshStorage.cloudMigrationStateByOpenId['openid-fresh'].source,
+    'cloud_bootstrap',
+    'repeated launches must preserve the original migration state'
+  );
 
   const failedEvents = [];
   const failedService = loadLoginService({
@@ -102,8 +157,9 @@ const loadLoginService = ({ storage, pull, migrate, retry }) => {
   assert.deepStrictEqual(failedEvents, ['pull'], 'failed pull must block every write path');
 
   const partialEvents = [];
+  const partialStorage = { openid: 'openid-test', students: [{ id: 'student456' }] };
   const partialService = loadLoginService({
-    storage: { openid: 'openid-test', students: [{ id: 'student456' }] },
+    storage: partialStorage,
     pull: () => {
       partialEvents.push('pull');
       return Promise.resolve({ success: true });
@@ -124,6 +180,11 @@ const loadLoginService = ({ storage, pull, migrate, retry }) => {
   const partialResult = await partialService.doSilentLogin();
   assert.strictEqual(partialResult.ok, true, 'partial migration must not block normal login');
   assert.deepStrictEqual(partialEvents, ['pull', 'migrate', 'retry']);
+  assert.strictEqual(
+    partialStorage.cloudMigrationStateByOpenId,
+    undefined,
+    'partial migration must remain retryable'
+  );
 
   console.log('login-sync-order: PASS');
 })().catch((error) => {

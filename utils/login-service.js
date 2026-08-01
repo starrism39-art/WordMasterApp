@@ -9,6 +9,11 @@ const syncDataFromCloud = require('./cloud-migration.js').syncDataFromCloud;
 const migrateLocalDataToCloud = require('./cloud-migration.js').migrateLocalDataToCloud;
 const retryPendingSyncs = require('./cloud-sync.js').retryPendingSyncs;
 const { createCloudReadOnlyResult, isCloudReadOnlyMode } = require('./cloud-mode.js');
+const {
+  getMigrationEntry,
+  hasCompletedMigration,
+  markMigrationComplete
+} = require('./cloud-migration-state.js');
 
 let _loginPromise = null;
 
@@ -85,11 +90,21 @@ function ensureTeacherRecord(openid) {
 }
 
 // 是否有本地数据需要迁移
-function hasLocalDataToMigrate() {
-  var students = wx.getStorageSync('students');
-  var learningRecords = wx.getStorageSync('learningRecords');
-  var learningProgress = wx.getStorageSync('learningProgress');
-  var wordMastery = wx.getStorageSync('wordMastery');
+function readLocalMigrationSnapshot() {
+  return {
+    students: wx.getStorageSync('students'),
+    learningRecords: wx.getStorageSync('learningRecords'),
+    learningProgress: wx.getStorageSync('learningProgress'),
+    wordMastery: wx.getStorageSync('wordMastery')
+  };
+}
+
+function hasLocalDataToMigrate(snapshot) {
+  var source = snapshot || readLocalMigrationSnapshot();
+  var students = source.students;
+  var learningRecords = source.learningRecords;
+  var learningProgress = source.learningProgress;
+  var wordMastery = source.wordMastery;
   return !!(
     (Array.isArray(students) && students.length > 0) ||
     (Array.isArray(learningRecords) && learningRecords.length > 0) ||
@@ -101,6 +116,10 @@ function hasLocalDataToMigrate() {
 // 核心：静默登录（等待云端数据同步完成，确保数据就绪）
 function doSilentLogin() {
   if (_loginPromise) return _loginPromise;
+
+  // Snapshot before cloud pull. Data written by the pull itself is cloud
+  // bootstrap data and must never be treated as legacy local data.
+  var localSnapshotBeforePull = readLocalMigrationSnapshot();
 
   console.log('[login-service] 开始静默登录');
 
@@ -116,12 +135,24 @@ function doSilentLogin() {
     });
   }
 
-  function pushAfterPull() {
-    var shouldMigrate = hasLocalDataToMigrate() && !wx.getStorageSync('hasMigratedToCloud');
+  function pushAfterPull(openid) {
+    var alreadyMigrated = hasCompletedMigration(openid);
+    var shouldMigrate = hasLocalDataToMigrate(localSnapshotBeforePull) && !alreadyMigrated;
+
+    if (!shouldMigrate && !alreadyMigrated) {
+      markMigrationComplete(openid, 'cloud_bootstrap');
+    } else if (alreadyMigrated && !getMigrationEntry(openid)) {
+      // Promote the old global marker to the account-scoped marker.
+      markMigrationComplete(openid, 'legacy_marker');
+    }
+
     var migration = shouldMigrate ? migrateLocalDataToCloud() : Promise.resolve({ skipped: true });
     return migration.then(function(result) {
       if (result && result.error) {
         throw new Error(result.error);
+      }
+      if (shouldMigrate && result && result.success === true) {
+        markMigrationComplete(openid, 'legacy_migration');
       }
       return retryPendingSyncs();
     });
@@ -132,7 +163,7 @@ function doSilentLogin() {
   if (cachedOpenId) {
     console.log('[login-service] 使用缓存 openid:', cachedOpenId);
     workflow = pullFromCloud(cachedOpenId).then(function() {
-      return pushAfterPull();
+      return pushAfterPull(cachedOpenId);
     });
   } else {
     // 无缓存 openid → 获取身份、建立教师记录，再拉取云端；本地写入仍必须排在拉取成功之后。
@@ -142,7 +173,7 @@ function doSilentLogin() {
         return pullFromCloud(openid);
       });
     }).then(function() {
-      return pushAfterPull();
+      return pushAfterPull(wx.getStorageSync('openid'));
     });
   }
 
