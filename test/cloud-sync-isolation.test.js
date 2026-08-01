@@ -78,7 +78,8 @@ const {
   await syncPreviewState('student-a', 'book-one', {
     mastery: { alpha: false },
     order: ['alpha'],
-    excluded: []
+    excluded: [],
+    reset: true
   });
   await syncPreviewState('student-b', 'book-two', {
     mastery: { beta: true },
@@ -91,6 +92,11 @@ const {
     Object.keys(pendingPreview).sort(),
     ['student-a__book-one', 'student-b__book-two'],
     'preview state failures must be persisted per student and wordbook'
+  );
+  assert.strictEqual(
+    pendingPreview['student-a__book-one'].previewData.reset,
+    true,
+    '预习重置指令必须随失败队列保留，恢复网络后仍能清空云端旧状态'
   );
   assert.strictEqual(
     getSyncStatus().pending,

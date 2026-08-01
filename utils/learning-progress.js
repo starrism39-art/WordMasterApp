@@ -46,6 +46,17 @@ const getRecordState = (record) => {
   };
 };
 
+const isActiveAntiForgettingRemediation = (record) => {
+  if (!isPlainObject(record)) return false;
+  const reviewCount = toCount(record.reviewCount);
+  if (reviewCount >= 5) return false;
+
+  const source = String(record.antiForgettingSource || record.anti_forgetting_source || '')
+    .trim()
+    .toLowerCase();
+  return source === 'preview_not_mastered' || toBoolean(record.antiForgettingSeed) === true;
+};
+
 const normalizeWordId = (value) => {
   let candidate = value;
   if (isPlainObject(value)) {
@@ -88,9 +99,10 @@ const getWordbookMasterySummary = (wordbookId, wordbookMastery) => {
   let unmasteredCount = 0;
   scopedEntries.forEach((item) => {
     const state = getRecordState(item.record);
+    const needsRemediation = isActiveAntiForgettingRemediation(item.record);
     if (state.mastered || state.difficult) learnedCount += 1;
     if (state.mastered) masteredCount += 1;
-    if (state.difficult) unmasteredCount += 1;
+    if (state.difficult || needsRemediation) unmasteredCount += 1;
   });
 
   return {

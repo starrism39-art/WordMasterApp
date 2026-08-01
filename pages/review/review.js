@@ -1937,6 +1937,7 @@ Page({
               firstMasteryTime: currentWordRecord.firstMasteryTime || now, // 首次掌握时间
               reviewCount: reviewCount,
               lastReviewTime: now,
+              updatedAt: now,
               reviewTimeline: reviewTimeline, // 保存复习时间线
               // 显式保留抗遗忘标记，防止 spread 丢失（与 learning.js 对称保护）
               antiForgettingSeed: currentWordRecord.antiForgettingSeed,
@@ -1964,6 +1965,7 @@ Page({
               firstMasteryTime: currentWordRecord.firstMasteryTime || now, // 首次掌握时间
               reviewCount: reviewCount,
               lastReviewTime: now,
+              updatedAt: now,
               reviewTimeline: reviewTimeline, // 保存复习时间线
               // 显式保留抗遗忘标记，防止 spread 丢失（与 learning.js 对称保护）
               antiForgettingSeed: currentWordRecord.antiForgettingSeed,

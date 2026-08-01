@@ -135,6 +135,7 @@ const createHarness = (initialCallerOpenid = 'caller-openid') => {
     mastered: false,
     difficult: true,
     antiForgettingSeed: true,
+    updatedAt: 3000,
     legacyUnknownField: 'keep-me'
   });
   const legacyResult = await harness.main({
@@ -155,6 +156,11 @@ const createHarness = (initialCallerOpenid = 'caller-openid') => {
   assert.strictEqual(adoptedLegacy._openid, 'caller-a');
   assert.strictEqual(adoptedLegacy.legacyUnknownField, 'keep-me');
   assert.strictEqual(adoptedLegacy.reviewCount, 5);
+  assert.strictEqual(
+    adoptedLegacy.updatedAt,
+    5000,
+    '云端 updatedAt 必须跟随获胜记录的实际复习活动时间，不能停留在旧版本时间'
+  );
   assert.strictEqual(adoptedLegacy.mastered, true);
   assert.strictEqual(adoptedLegacy.difficult, false);
   assert.strictEqual(

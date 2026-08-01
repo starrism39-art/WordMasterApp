@@ -1726,14 +1726,6 @@ Page({
       if (this.data.learningMode === 'preview' && this.data.currentStudent && this.data.currentWordbook) {
         const that = this;
         setTimeout(() => {
-          that._savePreviewState(
-            that.data.currentStudent.id,
-            that.data.currentWordbook.id,
-            newPreviewMastery,
-            actualId,
-            targetStatus
-          );
-
           if (isHandledInPreview) {
             that._savePreviewExcludedWord(
               that.data.currentStudent.id,
@@ -1741,6 +1733,14 @@ Page({
               actualId
             );
           }
+
+          that._savePreviewState(
+            that.data.currentStudent.id,
+            that.data.currentWordbook.id,
+            newPreviewMastery,
+            actualId,
+            targetStatus
+          );
         }, 0);
       }
     } catch (error) {
@@ -2023,7 +2023,8 @@ Page({
       syncPreviewState(studentId, wordbookId, {
         mastery: {},
         order: [],
-        excluded: []
+        excluded: [],
+        reset: true
       }).catch(err => {
         console.warn('[startNewLearning] 清除云端预习状态失败:', err);
       });
@@ -2849,7 +2850,8 @@ Page({
         syncPreviewState(studentId, wordbookId, {
           mastery: {},
           order: [],
-          excluded: []
+          excluded: [],
+          reset: true
         }).catch(err => {
           console.warn('[completeTest] 清除云端预习状态失败:', err);
         });

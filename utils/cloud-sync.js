@@ -279,7 +279,8 @@ const queuePendingPreviewState = (studentId, wordbookId, previewData) => {
       previewData: {
         mastery: previewData.mastery || {},
         order: previewData.order || [],
-        excluded: previewData.excluded || []
+        excluded: previewData.excluded || [],
+        reset: previewData.reset === true
       },
       failedAt: Date.now()
     };
@@ -1206,6 +1207,7 @@ const syncPreviewState = (studentId, wordbookId, previewData) => {
   const incomingOrder = previewData.order || [];
   const incomingExcluded = previewData.excluded || [];
   const incomingMastery = previewData.mastery || {};
+  const shouldReset = previewData.reset === true;
 
   // 先读云端已有数据，合并后再写入，防止 review/grid 页空数组覆盖 learning 页的 order/excluded
   return db.collection('preview_state')
@@ -1213,8 +1215,12 @@ const syncPreviewState = (studentId, wordbookId, previewData) => {
     .get()
     .then((res) => {
       const existing = (res && res.data) ? res.data : {};
-      const mergedOrder = incomingOrder.length > 0 ? incomingOrder : (existing.order || []);
-      const mergedExcluded = incomingExcluded.length > 0 ? incomingExcluded : (existing.excluded || []);
+      const mergedOrder = shouldReset
+        ? incomingOrder
+        : (incomingOrder.length > 0 ? incomingOrder : (existing.order || []));
+      const mergedExcluded = shouldReset
+        ? incomingExcluded
+        : (incomingExcluded.length > 0 ? incomingExcluded : (existing.excluded || []));
       // 剥离系统保留字段，避免 _openid 等只读字段导致写入失败
       const { _id: _eid, _openid: _eoid, ...safeExisting } = existing || {};
 

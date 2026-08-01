@@ -13,6 +13,7 @@ const storage = {
           antiForgettingSeed: true,
           nextReviewTime: dueAt,
           reviewCount: 2,
+          updatedAt: dueAt - 1000,
           reviewTimeline: []
         },
         senior_textbook_real_right: {
@@ -21,6 +22,7 @@ const storage = {
           antiForgettingSeed: true,
           nextReviewTime: dueAt,
           reviewCount: 1,
+          updatedAt: dueAt - 1000,
           reviewTimeline: []
         }
       }
@@ -108,12 +110,14 @@ assert.strictEqual(
 );
 assert.strictEqual(wrongAfterFirstAttempt.reviewTimeline.at(-1).status, 'difficult');
 assert.strictEqual(wrongAfterFirstAttempt.reviewTimeline.at(-1).reviewCount, 2);
+assert.strictEqual(wrongAfterFirstAttempt.updatedAt, wrongAfterFirstAttempt.lastReviewTime);
 
 assert.strictEqual(rightAfterFirstAttempt.mastered, true);
 assert.strictEqual(rightAfterFirstAttempt.difficult, false);
 assert.strictEqual(rightAfterFirstAttempt.reviewCount, 2);
 assert.ok(rightAfterFirstAttempt.nextReviewTime > Date.now());
 assert.strictEqual(rightAfterFirstAttempt.reviewTimeline.at(-1).status, 'mastered');
+assert.strictEqual(rightAfterFirstAttempt.updatedAt, rightAfterFirstAttempt.lastReviewTime);
 
 assert.strictEqual(learningRecords.length, 1);
 assert.deepStrictEqual(learningRecords[0].learnedWordIds, [
@@ -146,6 +150,7 @@ assert.strictEqual(
   'retry success should advance exactly one round after the prior wrong answer'
 );
 assert.strictEqual(wrongAfterRetry.reviewTimeline.at(-1).status, 'mastered');
+assert.strictEqual(wrongAfterRetry.updatedAt, wrongAfterRetry.lastReviewTime);
 assert.strictEqual(learningRecords.length, 2);
 assert.strictEqual(learningRecords[1].reviewStats.masteredCount, 1);
 assert.strictEqual(learningRecords[1].reviewStats.difficultCount, 0);

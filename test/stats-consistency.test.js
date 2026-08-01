@@ -11,6 +11,35 @@ const storage = {
       },
       gaokao_reading_words: {
         gamma: { mastered: true, difficult: false }
+      },
+      preview_seed_book: {
+        activePreviewSeed: {
+          mastered: true,
+          difficult: false,
+          antiForgettingSeed: true,
+          antiForgettingSource: 'preview_not_mastered',
+          reviewCount: 1
+        },
+        activeLegacySeed: {
+          mastered: true,
+          difficult: false,
+          antiForgettingSeed: true,
+          reviewCount: 2
+        },
+        completedPreviewSeed: {
+          mastered: true,
+          difficult: false,
+          antiForgettingSeed: false,
+          antiForgettingSource: 'preview_not_mastered',
+          reviewCount: 5
+        },
+        previewKnown: {
+          mastered: true,
+          difficult: false,
+          antiForgettingSeed: false,
+          antiForgettingSource: 'preview_mastered',
+          reviewCount: 0
+        }
       }
     },
     student789: {
@@ -46,6 +75,12 @@ const {
     calculateWordbookStats('student456', 'senior_textbook_real'),
     { masteredCount: 2, notMasteredCount: 1, checkinDays: 2 },
     '词书统计必须排除其他学生、其他词书和无法确认词书归属的旧记录'
+  );
+
+  assert.deepStrictEqual(
+    calculateWordbookStats('student456', 'preview_seed_book'),
+    { masteredCount: 4, notMasteredCount: 2, checkinDays: 0 },
+    '五轮未完成的预习不会词和旧版抗遗忘种子必须继续计入未掌握，第五轮完成后退出'
   );
 
   assert.deepStrictEqual(

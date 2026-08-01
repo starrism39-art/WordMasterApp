@@ -10,6 +10,7 @@
 const cloud = require('wx-server-sdk');
 const {
   mergeWordMasteryRecord,
+  resolveActivityTime,
   resolveUpdatedAt
 } = require('./sync-merge');
 
@@ -154,7 +155,12 @@ const syncOneRecord = async (record, callerOpenid) => {
       } = merged;
       const mergedUpdatedAt = resolveUpdatedAt(safeMerged);
       const incomingUpdatedAt = resolveUpdatedAt(incomingData);
-      const updatedAt = Math.max(mergedUpdatedAt, incomingUpdatedAt) || Date.now();
+      const semanticActivityTime = resolveActivityTime(safeMerged);
+      const updatedAt = Math.max(
+        mergedUpdatedAt,
+        incomingUpdatedAt,
+        semanticActivityTime
+      ) || Date.now();
       const writeData = {
         ...safeMerged,
         _openid: callerOpenid,
