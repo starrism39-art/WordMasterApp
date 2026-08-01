@@ -1,5 +1,6 @@
 // pages/data-backup/data-backup.js
 const DataMigration = require('../../utils/data-migration.js');
+const BackupService = require('../../utils/data-backup-service.js');
 
 Page({
   data: {
@@ -33,7 +34,15 @@ Page({
     try {
       const currentVersion = wx.getStorageSync('dataVersion') || '未初始化';
       const backupKey = `dataBackup_v${currentVersion}_info`;
-      const backupInfo = wx.getStorageSync(backupKey);
+      const legacyBackupInfo = wx.getStorageSync(backupKey);
+      const latestBackup = (DataMigration.getAvailableBackups() || [])[0] || null;
+      const backupInfo = latestBackup ? {
+        version: latestBackup.version,
+        timestamp: latestBackup.timestamp,
+        dataCount: latestBackup.dataCount,
+        format: latestBackup.format || (latestBackup.legacy ? 'legacy' : ''),
+        path: latestBackup.path || latestBackup.backupKey || ''
+      } : legacyBackupInfo;
       
       this.setData({
         currentVersion: currentVersion,
@@ -58,7 +67,7 @@ Page({
       const stats = {
         students: Array.isArray(students) ? students.length : 0,
         learningRecords: Array.isArray(learningRecords) ? learningRecords.length : 0,
-        wordMastery: Object.keys(wordMastery).length
+        wordMastery: BackupService.countWordMasteryWords(wordMastery)
       };
       
       this.setData({ dataStats: stats });
@@ -257,59 +266,39 @@ Page({
         try {
           const content = fs.readFileSync(filePath, 'utf8');
           const backup = JSON.parse(content);
-          
-          // 验证备份格式
-          if (!backup.wordMastery && !backup.students) {
-            wx.showToast({ title: '无效的备份文件', icon: 'error' });
-            that.addLog('导入失败: 文件格式不正确');
-            return;
-          }
+          const normalized = BackupService.normalizeBackupEnvelope(backup, {
+            currentOwnerId: wx.getStorageSync('openid')
+          });
+          const payload = normalized.data || {};
+          const manifest = BackupService.buildManifest(payload);
 
           wx.showModal({
             title: '确认导入',
-            content: '将导入 ' + (backup.students?.length || 0) + ' 个学生、' +
-              JSON.stringify(Object.keys(backup.wordMastery || {})).length + ' 组单词数据。\n当前数据将被合并，不会丢失已有数据。',
+            content: '将校验并合并 ' + manifest.counts.students + ' 个学生、' +
+              manifest.counts.wordMasteryWords + ' 个单词及相关记录。\n导入前会自动生成可校验回滚快照；不同教师的数据会被拒绝。',
             success: function(modalRes) {
               if (!modalRes.confirm) return;
-
-              // ★ 统一使用公共安全合并函数，覆盖全部 6 种数据
-              var safeMergeModule = require('../../utils/safe-merge-restore.js');
-              var mergeResult = safeMergeModule.safeMergeRestore(backup);
-
-              // 日志输出
-              if (mergeResult.students && !mergeResult.students.error) {
-                that.addLog('学生: 新增' + (mergeResult.students.added || 0) + ' 跳过' + (mergeResult.students.skipped || 0));
+              try {
+                const importResult = DataMigration.importBackupData(backup, {
+                  currentOwnerId: wx.getStorageSync('openid'),
+                  // 旧版导出没有 ownerId；用户在本弹窗确认后才允许兼容导入。
+                  allowUnownedLegacy: normalized.legacy === true
+                });
+                const mergeResult = importResult.report || {};
+                that.addLog('学生: 新增' + ((mergeResult.students && mergeResult.students.added) || 0));
+                that.addLog('单词掌握: 新增' + ((mergeResult.wordMastery && mergeResult.wordMastery.added) || 0) + '词');
+                that.addLog('学习记录: 新增' + ((mergeResult.learningRecords && mergeResult.learningRecords.added) || 0) + '条');
+                that.addLog('抗遗忘记录: 新增' + ((mergeResult.antiForgettingRecords && mergeResult.antiForgettingRecords.added) || 0) + '条');
+                that.addLog('导入前回滚快照: ' + importResult.rollbackPath);
+                wx.showToast({ title: '导入成功', icon: 'success' });
+                that.loadDataStats();
+                that.loadAvailableBackups();
+              } catch (importError) {
+                console.error('导入备份失败:', importError);
+                const ownerError = /owner|foreign/.test(importError.message || '');
+                wx.showToast({ title: ownerError ? '账号不匹配' : '导入失败', icon: 'error' });
+                that.addLog('导入失败: ' + (importError.message || '未知错误'));
               }
-              if (mergeResult.wordMastery && !mergeResult.wordMastery.error) {
-                that.addLog('单词掌握: 新增' + (mergeResult.wordMastery.added || 0) + '词 跳过' + (mergeResult.wordMastery.skipped || 0) + '词');
-              }
-              if (mergeResult.learningRecords && !mergeResult.learningRecords.error) {
-                that.addLog('学习记录: 新增' + (mergeResult.learningRecords.added || 0) + '条');
-              }
-              if (mergeResult.learningProgress && !mergeResult.learningProgress.error) {
-                that.addLog('学习进度: 新增' + (mergeResult.learningProgress.added || 0) + '项');
-              }
-              if (mergeResult.antiForgettingRecords && !mergeResult.antiForgettingRecords.error) {
-                that.addLog('抗遗忘记录: 新增' + (mergeResult.antiForgettingRecords.added || 0) + '条');
-              }
-
-              // 单值字段：仅本地为空时恢复
-              if (backup.selectedStudent && !wx.getStorageSync('selectedStudent')) {
-                wx.setStorageSync('selectedStudent', backup.selectedStudent);
-              }
-              if (backup.selectedWordbook && !wx.getStorageSync('selectedWordbook')) {
-                wx.setStorageSync('selectedWordbook', backup.selectedWordbook);
-              }
-              if (backup.currentStudent && !wx.getStorageSync('currentStudent')) {
-                wx.setStorageSync('currentStudent', backup.currentStudent);
-              }
-              if (backup.currentWordbook && !wx.getStorageSync('currentWordbook')) {
-                wx.setStorageSync('currentWordbook', backup.currentWordbook);
-              }
-
-              wx.showToast({ title: '导入成功', icon: 'success' });
-              that.addLog('备份文件导入成功');
-              that.loadDataStats();
             }
           });
         } catch (err) {

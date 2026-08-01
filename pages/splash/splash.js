@@ -29,9 +29,30 @@ Page({
         syncPromise,
         new Promise(function(r) { setTimeout(r, remaining); })
       ]).then(function(results) {
+        const syncResult = results && results[0];
+        if (syncResult && syncResult.blocked) {
+          if (this.splashTimer) {
+            clearTimeout(this.splashTimer);
+            this.splashTimer = null;
+          }
+          let shouldShowNotice = true;
+          try {
+            const app = getApp();
+            shouldShowNotice = !(app && app.globalData && app.globalData.upgradeProtectionNoticeShown);
+            if (app && app.globalData) app.globalData.upgradeProtectionNoticeShown = true;
+          } catch (e) {}
+          if (shouldShowNotice) {
+            wx.showModal({
+              title: '数据保护未完成',
+              content: '升级前备份未通过校验，已停止数据同步和写入。请不要卸载或清理本小程序，并联系管理员处理。',
+              showCancel: false,
+              confirmText: '知道了'
+            });
+          }
+          return;
+        }
         try {
           const app = getApp();
-          const syncResult = results && results[0];
           const pending = Number(syncResult && syncResult.pending) || 0;
           app.globalData.syncFreshCompleted = !!(syncResult && syncResult.ok === true && pending === 0);
           app.globalData.syncFreshPendingCount = pending;
@@ -45,6 +66,15 @@ Page({
 
     // 安全兜底：超时后强制跳转
     this.splashTimer = setTimeout(function() {
+      try {
+        const app = getApp();
+        if (app && app.globalData && app.globalData.upgradeProtectionBlocked) {
+          console.error('[splash] 升级保护阻断中，禁止超时跳转');
+          return;
+        }
+      } catch (e) {
+        // 后续仍由登录服务的持久化阻断状态兜底。
+      }
       console.warn('[splash] 同步超时，强制跳转首页');
       try {
         const app = getApp();

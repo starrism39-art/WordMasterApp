@@ -329,6 +329,34 @@ const loadLoginService = ({ storage, pull, migrate, retry }) => {
     'a queue-backed partial migration that fully recovers must not repeat on every launch'
   );
 
+  const blockedEvents = [];
+  const blockedService = loadLoginService({
+    storage: {
+      openid: 'openid-blocked',
+      upgradeProtectionState: { status: 'blocked', message: 'snapshot_failed' }
+    },
+    pull: () => {
+      blockedEvents.push('pull');
+      return Promise.resolve({ success: true });
+    },
+    migrate: () => {
+      blockedEvents.push('migrate');
+      return Promise.resolve({ success: true });
+    },
+    retry: () => {
+      blockedEvents.push('retry');
+      return Promise.resolve({ ok: true });
+    }
+  });
+  const blockedResult = await blockedService.doSilentLogin();
+  assert.strictEqual(blockedResult.ok, false);
+  assert.strictEqual(blockedResult.blocked, true);
+  assert.deepStrictEqual(
+    blockedEvents,
+    [],
+    'failed upgrade protection must block pull, migration, and pending writes'
+  );
+
   console.log('login-sync-order: PASS');
 })().catch((error) => {
   console.error(error);

@@ -52,6 +52,25 @@ App({
 
       // 【版本升级】首先检查数据版本，进行备份和迁移
       const versionInfo = this.initializeVersion();
+      if (versionInfo && (versionInfo.error || versionInfo.blocked)) {
+        this.globalData.upgradeProtectionBlocked = true;
+        this.globalData.upgradeProtectionError = versionInfo.message || '升级前数据保护失败';
+        // 保护失败后强制禁用全部云写与启动期本地初始化，避免任何后续步骤触碰旧数据。
+        this.globalData.cloudReadOnly = true;
+        console.error('[app] 升级保护已阻断启动:', versionInfo);
+        this.globalData.upgradeProtectionNoticeShown = true;
+        setTimeout(function() {
+          wx.showModal({
+            title: '数据保护未完成',
+            content: '升级前备份未通过校验，已停止数据同步和写入。请保留当前设备数据并联系管理员处理。',
+            showCancel: false,
+            confirmText: '知道了'
+          });
+        }, 500);
+        return;
+      }
+      this.globalData.upgradeProtectionBlocked = false;
+      this.globalData.upgradeProtectionError = null;
       if (versionInfo.upgraded) {
         console.log('检测到版本升级，数据已自动备份和迁移');
         wx.showToast({
@@ -610,6 +629,9 @@ App({
     selectedWordbook: null,
     isLoggedIn: false, // 初始化登录状态标志为未登录
     cloudReadOnly: false,
+    upgradeProtectionBlocked: false,
+    upgradeProtectionError: null,
+    upgradeProtectionNoticeShown: false,
     // 启用在线词典音频：优先有道，失败后走 dictionaryapi 兜底
     enableOnlineDictAudio: true
   },

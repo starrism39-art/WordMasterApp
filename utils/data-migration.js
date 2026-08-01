@@ -1,476 +1,458 @@
-/**
- * 数据版本管理与迁移工具
- * 支持小程序升级时的数据备份和格式迁移
- */
+'use strict';
 
-// 当前数据版本号
-const CURRENT_DATA_VERSION = '1.0.0';
+const BackupService = require('./data-backup-service.js');
+const { safeMergeRestore } = require('./safe-merge-restore.js');
 
-/**
- * 初始化数据版本
- * 如果是首次运行或版本不匹配，则进行备份和迁移
- */
-function initializeDataVersion() {
-  try {
-    const storedVersion = wx.getStorageSync('dataVersion');
-    console.log('当前存储的数据版本:', storedVersion, '程序版本:', CURRENT_DATA_VERSION);
-    
-    if (!storedVersion) {
-      // 首次运行，直接设置版本号
-      console.log('首次运行，初始化数据版本为 ' + CURRENT_DATA_VERSION);
-      wx.setStorageSync('dataVersion', CURRENT_DATA_VERSION);
-      return { isFirstRun: true, version: CURRENT_DATA_VERSION };
-    }
-    
-    if (storedVersion !== CURRENT_DATA_VERSION) {
-      // 版本不匹配，需要备份和迁移
-      console.log('检测到版本升级:', storedVersion, '->', CURRENT_DATA_VERSION);
-      backupDataByVersion(storedVersion);
-      migrateDataIfNeeded(storedVersion, CURRENT_DATA_VERSION);
-      wx.setStorageSync('dataVersion', CURRENT_DATA_VERSION);
-      return { isFirstRun: false, upgraded: true, oldVersion: storedVersion, newVersion: CURRENT_DATA_VERSION };
-    }
-    
-    return { isFirstRun: false, upgraded: false, version: CURRENT_DATA_VERSION };
-  } catch (error) {
-    console.error('初始化数据版本失败:', error);
-    return { error: true, message: error.message };
-  }
+const CURRENT_DATA_VERSION = '2.0.0';
+const PROTECTION_STATE_KEY = BackupService.PROTECTION_STATE_KEY;
+
+function hasOwn(object, key) {
+  return Object.prototype.hasOwnProperty.call(object || {}, key);
 }
 
-/**
- * 备份指定版本的所有数据
- * @param {string} version 要备份的版本号
- */
-function backupDataByVersion(version) {
-  try {
-    const dataKeys = [
-      'students',
-      'learningRecords',
-      'learningProgress',
-      'wordMastery',
-      'currentStudent'
-    ];
-    
-    // 获取所有预习状态键（动态的）
-    const info = wx.getStorageSync('info');
-    if (info && info.keys) {
-      dataKeys.push(...info.keys.filter(k => k.startsWith('previewMastery_')));
-    } else {
-      // 扫描存储中的所有键来找预习状态
-      const allKeys = getAllStorageKeys();
-      const previewMasteryKeys = allKeys.filter(k => k.startsWith('previewMastery_'));
-      dataKeys.push(...previewMasteryKeys);
-    }
-    
-    const backupData = {};
-    const backupKey = `dataBackup_v${version}`;
-    
-    dataKeys.forEach(key => {
-      try {
-        const data = wx.getStorageSync(key);
-        if (data !== undefined && data !== null) {
-          backupData[key] = data;
-        }
-      } catch (e) {
-        console.warn(`备份 ${key} 失败:`, e);
+function clone(value) {
+  if (value === undefined) return undefined;
+  return JSON.parse(JSON.stringify(value));
+}
+
+function isPlainObject(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isEmptyValue(value) {
+  if (value === undefined || value === null || value === '') return true;
+  if (Array.isArray(value)) return value.length === 0;
+  if (isPlainObject(value)) return Object.keys(value).length === 0;
+  return false;
+}
+
+function hasMeaningfulLocalData(data) {
+  const ignored = new Set(['openid', 'currentUser', 'dataVersion']);
+  return Object.keys(data || {}).some((key) => !ignored.has(key) && !isEmptyValue(data[key]));
+}
+
+function markProtectionState(state) {
+  const value = Object.assign({ updatedAt: new Date().toISOString() }, state || {});
+  wx.setStorageSync(PROTECTION_STATE_KEY, value);
+  return value;
+}
+
+function normalizeWordMastery(input) {
+  if (input === undefined) return undefined;
+  if (!isPlainObject(input)) throw new Error('invalid_word_mastery_root');
+  const result = clone(input);
+  const migrationTime = Date.now();
+
+  Object.keys(result).forEach((studentId) => {
+    const books = result[studentId];
+    if (!isPlainObject(books)) throw new Error('invalid_word_mastery_student:' + studentId);
+    Object.keys(books).forEach((wordbookId) => {
+      const words = books[wordbookId];
+      if (Array.isArray(words)) {
+        const upgraded = {};
+        words.forEach((legacyWord, index) => {
+          const isRecord = isPlainObject(legacyWord);
+          const rawWordId = isRecord
+            ? (legacyWord.wordId || legacyWord.word_id || legacyWord.id)
+            : legacyWord;
+          if (rawWordId === undefined || rawWordId === null || String(rawWordId).trim() === '') {
+            throw new Error('invalid_legacy_word_mastery_item:' + studentId + ':' + wordbookId + ':' + index);
+          }
+          const normalizedWordId = String(rawWordId);
+          if (hasOwn(upgraded, normalizedWordId)) return;
+          upgraded[normalizedWordId] = Object.assign({
+            mastered: false,
+            difficult: false,
+            reviewCount: 0,
+            firstMasteryTime: migrationTime,
+            lastReviewTime: migrationTime,
+            nextReviewTime: migrationTime,
+            antiForgettingSeed: true,
+            reviewTimeline: []
+          }, isRecord ? clone(legacyWord) : {});
+        });
+        books[wordbookId] = upgraded;
+      } else if (!isPlainObject(words)) {
+        throw new Error('invalid_word_mastery_wordbook:' + studentId + ':' + wordbookId);
       }
     });
-    
-    // 保存备份
-    wx.setStorageSync(backupKey, backupData);
-    
-    // 记录备份元数据
-    const backupInfo = {
-      version: version,
-      timestamp: new Date().toISOString(),
-      dataCount: Object.keys(backupData).length
+  });
+  return result;
+}
+
+function normalizeLearningRecords(input) {
+  if (input === undefined) return undefined;
+  if (!Array.isArray(input)) throw new Error('invalid_learning_records_root');
+  return input.map((record, index) => {
+    if (!isPlainObject(record)) throw new Error('invalid_learning_record:' + index);
+    const normalized = clone(record);
+    if (typeof normalized.date === 'number') {
+      const parsed = new Date(normalized.date);
+      if (Number.isNaN(parsed.getTime())) throw new Error('invalid_learning_record_date:' + index);
+      normalized.date = parsed.toISOString().split('T')[0];
+    }
+    return normalized;
+  });
+}
+
+function validateDynamicState(data) {
+  Object.keys(data).forEach((key) => {
+    const value = data[key];
+    if (key.indexOf('previewMastery_') === 0 ||
+        key.indexOf('reviewMastery_') === 0 ||
+        key.indexOf('gridMastery_') === 0) {
+      if (!isPlainObject(value)) throw new Error('invalid_dynamic_state:' + key);
+    }
+    if (key.indexOf('previewWordOrder_') === 0 ||
+        key.indexOf('previewExcludedWordIds_') === 0) {
+      if (!Array.isArray(value)) throw new Error('invalid_dynamic_state:' + key);
+    }
+  });
+}
+
+function normalizeProtectedData(input) {
+  const output = clone(input || {});
+  if (hasOwn(output, 'wordMastery')) output.wordMastery = normalizeWordMastery(output.wordMastery);
+  if (hasOwn(output, 'learningRecords')) output.learningRecords = normalizeLearningRecords(output.learningRecords);
+  if (hasOwn(output, 'students') && !Array.isArray(output.students)) {
+    throw new Error('invalid_students_root');
+  }
+  if (hasOwn(output, 'antiForgettingRecords') && !Array.isArray(output.antiForgettingRecords)) {
+    throw new Error('invalid_anti_forgetting_records_root');
+  }
+  if (hasOwn(output, 'learningProgress') && !isPlainObject(output.learningProgress)) {
+    throw new Error('invalid_learning_progress_root');
+  }
+  validateDynamicState(output);
+  return output;
+}
+
+function validateNoDataLoss(before, after) {
+  const beforeManifest = BackupService.buildManifest(before);
+  const afterManifest = BackupService.buildManifest(after);
+  const protectedCounts = [
+    'students',
+    'learningRecords',
+    'wordMasteryWords',
+    'learningProgressStudents',
+    'antiForgettingRecords',
+    'dynamicKeys',
+    'pendingItems'
+  ];
+  protectedCounts.forEach((key) => {
+    if (afterManifest.counts[key] < beforeManifest.counts[key]) {
+      throw new Error('migration_count_loss:' + key);
+    }
+  });
+  return { before: beforeManifest, after: afterManifest };
+}
+
+function writeMigratedData(before, after) {
+  const keys = Object.keys(after).filter((key) => key !== 'dataVersion').sort();
+  keys.forEach((key) => {
+    if (JSON.stringify(before[key]) !== JSON.stringify(after[key])) {
+      wx.setStorageSync(key, clone(after[key]));
+    }
+  });
+  wx.setStorageSync('dataVersion', CURRENT_DATA_VERSION);
+}
+
+function initializeDataVersion() {
+  const storedVersion = wx.getStorageSync('dataVersion');
+  const previousState = wx.getStorageSync(PROTECTION_STATE_KEY);
+  if (storedVersion === CURRENT_DATA_VERSION) {
+    if (previousState && previousState.status === 'blocked') {
+      return {
+        error: true,
+        blocked: true,
+        message: previousState.message || 'upgrade_protection_blocked',
+        version: CURRENT_DATA_VERSION
+      };
+    }
+    markProtectionState({ status: 'complete', version: CURRENT_DATA_VERSION, action: 'already-current' });
+    return { isFirstRun: false, upgraded: false, version: CURRENT_DATA_VERSION };
+  }
+
+  const before = BackupService.collectProtectedData();
+  const meaningful = hasMeaningfulLocalData(before);
+  if (!meaningful) {
+    try {
+      wx.setStorageSync('dataVersion', CURRENT_DATA_VERSION);
+      markProtectionState({ status: 'complete', version: CURRENT_DATA_VERSION, action: 'fresh-install' });
+      return { isFirstRun: true, version: CURRENT_DATA_VERSION };
+    } catch (error) {
+      try {
+        markProtectionState({ status: 'blocked', stage: 'fresh-install', message: error.message });
+      } catch (ignore) {}
+      return { error: true, blocked: true, message: error.message };
+    }
+  }
+
+  const oldVersion = storedVersion || 'legacy-unversioned';
+  let persisted = null;
+  let writesStarted = false;
+  try {
+    const envelope = BackupService.createBackupEnvelope({
+      data: before,
+      sourceDataVersion: oldVersion,
+      targetDataVersion: CURRENT_DATA_VERSION,
+      reason: 'automatic-pre-upgrade'
+    });
+    persisted = BackupService.persistVerifiedSnapshot(envelope);
+    if (envelope.ownerId) {
+      BackupService.assertBackupOwnerCompatible(envelope, envelope.ownerId);
+    }
+
+    const migrated = normalizeProtectedData(before);
+    const validation = validateNoDataLoss(before, migrated);
+    writesStarted = true;
+    writeMigratedData(before, migrated);
+    markProtectionState({
+      status: 'complete',
+      action: 'upgraded',
+      oldVersion,
+      version: CURRENT_DATA_VERSION,
+      backupPath: persisted.path,
+      checksum: persisted.envelope.checksum,
+      validation
+    });
+    return {
+      isFirstRun: false,
+      upgraded: true,
+      oldVersion,
+      newVersion: CURRENT_DATA_VERSION,
+      backupPath: persisted.path,
+      checksum: persisted.envelope.checksum
     };
-    wx.setStorageSync(`${backupKey}_info`, backupInfo);
-    
-    console.log(`已备份版本 ${version} 的数据到 ${backupKey}，共 ${Object.keys(backupData).length} 项`);
-    return backupKey;
   } catch (error) {
-    console.error('备份数据失败:', error);
-    throw error;
+    let rollbackSucceeded = false;
+    let rollbackError = null;
+    if (persisted && writesStarted) {
+      try {
+        BackupService.restoreExactProtectedData(persisted.envelope.data);
+        rollbackSucceeded = true;
+      } catch (restoreError) {
+        rollbackError = restoreError.message || String(restoreError);
+      }
+    }
+    try {
+      markProtectionState({
+        status: 'blocked',
+        stage: persisted ? (writesStarted ? 'migration' : 'validation') : 'snapshot',
+        oldVersion,
+        targetVersion: CURRENT_DATA_VERSION,
+        backupPath: persisted && persisted.path,
+        message: error.message || String(error),
+        rollbackSucceeded,
+        rollbackError
+      });
+    } catch (stateError) {
+      console.error('[data-migration] 无法记录阻断状态:', stateError);
+    }
+    return {
+      error: true,
+      blocked: true,
+      oldVersion,
+      newVersion: CURRENT_DATA_VERSION,
+      message: error.message || String(error),
+      rollbackSucceeded,
+      rollbackError
+    };
   }
 }
 
-/**
- * 获取所有存储的键（仅适用支持的微信版本）
- */
+function backupDataByVersion(version) {
+  const envelope = BackupService.createBackupEnvelope({
+    sourceDataVersion: version || wx.getStorageSync('dataVersion') || 'legacy-unversioned',
+    targetDataVersion: null,
+    reason: 'manual-local-backup'
+  });
+  BackupService.assertBackupOwnerCompatible(envelope, BackupService.resolveCurrentOwnerId());
+  const persisted = BackupService.persistVerifiedSnapshot(envelope);
+  return persisted.path;
+}
+
 function getAllStorageKeys() {
   try {
-    const storageInfo = wx.getStorageInfoSync();
-    return Array.isArray(storageInfo.keys) ? storageInfo.keys : [];
-  } catch (e) {
-    console.warn('无法获取所有存储键，使用已知键列表');
+    const info = wx.getStorageInfoSync();
+    return info && Array.isArray(info.keys) ? info.keys : [];
+  } catch (error) {
     return [];
   }
 }
 
-/**
- * 数据迁移逻辑
- * 根据版本号进行必要的数据格式转换
- * @param {string} fromVersion 从哪个版本
- * @param {string} toVersion 迁移到哪个版本
- */
-function migrateDataIfNeeded(fromVersion, toVersion) {
-  try {
-    console.log(`执行数据迁移: ${fromVersion} -> ${toVersion}`);
-    
-    // 版本号比较（简单的字符串比较对于 x.y.z 格式可能不准）
-    const fromVersionParts = parseVersion(fromVersion);
-    const toVersionParts = parseVersion(toVersion);
-    
-    // 例如：从 0.9.x 升级到 1.0.0
-    if (isVersionLess(fromVersionParts, toVersionParts)) {
-      // 执行迁移逻辑
-      performDataMigration(fromVersion, toVersion);
-    }
-  } catch (error) {
-    console.error('数据迁移失败:', error);
-  }
+function getAvailableBackups() {
+  const currentOwnerId = BackupService.resolveCurrentOwnerId();
+  const modern = wx.getStorageSync(BackupService.BACKUP_INDEX_KEY);
+  const result = (Array.isArray(modern) ? modern : [])
+    .filter((item) => !item.ownerId || !currentOwnerId || item.ownerId === currentOwnerId)
+    .map((item) => ({
+    version: item.sourceDataVersion || 'unknown',
+    backupKey: item.path,
+    path: item.path,
+    timestamp: item.createdAt || null,
+    dataCount: item.manifest && Array.isArray(item.manifest.keys) ? item.manifest.keys.length : 0,
+    availableKeys: item.manifest && item.manifest.keys || [],
+    manifest: item.manifest || null,
+    ownerId: item.ownerId || '',
+    format: BackupService.BACKUP_FORMAT
+    }));
+
+  getAllStorageKeys().filter((key) => /^dataBackup_v.+$/.test(key) && !/_info$/.test(key))
+    .forEach((backupKey) => {
+      const version = backupKey.replace(/^dataBackup_v/, '');
+      const info = wx.getStorageSync(backupKey + '_info') || {};
+      const data = wx.getStorageSync(backupKey) || {};
+      result.push({
+        version,
+        backupKey,
+        timestamp: info.timestamp || null,
+        dataCount: typeof info.dataCount === 'number' ? info.dataCount : Object.keys(data).length,
+        availableKeys: Object.keys(data),
+        legacy: true
+      });
+    });
+
+  result.sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
+  return result;
 }
 
-/**
- * 执行具体的数据迁移操作
- */
-function performDataMigration(fromVersion, toVersion) {
+function exportAllData() {
+  const envelope = BackupService.createBackupEnvelope({
+    sourceDataVersion: wx.getStorageSync('dataVersion') || 'legacy-unversioned',
+    reason: 'manual-export'
+  });
+  BackupService.assertBackupOwnerCompatible(envelope, BackupService.resolveCurrentOwnerId());
+  const verification = BackupService.verifyBackupEnvelope(envelope);
+  if (!verification.ok) throw new Error(verification.error);
+  return envelope;
+}
+
+function mergeQueueValue(existing, incoming) {
+  if (isPlainObject(incoming)) return Object.assign({}, clone(incoming), clone(existing || {}));
+  if (Array.isArray(incoming)) {
+    const values = Array.isArray(existing) ? clone(existing) : [];
+    const seen = new Set(values.map((item) => JSON.stringify(item)));
+    incoming.forEach((item) => {
+      const identity = JSON.stringify(item);
+      if (!seen.has(identity)) {
+        seen.add(identity);
+        values.push(clone(item));
+      }
+    });
+    return values;
+  }
+  return isEmptyValue(existing) ? clone(incoming) : existing;
+}
+
+function restoreSupplementalData(data) {
+  const pendingKeys = new Set([
+    'pendingWordMasterySync',
+    'pendingLearningRecordSync',
+    'pendingLearningProgressSync',
+    'pendingPreviewStateSync',
+    'pendingSyncProgress'
+  ]);
+  const singleKeys = new Set([
+    'currentStudent',
+    'currentWordbook',
+    'currentWordbookStudentId',
+    'selectedStudent',
+    'selectedWordbook',
+    'studentSettings',
+    'wordbooksMetadata'
+  ]);
+  let restored = 0;
+
+  Object.keys(data).forEach((key) => {
+    if (pendingKeys.has(key)) {
+      wx.setStorageSync(key, mergeQueueValue(wx.getStorageSync(key), data[key]));
+      restored += 1;
+      return;
+    }
+    const dynamic = BackupService.isDynamicProtectedStorageKey(key);
+    if (dynamic || singleKeys.has(key)) {
+      const existing = wx.getStorageSync(key);
+      if (isEmptyValue(existing) && !isEmptyValue(data[key])) {
+        wx.setStorageSync(key, clone(data[key]));
+        restored += 1;
+      }
+    }
+  });
+  return restored;
+}
+
+function importBackupData(input, options) {
+  const settings = options || {};
+  const currentOwnerId = String(
+    settings.currentOwnerId || BackupService.resolveCurrentOwnerId()
+  ).trim();
+  const envelope = BackupService.normalizeBackupEnvelope(input, {
+    currentOwnerId,
+    targetDataVersion: CURRENT_DATA_VERSION
+  });
+  if (!envelope.ownerId && !settings.allowUnownedLegacy) throw new Error('backup_owner_missing');
+  BackupService.assertBackupOwnerCompatible(envelope, currentOwnerId);
+
+  const dryRun = safeMergeRestore(envelope.data, { dryRun: true });
+  if (dryRun.summary && dryRun.summary.errors > 0) throw new Error('backup_merge_validation_failed');
+
+  const rollbackEnvelope = BackupService.createBackupEnvelope({
+    sourceDataVersion: wx.getStorageSync('dataVersion') || 'legacy-unversioned',
+    targetDataVersion: CURRENT_DATA_VERSION,
+    reason: 'automatic-pre-import'
+  });
+  const persistedRollback = BackupService.persistVerifiedSnapshot(rollbackEnvelope);
+
   try {
-    // 修复 wordMastery 结构问题
-    repairWordMasteryStructure();
-    
-    // 修复 learningRecords 中的日期格式
-    repairLearningRecordsDates();
-    
-    // 修复 previewMastery 中可能的格式问题
-    repairPreviewMasteryData();
-    
-    // 验证迁移后的数据完整性
-    validateMigratedData();
-    
-    console.log(`数据迁移完成: ${fromVersion} -> ${toVersion}`);
+    const report = safeMergeRestore(envelope.data);
+    if (report.summary && report.summary.errors > 0) throw new Error('backup_merge_failed');
+    report.supplementalRestored = restoreSupplementalData(envelope.data);
+    return { ok: true, report, rollbackPath: persistedRollback.path };
   } catch (error) {
-    console.error('执行数据迁移时出错:', error);
+    BackupService.restoreExactProtectedData(persistedRollback.envelope.data);
     throw error;
   }
 }
 
-/**
- * 修复 wordMastery 的结构问题
- */
-function repairWordMasteryStructure() {
+function restoreBackup(version) {
   try {
-    let wordMastery = wx.getStorageSync('wordMastery') || {};
-    let hasChanges = false;
-    
-    // 确保是对象格式
-    if (typeof wordMastery !== 'object' || Array.isArray(wordMastery)) {
-      wordMastery = {};
-      hasChanges = true;
+    const currentOwnerId = BackupService.resolveCurrentOwnerId();
+    const modernIndex = wx.getStorageSync(BackupService.BACKUP_INDEX_KEY);
+    const modern = Array.isArray(modernIndex)
+      ? modernIndex.slice().reverse().find((item) => (
+        (!item.ownerId || item.ownerId === currentOwnerId) &&
+        (item.sourceDataVersion === version || item.path === version)
+      ))
+      : null;
+    if (modern && modern.path) {
+      return importBackupData(BackupService.readPersistedSnapshot(modern.path), {
+        currentOwnerId
+      }).ok;
     }
-    
-    // 检查嵌套结构
-    for (const studentId in wordMastery) {
-      const student = wordMastery[studentId];
-      
-      // 如果不是对象，则重置
-      if (typeof student !== 'object' || Array.isArray(student)) {
-        wordMastery[studentId] = {};
-        hasChanges = true;
-        continue;
-      }
-      
-      for (const wordbookId in student) {
-        const wordbook = student[wordbookId];
-        
-        if (Array.isArray(wordbook)) {
-          // 将旧数组格式升级为新对象格式（与 migrateAntiForgettingSeedIfNeeded 一致）
-          const upgraded = {};
-          const now = Date.now();
-          wordbook.forEach((wordId) => {
-            if (!wordId) return;
-            upgraded[String(wordId)] = {
-              mastered: false,
-              difficult: false,
-              reviewCount: 0,
-              firstMasteryTime: now,
-              lastReviewTime: now,
-              nextReviewTime: now,
-              antiForgettingSeed: true,
-              reviewTimeline: []
-            };
-          });
-          wordMastery[studentId][wordbookId] = upgraded;
-          hasChanges = true;
-        } else if (typeof wordbook !== 'object') {
-          wordMastery[studentId][wordbookId] = {};
-          hasChanges = true;
-        }
-      }
-    }
-    
-    if (hasChanges) {
-      wx.setStorageSync('wordMastery', wordMastery);
-      console.log('已修复 wordMastery 结构');
-    }
+
+    const legacy = wx.getStorageSync('dataBackup_v' + version);
+    if (!legacy) return false;
+    return importBackupData(legacy, {
+      currentOwnerId,
+      allowUnownedLegacy: true
+    }).ok;
   } catch (error) {
-    console.error('修复 wordMastery 失败:', error);
-  }
-}
-
-/**
- * 修复 learningRecords 中的日期格式
- */
-function repairLearningRecordsDates() {
-  try {
-    let records = wx.getStorageSync('learningRecords') || [];
-    let hasChanges = false;
-    
-    if (!Array.isArray(records)) {
-      records = [];
-      hasChanges = true;
-    } else {
-      records.forEach(record => {
-        // 确保 date 字段存在且格式正确
-        if (!record.date) {
-          record.date = new Date().toISOString().split('T')[0];
-          hasChanges = true;
-        } else if (typeof record.date === 'number') {
-          // 转换时间戳为日期字符串
-          record.date = new Date(record.date).toISOString().split('T')[0];
-          hasChanges = true;
-        }
-      });
-    }
-    
-    if (hasChanges) {
-      wx.setStorageSync('learningRecords', records);
-      console.log('已修复 learningRecords 日期格式');
-    }
-  } catch (error) {
-    console.error('修复 learningRecords 日期失败:', error);
-  }
-}
-
-/**
- * 修复 previewMastery 数据
- */
-function repairPreviewMasteryData() {
-  try {
-    // 扫描所有 previewMastery_* 键
-    const students = wx.getStorageSync('students') || [];
-    
-    students.forEach(student => {
-      const studentId = student.id;
-      const books = student.wordbooks || [];
-      
-      books.forEach(book => {
-        const wordbookId = book.id;
-        const key = `previewMastery_${studentId}_${wordbookId}`;
-        
-        let mastery = wx.getStorageSync(key) || {};
-        
-        // 确保是对象
-        if (typeof mastery !== 'object' || Array.isArray(mastery)) {
-          mastery = {};
-          wx.setStorageSync(key, mastery);
-          console.log(`已重置 ${key} 为空对象`);
-        }
-      });
-    });
-  } catch (error) {
-    console.error('修复 previewMastery 数据失败:', error);
-  }
-}
-
-/**
- * 验证迁移后的数据完整性
- */
-function validateMigratedData() {
-  try {
-    const stats = {
-      students: 0,
-      learningRecords: 0,
-      wordMastery: 0,
-      previewMasteryKeys: 0
-    };
-    
-    const students = wx.getStorageSync('students') || [];
-    stats.students = Array.isArray(students) ? students.length : 0;
-    
-    const records = wx.getStorageSync('learningRecords') || [];
-    stats.learningRecords = Array.isArray(records) ? records.length : 0;
-    
-    const mastery = wx.getStorageSync('wordMastery') || {};
-    stats.wordMastery = Object.keys(mastery).length;
-    
-    // 计算 previewMastery 键数（可选）
-    // stats.previewMasteryKeys = countPreviewMasteryKeys();
-    
-    console.log('迁移后数据验证:', stats);
-    return stats;
-  } catch (error) {
-    console.error('验证迁移数据失败:', error);
-    return null;
-  }
-}
-
-/**
- * 版本号解析 "1.2.3" -> [1, 2, 3]
- */
-function parseVersion(versionStr) {
-  return versionStr.split('.').map(v => parseInt(v, 10) || 0);
-}
-
-/**
- * 比较版本号是否小于
- */
-function isVersionLess(version1, version2) {
-  for (let i = 0; i < Math.max(version1.length, version2.length); i++) {
-    const v1 = version1[i] || 0;
-    const v2 = version2[i] || 0;
-    if (v1 < v2) return true;
-    if (v1 > v2) return false;
-  }
-  return false;
-}
-
-/**
- * 恢复指定版本的备份数据
- * @param {string} version 要恢复的版本号
- * @param {boolean} overwrite 是否覆盖现有数据
- */
-function restoreBackup(version, overwrite = false) {
-  try {
-    const backupKey = `dataBackup_v${version}`;
-    const backupData = wx.getStorageSync(backupKey);
-    
-    if (!backupData) {
-      console.warn(`找不到版本 ${version} 的备份数据`);
-      return false;
-    }
-
-    // 无论 overwrite 与否，都走安全合并（只追加，不删除现有数据）
-    // overwrite=true 时允许覆盖同 ID 的已有条目，但不删除备份中没有的数据
-    const { safeMergeRestore } = require('./safe-merge-restore.js');
-    const mergeResult = safeMergeRestore(backupData);
-
-    // 单值字段：仅本地为空时恢复
-    const singleKeys = ['selectedStudent', 'selectedWordbook', 'currentStudent', 'currentWordbook', 'dataVersion'];
-    singleKeys.forEach(function(key) {
-      if (backupData[key] !== undefined && !wx.getStorageSync(key)) {
-        wx.setStorageSync(key, backupData[key]);
-      }
-    });
-    
-    console.log('已恢复版本 ' + version + ' 的备份数据，新增:', (mergeResult.summary && mergeResult.summary.totalAdded) || 0);
-    return true;
-  } catch (error) {
-    console.error('恢复备份失败:', error);
+    console.error('[data-migration] 恢复备份失败:', error);
     return false;
   }
 }
 
-/**
- * 获取所有可用的备份版本
- */
-function getAvailableBackups() {
-  try {
-    const storageKeys = getAllStorageKeys();
-    const backupKeys = storageKeys.filter(key => /^dataBackup_v.+$/.test(key) && !/_info$/.test(key));
-
-    const backups = backupKeys.map(backupKey => {
-      const version = backupKey.replace(/^dataBackup_v/, '');
-      const info = wx.getStorageSync(`${backupKey}_info`) || {};
-      const backupData = wx.getStorageSync(backupKey) || {};
-
-      return {
-        version,
-        backupKey,
-        infoKey: `${backupKey}_info`,
-        timestamp: info.timestamp || null,
-        dataCount: typeof info.dataCount === 'number' ? info.dataCount : Object.keys(backupData).length,
-        availableKeys: Object.keys(backupData),
-        hasLearningRecords: Object.prototype.hasOwnProperty.call(backupData, 'learningRecords'),
-        hasWordMastery: Object.prototype.hasOwnProperty.call(backupData, 'wordMastery'),
-        hasStudents: Object.prototype.hasOwnProperty.call(backupData, 'students')
-      };
-    });
-
-    backups.sort((a, b) => {
-      const ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
-      const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
-      return tb - ta;
-    });
-
-    return backups;
-  } catch (error) {
-    console.error('获取备份列表失败:', error);
-    return [];
-  }
+function migrateDataIfNeeded(fromVersion, toVersion) {
+  if (fromVersion === toVersion) return { migrated: false };
+  const before = BackupService.collectProtectedData();
+  const after = normalizeProtectedData(before);
+  return { migrated: true, data: after, validation: validateNoDataLoss(before, after) };
 }
 
-/**
- * 导出所有数据为 JSON（用于备份/调试）
- */
-function exportAllData() {
-  try {
-    const dataKeys = [
-      'students',
-      'learningRecords',
-      'learningProgress',
-      'wordMastery',
-      'currentStudent',
-      'dataVersion'
-    ];
-    
-    const exportData = {
-      exportTime: new Date().toISOString(),
-      version: wx.getStorageSync('dataVersion'),
-      data: {}
-    };
-    
-    dataKeys.forEach(key => {
-      const value = wx.getStorageSync(key);
-      if (value !== undefined) {
-        exportData.data[key] = value;
-      }
-    });
-    
-    // 扫描预习状态
-    const students = wx.getStorageSync('students') || [];
-    students.forEach(student => {
-      const books = student.wordbooks || [];
-      books.forEach(book => {
-        const key = `previewMastery_${student.id}_${book.id}`;
-        const value = wx.getStorageSync(key);
-        if (value) {
-          exportData.data[key] = value;
-        }
-      });
-    });
-    
-    return exportData;
-  } catch (error) {
-    console.error('导出数据失败:', error);
-    return null;
-  }
-}
-
-/**
- * 清理旧备份数据（保留最近N个版本）
- * @param {number} keepVersions 保留的版本数
- */
-function cleanupOldBackups(keepVersions = 3) {
-  try {
-    // 这需要知道所有的备份版本
-    // 实际实现需要追踪备份版本的历史
-    console.log(`清理旧备份，保留最近 ${keepVersions} 个版本`);
-  } catch (error) {
-    console.error('清理备份失败:', error);
-  }
+function cleanupOldBackups() {
+  // 最高安全等级下不自动删除任何备份文件。
+  return { skipped: true, reason: 'automatic_backup_deletion_disabled' };
 }
 
 module.exports = {
@@ -481,5 +463,9 @@ module.exports = {
   restoreBackup,
   getAvailableBackups,
   exportAllData,
-  cleanupOldBackups
+  importBackupData,
+  cleanupOldBackups,
+  normalizeProtectedData,
+  validateNoDataLoss,
+  hasMeaningfulLocalData
 };

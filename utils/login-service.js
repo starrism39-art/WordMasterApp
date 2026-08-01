@@ -238,6 +238,25 @@ function isLocalSnapshotCoveredByCloud(snapshot, cloudSnapshot, openid) {
 function doSilentLogin() {
   if (_loginPromise) return _loginPromise;
 
+  var protectionState = wx.getStorageSync('upgradeProtectionState');
+  var appProtectionBlocked = false;
+  var appProtectionError = null;
+  try {
+    var currentApp = getApp();
+    appProtectionBlocked = !!(currentApp && currentApp.globalData && currentApp.globalData.upgradeProtectionBlocked);
+    appProtectionError = currentApp && currentApp.globalData && currentApp.globalData.upgradeProtectionError;
+  } catch (e) {
+    // 存储状态仍可独立完成保护判定。
+  }
+  if (appProtectionBlocked || (protectionState && protectionState.status === 'blocked')) {
+    var protectionError = new Error(
+      appProtectionError || protectionState && protectionState.message || 'upgrade_protection_blocked'
+    );
+    protectionError.code = 'upgrade_protection_blocked';
+    console.error('[login-service] 升级保护未完成，阻断登录与云同步:', protectionError);
+    return Promise.resolve({ ok: false, blocked: true, error: protectionError });
+  }
+
   // Snapshot before cloud pull. Data written by the pull itself is cloud
   // bootstrap data and must never be treated as legacy local data.
   var localSnapshotBeforePull = readLocalMigrationSnapshot();
