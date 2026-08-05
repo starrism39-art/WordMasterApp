@@ -79,13 +79,18 @@ function enableAutomation() {
   const args = [
     'auto',
     '--project',
-    projectPath,
+    projectPath
+  ];
+  if (options.idePort) {
+    args.push('--port', String(options.idePort));
+  }
+  args.push(
     '--auto-port',
     String(autoPort),
     '--trust-project',
     '--lang',
     'zh'
-  ];
+  );
   const command = [cliPath, ...args].map(quoteCommandPart).join(' ');
   const child = childProcess.spawn('cmd.exe', ['/d', '/s', '/c', command], {
     detached: true,
@@ -106,6 +111,17 @@ function quoteCommandPart(value) {
     return text;
   }
   return `"${text.replace(/"/g, '\\"')}"`;
+}
+
+function parseOptionalPort(value) {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+  const port = Number(value);
+  if (!Number.isInteger(port) || port <= 0) {
+    throw new Error(`Invalid port value: ${value}`);
+  }
+  return port;
 }
 
 function waitForPort(port, timeoutMs) {
@@ -142,13 +158,38 @@ function waitForPort(port, timeoutMs) {
   });
 }
 
+function isPortOpen(port) {
+  return new Promise(resolve => {
+    const socket = net.createConnection({ host: '127.0.0.1', port });
+    let resolved = false;
+
+    function finish(value) {
+      if (resolved) {
+        return;
+      }
+      resolved = true;
+      socket.destroy();
+      resolve(value);
+    }
+
+    socket.setTimeout(500);
+    socket.once('connect', () => finish(true));
+    socket.once('timeout', () => finish(false));
+    socket.once('error', () => finish(false));
+  });
+}
+
 async function run() {
   const scenarios = resolveScenarios(options);
   validateScenarios(scenarios);
   const automator = loadAutomator();
 
-  enableAutomation();
-  await waitForPort(autoPort, 30000);
+  if (await isPortOpen(autoPort)) {
+    process.stdout.write(`WeChat DevTools automation already listening on port ${autoPort}\n`);
+  } else {
+    enableAutomation();
+    await waitForPort(autoPort, 30000);
+  }
 
   const miniProgram = await automator.connect({
     wsEndpoint: `ws://127.0.0.1:${autoPort}`
@@ -351,7 +392,8 @@ function parseOptions(args) {
   const parsed = {
     profile: process.env.WECHAT_SMOKE_PROFILE || smokeConfig.defaultProfile,
     routes: (process.env.WECHAT_SMOKE_ROUTES || '').split(',').map(item => item.trim()).filter(Boolean),
-    artifacts: ''
+    artifacts: '',
+    idePort: parseOptionalPort(process.env.WECHAT_DEVTOOLS_PORT || process.env.WECHAT_DEVTOOLS_CLI_PORT)
   };
 
   for (const argument of args) {
@@ -361,6 +403,8 @@ function parseOptions(args) {
       parsed.routes = argument.slice('--routes='.length).split(',').map(item => item.trim()).filter(Boolean);
     } else if (argument.startsWith('--artifacts=')) {
       parsed.artifacts = argument.slice('--artifacts='.length);
+    } else if (argument.startsWith('--ide-port=')) {
+      parsed.idePort = parseOptionalPort(argument.slice('--ide-port='.length));
     } else {
       throw new Error(`未知参数: ${argument}`);
     }

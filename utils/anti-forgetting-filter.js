@@ -132,6 +132,20 @@ const getLocalDateKey = (timestamp) => {
   return `${year}-${month}-${day}`;
 };
 
+const getLocalDayStartTime = (timestamp) => {
+  const date = new Date(timestamp);
+  date.setHours(0, 0, 0, 0);
+  const dayStart = date.getTime();
+  return Number.isFinite(dayStart) ? dayStart : 0;
+};
+
+const isReviewDayDue = (scheduledTime, now) => {
+  const scheduledDayStart = getLocalDayStartTime(scheduledTime);
+  const nowDayStart = getLocalDayStartTime(now);
+  // A scheduled review opens at 00:00 on its local scheduled day.
+  return !!scheduledDayStart && !!nowDayStart && scheduledDayStart <= nowDayStart;
+};
+
 const getFirstStudyTime = (wordRecord) => {
   const timelineFirstTime = Array.isArray(wordRecord.reviewTimeline) &&
     wordRecord.reviewTimeline.length > 0
@@ -244,7 +258,7 @@ const shouldIncludeAntiForgettingWord = (wordId, wordRecord, context = {}) => {
   }
 
   const now = toTimestamp(context.now) || Date.now();
-  if (scheduledTime > now) {
+  if (!isReviewDayDue(scheduledTime, now)) {
     if (context.includeNotDue === true) {
       return {
         include: true,

@@ -13,6 +13,7 @@ const now = new Date(2026, 6, 27, 10, 0, 0, 0).getTime();
 const dueTime = now - 60 * 1000;
 const sameDayFuture = now + 60 * 60 * 1000;
 const tomorrow = new Date(2026, 6, 28, 0, 0, 0, 0).getTime();
+const tomorrowEvening = new Date(2026, 6, 28, 20, 0, 0, 0).getTime();
 const context = {
   studentId: 'student456',
   wordbookId: 'senior_unified',
@@ -60,8 +61,8 @@ result = shouldIncludeAntiForgettingWord('word_same_day_future', {
   reviewCount: 0,
   nextReviewTime: sameDayFuture
 }, context);
-assert.strictEqual(result.include, false, 'a review must not become due before its exact timestamp');
-assert.strictEqual(result.reason, 'not_due');
+assert.strictEqual(result.include, true, 'a review should become due from the start of its local scheduled day');
+assert.strictEqual(result.canReview, true);
 assert.strictEqual(result.scheduledTime, sameDayFuture);
 
 result = shouldIncludeAntiForgettingWord('word_exact_boundary', {
@@ -75,6 +76,19 @@ result = shouldIncludeAntiForgettingWord('word_exact_boundary', {
   now: sameDayFuture
 });
 assert.strictEqual(result.include, true, 'a review must become due at its exact timestamp');
+assert.strictEqual(result.canReview, true);
+
+result = shouldIncludeAntiForgettingWord('word_next_day_evening', {
+  mastered: false,
+  difficult: true,
+  antiForgettingSource: ANTI_FORGETTING_SOURCES.PREVIEW_NOT_MASTERED,
+  reviewCount: 0,
+  nextReviewTime: tomorrowEvening
+}, {
+  ...context,
+  now: tomorrow
+});
+assert.strictEqual(result.include, true, 'a review scheduled for tomorrow evening should be available at tomorrow 00:00');
 assert.strictEqual(result.canReview, true);
 
 const freshScheduleRecord = {

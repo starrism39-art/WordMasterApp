@@ -77,7 +77,12 @@ Page({
     this.checkSelectedStudentAndWordbook();
   },
 
+  onHide: function() {
+    this.clearReviewAvailabilityTimer();
+  },
+
   onUnload: function() {
+    this.clearReviewAvailabilityTimer();
     const app = getApp();
     if (app && app.off && this._onWordMasteryUpdated) {
       app.off('wordMasteryUpdated', this._onWordMasteryUpdated);
@@ -100,6 +105,60 @@ Page({
       console.error(`读取本地存储失败: ${key}`, error);
       return defaultValue;
     }
+  },
+
+  clearReviewAvailabilityTimer: function() {
+    if (this._reviewAvailabilityTimer) {
+      clearTimeout(this._reviewAvailabilityTimer);
+      this._reviewAvailabilityTimer = null;
+    }
+  },
+
+  getReviewDayStartTime: function(timestamp) {
+    const date = new Date(timestamp);
+    date.setHours(0, 0, 0, 0);
+    const dayStart = date.getTime();
+    return Number.isFinite(dayStart) ? dayStart : 0;
+  },
+
+  scheduleReviewAvailabilityRefresh: function(records) {
+    this.clearReviewAvailabilityTimer();
+    if (this.data.learningMode === 'review') {
+      return;
+    }
+
+    const now = Date.now();
+    const nowDayStart = this.getReviewDayStartTime(now);
+    let nextRefreshTime = 0;
+    (Array.isArray(records) ? records : []).forEach((record) => {
+      if (!record || record.reviewable === true || record.canReview === true || !record.time) {
+        return;
+      }
+      const reviewDayStart = this.getReviewDayStartTime(record.time);
+      if (!reviewDayStart) {
+        return;
+      }
+      const candidate = reviewDayStart <= nowDayStart
+        ? now + 1000
+        : reviewDayStart + 1000;
+      nextRefreshTime = nextRefreshTime
+        ? Math.min(nextRefreshTime, candidate)
+        : candidate;
+    });
+
+    if (!nextRefreshTime) {
+      return;
+    }
+
+    const maxDelay = 30 * 60 * 1000;
+    const delay = Math.max(1000, Math.min(nextRefreshTime - now, maxDelay));
+    this._reviewAvailabilityTimer = setTimeout(() => {
+      this._reviewAvailabilityTimer = null;
+      if (this.data.learningMode === 'review') {
+        return;
+      }
+      this.initMergedViewProcess();
+    }, delay);
   },
 
   migrateAntiForgettingSeedIfNeeded: function(studentId, wordbookId, wordMastery) {
@@ -259,6 +318,7 @@ Page({
         hasError: true,
         errorMessage: '当前没有抗遗忘复习记录，建议学习新单词'
       });
+      this.clearReviewAvailabilityTimer();
       return;
     }
     
@@ -273,6 +333,7 @@ Page({
       totalReviewCount: reviewRecords.length,
       loading: false
     });
+    this.scheduleReviewAvailabilityRefresh(mergedByDate);
     
     console.log('合并视图模式初始化完成');
   },
