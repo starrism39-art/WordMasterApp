@@ -36,6 +36,7 @@ const tests = [
   'test/cloud-pull-pagination.test.js',
   'test/page-stat-consistency.test.js',
   'test/student-list-display.test.js',
+  'test/student-edit.test.js',
   'test/anti-forgetting-filter.test.js',
   'test/preview-anti-forgetting-source.test.js',
   'test/home-anti-forgetting-source.test.js',

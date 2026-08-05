@@ -20,7 +20,7 @@
     <!-- 年级选择 -->
     <view class="form-item">
       <text class="form-label">年级</text>
-      <picker bindchange="changeGrade" value="{{gradeOptions.indexOf(grade)}}" range="{{gradeOptions}}">
+      <picker bindchange="changeGrade" value="{{gradeIndex}}" range="{{gradeOptions}}">
         <view class="picker">
           {{grade || '请选择年级'}}
           <text class="picker-arrow">▼</text>
@@ -46,6 +46,6 @@
   <!-- 操作按钮 -->
   <view class="button-group">
     <button class="reset-btn" bindtap="resetForm">重置</button>
-    <button class="submit-btn" bindtap="addStudent">{{editMode ? '保存修改' : '添加学生'}}</button>
+    <button class="submit-btn" bindtap="addStudent" loading="{{isSubmitting}}" disabled="{{isSubmitting}}">{{editMode ? '保存修改' : '添加学生'}}</button>
   </view>
 </view>

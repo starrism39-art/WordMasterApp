@@ -1,5 +1,12 @@
 // pages/add-student/add-student.js
 const MAX_STUDENT_LIMIT = 30;
+const CLOUD_ENV_ID = 'cloudbase-4gafzdch60ad597b';
+const STUDENT_NAME_CASCADE_COLLECTIONS = [
+  'word_mastery',
+  'learning_records',
+  'learning_progress',
+  'student_statistics'
+];
 const { isCloudReadOnlyMode } = require('../../utils/cloud-mode.js');
 
 Page({
@@ -10,9 +17,14 @@ Page({
   data: {
     name: '',
     grade: '',
+    gradeIndex: 0,
     joinDate: '',
     gradeOptions: ['一年级', '二年级', '三年级', '四年级', '五年级', '六年级', '初一', '初二', '初三', '高一', '高二', '高三'],
-    showDatePicker: false
+    showDatePicker: false,
+    editMode: false,
+    editingStudentId: '',
+    originalStudent: null,
+    isSubmitting: false
   },
 
   // 权限热刷新 Promise，供 addStudent 等待
@@ -29,12 +41,57 @@ Page({
     const day = String(today.getDate()).padStart(2, '0');
     const currentDate = `${year}-${month}-${day}`;
     
-    this.setData({
+    const nextData = {
       joinDate: currentDate
-    });
+    };
+
+    const editingStudentId = options && options.id
+      ? decodeURIComponent(options.id)
+      : '';
+    if (editingStudentId) {
+      const editingStudent = this.findLocalStudentById(editingStudentId);
+      if (editingStudent) {
+        const editingGrade = editingStudent.grade || '';
+        Object.assign(nextData, {
+          editMode: true,
+          editingStudentId: String(editingStudentId),
+          originalStudent: editingStudent,
+          name: editingStudent.name || '',
+          grade: editingGrade,
+          gradeIndex: this.findGradeIndex(editingGrade),
+          joinDate: editingStudent.joinDate || currentDate
+        });
+      } else {
+        wx.showToast({
+          title: '未找到学生信息',
+          icon: 'none',
+          duration: 1500
+        });
+      }
+    }
+
+    this.setData(nextData);
 
     // 【权限热刷新】每次进入页面时从云端拉取最新权限，无需重新登录
     this._permissionRefreshPromise = this.refreshPermissionFromCloud();
+  },
+
+  getStudentId(student) {
+    return String(student && (student.id || student.student_id || student._id || '') || '').trim();
+  },
+
+  findLocalStudentById(studentId) {
+    const targetId = String(studentId || '').trim();
+    if (!targetId) return null;
+    const students = wx.getStorageSync('students') || [];
+    return (Array.isArray(students) ? students : []).find((student) =>
+      this.getStudentId(student) === targetId
+    ) || null;
+  },
+
+  findGradeIndex(grade) {
+    const index = this.data.gradeOptions.indexOf(grade);
+    return index >= 0 ? index : 0;
   },
 
   /**
@@ -98,9 +155,10 @@ Page({
    * 改变年级选择
    */
   changeGrade(e) {
-    const index = e.detail.value;
+    const index = Number(e.detail.value) || 0;
     this.setData({
-      grade: this.data.gradeOptions[index]
+      grade: this.data.gradeOptions[index],
+      gradeIndex: index
     });
   },
 
@@ -136,6 +194,18 @@ Page({
    * 重置表单
    */
   resetForm() {
+    if (this.data.editMode && this.data.originalStudent) {
+      const original = this.data.originalStudent;
+      const originalGrade = original.grade || '';
+      this.setData({
+        name: original.name || '',
+        grade: originalGrade,
+        gradeIndex: this.findGradeIndex(originalGrade),
+        joinDate: original.joinDate || this.data.joinDate
+      });
+      return;
+    }
+
     // 重置为初始状态
     const today = new Date();
     const year = today.getFullYear();
@@ -146,8 +216,213 @@ Page({
     this.setData({
       name: '',
       grade: '',
+      gradeIndex: 0,
       joinDate: currentDate
     });
+  },
+
+  buildUpdatedStudent(originalStudent) {
+    const studentId = this.getStudentId(originalStudent) || this.data.editingStudentId;
+    const nowTs = Date.now();
+    return {
+      ...(originalStudent || {}),
+      id: String(studentId),
+      student_id: String(studentId),
+      name: (this.data.name || '').trim(),
+      grade: this.data.grade,
+      joinDate: this.data.joinDate,
+      updatedAt: nowTs
+    };
+  },
+
+  updateLocalStudentCaches(updatedStudent) {
+    const studentId = this.getStudentId(updatedStudent);
+    const students = wx.getStorageSync('students') || [];
+    const updatedStudents = (Array.isArray(students) ? students : []).map((student) => {
+      if (this.getStudentId(student) !== studentId) return student;
+      return {
+        ...student,
+        ...updatedStudent
+      };
+    });
+    wx.setStorageSync('students', updatedStudents);
+
+    const app = getApp();
+    const updateStoredStudent = (key) => {
+      const storedStudent = wx.getStorageSync(key);
+      if (this.getStudentId(storedStudent) !== studentId) return;
+      const nextStudent = {
+        ...storedStudent,
+        ...updatedStudent
+      };
+      wx.setStorageSync(key, nextStudent);
+      if (key === 'currentStudent' && app.globalData) {
+        app.globalData.currentStudent = nextStudent;
+      }
+    };
+
+    updateStoredStudent('currentStudent');
+    updateStoredStudent('selectedStudent');
+
+    if (app.globalData && this.getStudentId(app.globalData.currentStudent) === studentId) {
+      app.globalData.currentStudent = {
+        ...app.globalData.currentStudent,
+        ...updatedStudent
+      };
+    }
+  },
+
+  updateCloudStudent: async function(db, openid, updatedStudent) {
+    const studentId = this.getStudentId(updatedStudent);
+    const studentsRef = db.collection('students');
+    const updateData = {
+      name: updatedStudent.name,
+      grade: updatedStudent.grade,
+      joinDate: updatedStudent.joinDate,
+      teacher_id: openid,
+      student_id: studentId,
+      updatedAt: updatedStudent.updatedAt
+    };
+
+    try {
+      const result = await studentsRef.doc(studentId).update({ data: updateData });
+      if (!result || result.updated === 0) {
+        throw new Error('student document not updated by id');
+      }
+      return;
+    } catch (docUpdateError) {
+      console.warn('[StudentEdit] 按 _id 更新失败，尝试按 student_id 查询:', docUpdateError);
+      const queryRes = await studentsRef
+        .where({ student_id: studentId, teacher_id: openid })
+        .limit(1)
+        .get();
+
+      if (queryRes && Array.isArray(queryRes.data) && queryRes.data.length > 0) {
+        await studentsRef.doc(queryRes.data[0]._id).update({ data: updateData });
+        return;
+      }
+
+      await studentsRef.doc(studentId).set({
+        data: {
+          ...updatedStudent,
+          teacher_id: openid,
+          student_id: studentId
+        }
+      });
+    }
+  },
+
+  cascadeStudentNameToCloud: async function(db, openid, studentId, studentName, updatedAt) {
+    if (!studentId || !studentName) return;
+    for (const collectionName of STUDENT_NAME_CASCADE_COLLECTIONS) {
+      try {
+        const collection = db.collection(collectionName);
+        let processed = 0;
+        let offset = 0;
+        const limit = 100;
+        while (true) {
+          const res = await collection
+            .where({ teacher_id: openid, student_id: String(studentId) })
+            .limit(limit)
+            .skip(offset)
+            .get();
+          const docs = res && Array.isArray(res.data) ? res.data : [];
+          if (docs.length === 0) break;
+
+          await Promise.all(docs.map((doc) =>
+            collection.doc(doc._id).update({
+              data: {
+                student_name: studentName,
+                updatedAt
+              }
+            })
+          ));
+
+          processed += docs.length;
+          offset += limit;
+          if (docs.length < limit) break;
+        }
+        console.log('[StudentEdit] 级联更新完成:', collectionName, processed);
+      } catch (cascadeError) {
+        console.error('[StudentEdit] 级联更新失败（非阻塞）:', collectionName, cascadeError);
+      }
+    }
+  },
+
+  updateStudent: async function() {
+    if (this.data.isSubmitting) return;
+
+    const studentId = this.data.editingStudentId;
+    const originalStudent = this.data.originalStudent || this.findLocalStudentById(studentId);
+    if (!studentId || !originalStudent) {
+      wx.showToast({
+        title: '未找到学生信息',
+        icon: 'none',
+        duration: 1500
+      });
+      return;
+    }
+
+    const openid = wx.getStorageSync('openid');
+    if (!openid) {
+      wx.showToast({
+        title: '请先登录',
+        icon: 'none',
+        duration: 1500
+      });
+      return;
+    }
+
+    const updatedStudent = this.buildUpdatedStudent(originalStudent);
+
+    wx.showLoading({ title: '保存中...', mask: true });
+    this.setData({ isSubmitting: true });
+
+    try {
+      if (wx.cloud && !isCloudReadOnlyMode()) {
+        const db = wx.cloud.database({ env: CLOUD_ENV_ID });
+        await this.updateCloudStudent(db, openid, updatedStudent);
+        if (String(originalStudent.name || '') !== String(updatedStudent.name || '')) {
+          await this.cascadeStudentNameToCloud(
+            db,
+            openid,
+            this.getStudentId(updatedStudent),
+            updatedStudent.name,
+            updatedStudent.updatedAt
+          );
+        }
+      } else if (wx.cloud) {
+        console.warn('[cloud-read-only] skip student cloud update:', studentId);
+      } else {
+        console.warn('[StudentEdit] 当前基础库不支持 wx.cloud，跳过云端更新:', studentId);
+      }
+
+      this.updateLocalStudentCaches(updatedStudent);
+      this.setData({
+        originalStudent: updatedStudent,
+        isSubmitting: false
+      });
+
+      wx.hideLoading();
+      wx.showToast({
+        title: '保存成功',
+        icon: 'success',
+        duration: 1200
+      });
+
+      setTimeout(() => {
+        wx.navigateBack({ delta: 1 });
+      }, 1200);
+    } catch (error) {
+      console.error('[StudentEdit] 保存学生信息失败:', error);
+      wx.hideLoading();
+      this.setData({ isSubmitting: false });
+      wx.showToast({
+        title: '保存失败，请重试',
+        icon: 'none',
+        duration: 1800
+      });
+    }
   },
 
   /**
@@ -170,6 +445,11 @@ Page({
         icon: 'none',
         duration: 1500
       });
+      return;
+    }
+
+    if (this.data.editMode) {
+      await this.updateStudent();
       return;
     }
 
