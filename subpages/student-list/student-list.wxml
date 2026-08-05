@@ -2,13 +2,17 @@
 <view class="container {{selectMode ? 'select-mode' : ''}}">
   <view class="header">
     <text class="title">{{selectMode ? '选择学生' : '学生管理'}}</text>
-    <text wx:if="{{!selectMode}}" class="subtitle">共 {{students.length}} 人 · 当前显示 {{filteredStudents.length}} 人</text>
+    <text wx:if="{{!selectMode}}" class="subtitle">
+      共 {{students.length}} 人
+      <block wx:if="{{searchKey || showAllStudents}}"> · 当前显示 {{filteredStudents.length}} / {{matchedStudentCount}} 人</block>
+    </text>
+    <text wx:if="{{isRefreshingStudents}}" class="refresh-tip">正在后台刷新学生数据...</text>
   </view>
 
   <view class="search-bar">
     <input
       type="text"
-      placeholder="搜索学生姓名或年级"
+      placeholder="输入学生姓名搜索"
       value="{{searchKey}}"
       bindinput="onSearch"
       confirm-type="search"
@@ -16,7 +20,13 @@
     <view wx:if="{{searchKey}}" class="clear-search" bindtap="clearSearch">清空</view>
   </view>
 
-  <view class="student-list">
+  <view wx:if="{{!searchKey && !showAllStudents}}" class="search-guide">
+    <text class="guide-title">请输入学生姓名搜索</text>
+    <text class="guide-desc">学生较多时，先搜索姓名会更快找到对应学生。</text>
+    <button class="show-all-btn" size="mini" bindtap="showAllStudentsList">显示全部学生</button>
+  </view>
+
+  <view wx:if="{{searchKey || showAllStudents}}" class="student-list">
     <block wx:for="{{filteredStudents}}" wx:key="id">
       <view class="student-item-wrapper" wx:if="{{item.id || item._id}}">
         <movable-area class="slide-area">
@@ -50,7 +60,11 @@
 
     <view wx:if="{{filteredStudents.length === 0}}" class="empty-state">
       <text class="empty-title">{{searchKey ? '没有找到匹配的学生' : '暂无学生数据'}}</text>
-      <text class="empty-desc">{{searchKey ? '换个关键词试试，例如姓名或年级' : '点击右下角 + 添加第一位学生'}}</text>
+      <text class="empty-desc">{{searchKey ? '请检查姓名是否输入正确' : '点击右下角 + 添加第一位学生'}}</text>
+    </view>
+
+    <view wx:if="{{hasMoreStudents}}" class="load-more" bindtap="loadMoreStudents">
+      继续显示更多学生
     </view>
   </view>
 

@@ -5,6 +5,7 @@ const { isCloudReadOnlyMode } = require('../../utils/cloud-mode.js');
 
 const ACTION_BUTTON_WIDTH_RPX = 140;
 const ACTION_TOTAL_RPX = ACTION_BUTTON_WIDTH_RPX * 2;
+const STUDENT_DISPLAY_BATCH_SIZE = 30;
 
 const normalizeStudent = (student) => {
   if (!student) return null;
@@ -24,6 +25,11 @@ Page({
     students: [],
     filteredStudents: [],
     searchKey: '',
+    showAllStudents: false,
+    visibleStudentLimit: STUDENT_DISPLAY_BATCH_SIZE,
+    matchedStudentCount: 0,
+    hasMoreStudents: false,
+    isRefreshingStudents: false,
     selectMode: false,
     currentStudentId: '',
     swipeXById: {},
@@ -31,7 +37,7 @@ Page({
   },
 
   _swipeRuntime: {},
-  
+
   onLoad: function(options) {
     // 检查是否是选择模式
     this.setData({
@@ -60,7 +66,7 @@ Page({
     // 加载学生数据
     this.loadStudents();
   },
-  
+
   onShow: function() {
     // 重新加载数据
     this.loadStudents();
@@ -93,22 +99,63 @@ Page({
     const key = String(searchKey || '').trim().toLowerCase();
     if (!key) return list;
     return (list || []).filter(student =>
-      (student.name && student.name.toLowerCase().includes(key)) ||
-      (student.grade && student.grade.toLowerCase().includes(key)) ||
-      (student.class && student.class.toLowerCase().includes(key))
+      student.name && String(student.name).toLowerCase().includes(key)
     );
   },
-  
-  // 加载学生列表
-  loadStudents: async function() {
-    try {
-      // ★ 第一步：从云端强制拉取最新学生数据（双向合并+增量补传）
-      const openid = wx.getStorageSync('openid');
-      if (openid && wx.cloud) {
-        await syncDataFromCloud(openid);
-      }
 
-      // ★ 第二步：从本地存储读取（已被云端同步刷新）
+  buildStudentDisplayState: function(students, searchKey, showAllStudents, visibleLimit) {
+    const key = String(searchKey || '').trim();
+    const shouldShowList = !!key || !!showAllStudents;
+    const matchedStudents = shouldShowList
+      ? (key ? this.applySearch(students, key) : students)
+      : [];
+    const limit = Math.max(
+      STUDENT_DISPLAY_BATCH_SIZE,
+      Number(visibleLimit) || STUDENT_DISPLAY_BATCH_SIZE
+    );
+    const visibleStudents = matchedStudents.slice(0, limit);
+
+    return {
+      filteredStudents: visibleStudents,
+      matchedStudentCount: matchedStudents.length,
+      hasMoreStudents: matchedStudents.length > visibleStudents.length,
+      visibleStudentLimit: limit,
+      swipeXById: this.buildSwipeState(visibleStudents)
+    };
+  },
+
+  updateStudentDisplay: function(options) {
+    const nextSearchKey = options && Object.prototype.hasOwnProperty.call(options, 'searchKey')
+      ? options.searchKey
+      : this.data.searchKey;
+    const nextShowAllStudents = options && Object.prototype.hasOwnProperty.call(options, 'showAllStudents')
+      ? options.showAllStudents
+      : this.data.showAllStudents;
+    const nextVisibleLimit = options && Object.prototype.hasOwnProperty.call(options, 'visibleStudentLimit')
+      ? options.visibleStudentLimit
+      : this.data.visibleStudentLimit;
+
+    this.setData({
+      searchKey: nextSearchKey,
+      showAllStudents: nextShowAllStudents,
+      ...this.buildStudentDisplayState(
+        this.data.students,
+        nextSearchKey,
+        nextShowAllStudents,
+        nextVisibleLimit
+      )
+    });
+  },
+
+  // 加载学生列表
+  loadStudents: function() {
+    this.loadLocalStudents();
+    this.refreshStudentsFromCloud();
+  },
+
+  // 加载本地学生，先让页面快速显示
+  loadLocalStudents: function() {
+    try {
       const allStudents = wx.getStorageSync('students') || [];
       const students = this.sanitizeStudents(allStudents);
       const currentStudent = wx.getStorageSync('currentStudent') || {};
@@ -125,44 +172,77 @@ Page({
 
       wx.setStorageSync('students', students);
 
-      const filteredStudents = this.applySearch(students, this.data.searchKey);
-
       this.setData({
         students,
-        filteredStudents,
         currentStudentId,
-        swipeXById: this.buildSwipeState(students)
+        ...this.buildStudentDisplayState(
+          students,
+          this.data.searchKey,
+          this.data.showAllStudents,
+          this.data.visibleStudentLimit
+        )
       });
     } catch (error) {
-      console.error('加载学生数据失败:', error);
-      // 降级：直接用本地缓存
+      console.error('加载本地学生数据失败:', error);
+    }
+  },
+
+  refreshStudentsFromCloud: async function() {
+    const openid = wx.getStorageSync('openid');
+    if (!openid || !wx.cloud || this.data.isRefreshingStudents) {
+      return;
+    }
+
+    this.setData({ isRefreshingStudents: true });
+    try {
+      await syncDataFromCloud(openid);
       const allStudents = wx.getStorageSync('students') || [];
       const students = this.sanitizeStudents(allStudents);
       this.setData({
         students,
-        filteredStudents: this.applySearch(students, this.data.searchKey),
-        swipeXById: this.buildSwipeState(students)
+        isRefreshingStudents: false,
+        ...this.buildStudentDisplayState(
+          students,
+          this.data.searchKey,
+          this.data.showAllStudents,
+          this.data.visibleStudentLimit
+        )
       });
+    } catch (error) {
+      console.error('刷新云端学生数据失败:', error);
+      this.setData({ isRefreshingStudents: false });
     }
   },
-  
-  // 搜索学生
+
   onSearch: function(e) {
     const searchKey = (e.detail.value || '').trim();
-    this.setData({ searchKey });
-    const filteredStudents = this.applySearch(this.data.students, searchKey);
-    this.setData({
-      filteredStudents,
-      swipeXById: this.buildSwipeState(filteredStudents)
+    this.updateStudentDisplay({
+      searchKey,
+      showAllStudents: false,
+      visibleStudentLimit: STUDENT_DISPLAY_BATCH_SIZE
     });
   },
 
   // 清空搜索
   clearSearch: function() {
-    this.setData({
+    this.updateStudentDisplay({
       searchKey: '',
-      filteredStudents: this.data.students,
-      swipeXById: this.buildSwipeState(this.data.students)
+      showAllStudents: false,
+      visibleStudentLimit: STUDENT_DISPLAY_BATCH_SIZE
+    });
+  },
+
+  showAllStudentsList: function() {
+    this.updateStudentDisplay({
+      searchKey: '',
+      showAllStudents: true,
+      visibleStudentLimit: STUDENT_DISPLAY_BATCH_SIZE
+    });
+  },
+
+  loadMoreStudents: function() {
+    this.updateStudentDisplay({
+      visibleStudentLimit: this.data.visibleStudentLimit + STUDENT_DISPLAY_BATCH_SIZE
     });
   },
   
@@ -354,9 +434,12 @@ Page({
           const visibleStudents = this.data.students.filter(s => String(s.id) !== String(studentId));
           this.setData({
             students: visibleStudents,
-            filteredStudents: this.data.searchKey ? 
-              this.applySearch(visibleStudents, this.data.searchKey) : visibleStudents,
-            swipeXById: this.buildSwipeState(visibleStudents)
+            ...this.buildStudentDisplayState(
+              visibleStudents,
+              this.data.searchKey,
+              this.data.showAllStudents,
+              this.data.visibleStudentLimit
+            )
           });
 
           // ★ 第四步：清理关联的当前学生选择

@@ -26,6 +26,13 @@
   color: #9ca3af;
 }
 
+.refresh-tip {
+  display: block;
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  color: #60a5fa;
+}
+
 .search-bar {
   margin-bottom: 20rpx;
   background: #ffffff;
@@ -57,6 +64,42 @@
 
 .student-list {
   padding: 4rpx 0;
+}
+
+.search-guide {
+  margin-top: 20rpx;
+  padding: 72rpx 36rpx;
+  border-radius: 20rpx;
+  background: #ffffff;
+  text-align: center;
+  box-shadow: 0 8rpx 20rpx rgba(15, 23, 42, 0.04);
+}
+
+.guide-title {
+  display: block;
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #374151;
+}
+
+.guide-desc {
+  display: block;
+  margin-top: 12rpx;
+  font-size: 24rpx;
+  line-height: 1.6;
+  color: #9ca3af;
+}
+
+.show-all-btn {
+  margin-top: 32rpx;
+  min-width: 220rpx;
+  height: 64rpx;
+  line-height: 64rpx;
+  border-radius: 999rpx;
+  color: #2563eb;
+  background: #eff6ff;
+  border: 1rpx solid #bfdbfe;
+  font-size: 26rpx;
 }
 
 .student-item-wrapper {
@@ -159,6 +202,19 @@
   margin-top: 10rpx;
   color: #c0c4cc;
   font-size: 24rpx;
+}
+
+.load-more {
+  margin: 16rpx auto 28rpx;
+  width: 280rpx;
+  height: 68rpx;
+  line-height: 68rpx;
+  border-radius: 999rpx;
+  text-align: center;
+  color: #2563eb;
+  background: #eff6ff;
+  font-size: 26rpx;
+  border: 1rpx solid #dbeafe;
 }
 
 .floating-add-button {
