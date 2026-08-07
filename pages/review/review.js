@@ -9,6 +9,10 @@ const {
 const { syncWordMasteryBatch } = require('../../utils/cloud-sync.js');
 const { resolveCurrentStudent, resolveCurrentWordbook } = require('../../utils/learning-context.js');
 const { stripStableWordOccurrenceSuffix } = require('../../utils/learning-word-ids.js');
+const {
+  buildReviewWordLookup,
+  resolveReviewWordEntry
+} = require('../../utils/review-word-resolver.js');
 
 // 初始化合并后的词书数据和单词映射表
 let mergedWords = mergeWordbooks();
@@ -2343,84 +2347,21 @@ Page({
     
     console.log('单词掌握记录:', wordMastery);
     
-    // 加载本地词书数据作为备用
-    let localWords = [];
+    // 只读加载当前词书的权威词条。这里复用学习页的数据加载入口，
+    // 避免答题页维护另一套不完整的词书文件映射。
+    let currentWordbookWords = [];
     try {
       const wordbookCategory = this.data.currentWordbook?.category || 'primary';
       const wordbookId = this.data.currentWordbook?.id || '';
       console.log('词书类别:', wordbookCategory);
       console.log('词书ID:', wordbookId);
-      
-      // 根据词书ID加载对应的词书文件
-      if (wordbookCategory === 'primary') {
-        localWords = require('../../data/primary_real_words.js');
-      } else if (wordbookCategory === 'junior') {
-        // 根据具体的词书ID加载对应的年级词书
-        if (wordbookId.includes('7th') && wordbookId.includes('second')) {
-          localWords = require('../../data/new_standard_7th_grade_second_complete.js');
-        } else if (wordbookId.includes('7th')) {
-          localWords = require('../../data/new_standard_7th_grade_words.js');
-        } else if (wordbookId.includes('8th') && wordbookId.includes('second')) {
-          localWords = require('../../data/new_standard_8th_grade_second_complete.js');
-        } else if (wordbookId.includes('8th')) {
-          localWords = require('../../data/new_standard_8th_grade_words.js');
-        } else if (wordbookId.includes('9th') && wordbookId.includes('second')) {
-          localWords = require('../../data/new_standard_9th_grade_second_complete.js');
-        } else if (wordbookId.includes('9th')) {
-          localWords = require('../../data/new_standard_9th_grade_words.js');
-        } else if (wordbookId.includes('ren_jiao')) {
-          // 人教版词书
-          if (wordbookId.includes('9th')) {
-            localWords = require('../../data/ren_jiao_9th_grade.js');
-          } else if (wordbookId.includes('8th') && wordbookId.includes('second')) {
-            localWords = require('../../data/ren_jiao_8th_grade_second.js');
-          } else if (wordbookId.includes('8th')) {
-            localWords = require('../../data/ren_jiao_8th_grade_first.js');
-          } else if (wordbookId.includes('7th') && wordbookId.includes('second')) {
-            localWords = require('../../data/ren_jiao_7th_grade_second.js');
-          } else if (wordbookId.includes('7th')) {
-            localWords = require('../../data/ren_jiao_7th_grade_first.js');
-          }
-        } else if (wordbookId.includes('yi_lin')) {
-          // 译林版词书
-          if (wordbookId.includes('9th') && wordbookId.includes('second')) {
-            localWords = require('../../data/yi_lin_9th_grade_second.js');
-          } else if (wordbookId.includes('9th')) {
-            localWords = require('../../data/yi_lin_9th_grade_first.js');
-          } else if (wordbookId.includes('8th') && wordbookId.includes('second')) {
-            localWords = require('../../data/yi_lin_8th_grade_second.js');
-          } else if (wordbookId.includes('8th')) {
-            localWords = require('../../data/yi_lin_8th_grade_first.js');
-          } else if (wordbookId.includes('7th') && wordbookId.includes('second')) {
-            localWords = require('../../data/yi_lin_7th_grade_second.js');
-          } else {
-            localWords = require('../../data/yi_lin_7th_grade_first.js');
-          }
-        } else if (wordbookId.includes('ji')) {
-          // 冀教版词书
-          if (wordbookId.includes('7th') && wordbookId.includes('second')) {
-            localWords = require('../../data/ji_7th_grade_second.js');
-          } else if (wordbookId.includes('7th')) {
-            localWords = require('../../data/ji_7th_grade_words.js');
-          } else if (wordbookId.includes('8th') && wordbookId.includes('second')) {
-            localWords = require('../../data/ji_8th_grade_second.js');
-          } else if (wordbookId.includes('8th')) {
-            localWords = require('../../data/ji_8th_grade_first.js');
-          } else if (wordbookId.includes('9th')) {
-            localWords = require('../../data/ji_9th_grade_words.js');
-          }
-        } else {
-          // 默认使用七年级下册完整版
-          localWords = require('../../data/new_standard_7th_grade_second_complete.js');
-        }
-      } else if (wordbookCategory === 'senior') {
-        localWords = require('../../data/senior_real_words.js');
-      }
-      
-      console.log('加载的本地词书数据数量:', localWords.length);
+
+      currentWordbookWords = generateWordsForBook(wordbookCategory, wordbookId, 0, 99999);
+      console.log('加载的当前词书权威数据数量:', currentWordbookWords.length);
     } catch (error) {
-      console.error('加载本地词书数据失败:', error);
+      console.error('加载当前词书权威数据失败:', error);
     }
+    const reviewWordLookup = buildReviewWordLookup(currentWordbookWords, wordbookId);
     
     // 确保wordIds是数组
     if (!Array.isArray(wordIds)) {
@@ -2463,61 +2404,13 @@ Page({
         return;
       }
       
-      // 从wordId中提取单词 - 改进的逻辑
-      let word = wordId;
-      
-      // 尝试从wordId中提取单词
-      try {
-        // 情况1: wordId格式为 "wordbookId_word_real_..."
-        if (wordbookId && wordId.includes(`${wordbookId}_`)) {
-          word = wordId.replace(`${wordbookId}_`, '').replace('_real_', '');
-        } 
-        // 情况2: wordId格式为 "word_real_..."
-        else if (wordId.includes('_real_')) {
-          word = wordId.replace('_real_', '');
-        } 
-        // 情况3: wordId格式为 "wordbookId_word"
-        else if (wordId.includes('_') && !wordId.includes('_real_')) {
-          // 假设格式为 "wordbookId_word"，提取单词部分
-          const parts = wordId.split('_');
-          if (parts.length > 1) {
-            // 移除第一个部分（假设是wordbookId），保留其余部分作为单词
-            // 这样可以正确处理包含下划线的单词
-            parts.shift();
-            word = parts.join('_');
-          }
-        }
-        // 情况4: wordId是数字，尝试从本地词书数据中查找对应的单词
-        else if (!isNaN(wordId) && !isNaN(parseFloat(wordId))) {
-          // 尝试从合并后的词书数据中查找对应的单词
-          console.log('wordId是数字，尝试从词书数据中查找:', wordId);
-          const wordIndex = parseInt(wordId) - 1; // 假设数字是词书数据中的索引
-          if (mergedWords && mergedWords.length > wordIndex) {
-            const foundWord = mergedWords[wordIndex];
-            if (foundWord && foundWord.word) {
-              word = foundWord.word;
-              console.log('从词书数据中找到单词:', wordId, '→', word);
-            }
-          }
-        }
-        // 情况5: 直接使用wordId作为单词
-        
-        // 重复词条的稳定后缀只用于身份隔离，展示和查词时仍使用原单词。
-        word = stripStableWordOccurrenceSuffix(word);
-
-        // 替换下划线为空格
-        word = word.replace(/_/g, ' ');
-        
-        // 去除多余的空白字符
-        word = word.trim();
-
-        // 统一纠偏，避免 miss 在复习页被显示成 ms
-        word = this.canonicalizeReviewWord(word, wordId);
-        
-        console.log('从wordId中提取的单词:', wordId, '→', word);
-      } catch (error) {
-        console.error('提取单词失败:', error);
-      }
+      // 先按当前词书的完整ID精确回查，再兼容旧版ID格式；全程只读。
+      const resolvedWordInfo = resolveReviewWordEntry(wordId, reviewWordLookup);
+      const canonicalWord = resolvedWordInfo.entry && resolvedWordInfo.entry.word
+        ? String(resolvedWordInfo.entry.word).trim()
+        : '';
+      let word = this.canonicalizeReviewWord(resolvedWordInfo.displayWord, wordId);
+      console.log('抗遗忘词条解析:', wordId, '→', word, '来源:', resolvedWordInfo.source);
       
       // 过滤非英语单词的内容
       const nonWordList = ['objectspread', 'undefined', 'null', 'NaN', '{}', '[]'];
@@ -2535,10 +2428,10 @@ Page({
       // 从合并后的词书数据中查找完整的单词信息
       let meaning = '未知';
       let phonetic = '';
-      let matchedWord = null;
+      let matchedWord = resolvedWordInfo.entry ? { ...resolvedWordInfo.entry } : null;
       
       // 1. 使用合并后的词书数据和单词映射表查找
-      if (wordMap) {
+      if (!matchedWord && wordMap) {
         // 先尝试精确匹配
               const normalizedWord = word.toLowerCase();
               const exactMatch = wordMap[normalizedWord] || wordMap[normalizedWord.replace(/\./g, '')];
@@ -2558,10 +2451,10 @@ Page({
       }
       
       // 2. 如果还是没找到，尝试从本地词书数据中查找
-      if (!matchedWord && localWords.length > 0) {
-        matchedWord = localWords.find(w => w.word === word);
+      if (!matchedWord && currentWordbookWords.length > 0) {
+        matchedWord = currentWordbookWords.find(w => w.word === word);
         if (!matchedWord) {
-          matchedWord = localWords.find(w => w.word && w.word.toLowerCase() === word.toLowerCase());
+          matchedWord = currentWordbookWords.find(w => w.word && w.word.toLowerCase() === word.toLowerCase());
         }
         if (matchedWord) {
           console.log('使用本地词书数据匹配结果:', word, '→', matchedWord);
@@ -2736,7 +2629,7 @@ Page({
       // 创建单词对象，使用词书数据中的单词大小写，与预习界面保持一致
       const wordObject = {
         id: wordId,
-        word: matchedWord ? matchedWord.word : word, // 使用词书数据中的单词大小写，与预习界面保持一致
+        word: canonicalWord || (matchedWord ? matchedWord.word : word), // 权威词条优先，绝不改写原始大小写
         meaning: meaning,
         phonetic: phonetic,
         translation: meaning // 确保translation属性也存在
@@ -3070,7 +2963,7 @@ Page({
       // 直接返回一个基于单词的默认定义
       console.log('使用本地默认定义:', word);
       return {
-        word: word.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+        word: word,
         phonetic: '/fəˈnetɪk/',
         meaning: '单词释义'
       };
@@ -3078,7 +2971,7 @@ Page({
       console.error('获取单词释义失败:', error);
       // 异常时返回本地默认定义
       return {
-        word: word.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+        word: word,
         phonetic: '/fəˈnetɪk/',
         meaning: '单词释义'
       };

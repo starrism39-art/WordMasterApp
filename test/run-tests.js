@@ -43,6 +43,7 @@ const tests = [
   'test/preview-state-sync-order.test.js',
   'test/preview-state-clear.test.js',
   'test/review-page-generation.test.js',
+  'test/review-word-resolution.test.js',
   'test/review-result-persistence.test.js',
   'test/test-cloud-sync.js'
 ];
