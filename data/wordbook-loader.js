@@ -211,6 +211,14 @@ class WordbookLoader {
     console.log('生成词书单词:', wordbookCategory, wordbookId, startIndex, batchSize);
 
     let allWords = [];
+    let cloudWordbookLoader = null;
+    let isCloudWordbookId = false;
+    try {
+      cloudWordbookLoader = require('../utils/cloud-wordbook-loader.js');
+      isCloudWordbookId = cloudWordbookLoader.isCloudWordbook(wordbookId);
+    } catch (error) {
+      console.warn('检查云端词书配置失败:', error);
+    }
     
     // 首先检查是否是人教版重录版（v2）
     if (wordbookId === 'junior_7th_ren_jiao_v2') {
@@ -439,8 +447,7 @@ class WordbookLoader {
         // 加载高中单词
         // 【云端迁移】优先检查云端缓存
         try {
-          const cloudLoader = require('../utils/cloud-wordbook-loader.js');
-          const cloudWords = cloudLoader.getWordsSync(wordbookId);
+          const cloudWords = cloudWordbookLoader && cloudWordbookLoader.getWordsSync(wordbookId);
           if (cloudWords && cloudWords.length > 0) {
             allWords = cloudWords;
             console.log('成功从云端缓存加载高中词书，数量:', allWords.length);
@@ -454,7 +461,7 @@ class WordbookLoader {
     }
 
     // 确保加载外研社七年级下册单词
-    if (allWords.length === 0) {
+    if (allWords.length === 0 && !isCloudWordbookId) {
       try {
         // 优先加载完整版本的外研社七年级下册单词
         const words = require('./new_standard_7th_grade_second_complete.js');
@@ -470,6 +477,10 @@ class WordbookLoader {
           console.error('最后尝试加载外研社七年级下册单词（标准版）失败:', error);
         }
       }
+    }
+
+    if (allWords.length === 0 && isCloudWordbookId) {
+      console.warn('云端词书缓存尚未就绪，拒绝使用其他词书兜底:', wordbookId);
     }
 
     // 如果没有词汇数据，使用备用数据

@@ -4,6 +4,72 @@ const {
   assignStableWordIds,
   stripStableWordOccurrenceSuffix
 } = require('./learning-word-ids.js');
+const { generateWordsForBook } = require('../data/wordbook-loader.js');
+const cloudWordbookLoader = require('./cloud-wordbook-loader.js');
+
+const PLACEHOLDER_MEANINGS = new Set([
+  '单词释义',
+  '无释义',
+  '未知',
+  '未知释义',
+  '暂无释义',
+  '暂无释义，请尝试其他单词'
+]);
+
+const MEANING_FIELDS = [
+  'meaning',
+  'translation',
+  'chineseMeaning',
+  'chinese',
+  'definitionZh',
+  'definitionCN',
+  'cnMeaning',
+  'definition'
+];
+
+const normalizeMeaningValue = (value) => {
+  if (typeof value === 'string' || typeof value === 'number') {
+    return String(value).replace(/\s+/g, ' ').trim();
+  }
+  if (Array.isArray(value)) {
+    return value.map(normalizeMeaningValue).filter(Boolean).join('；');
+  }
+  if (value && typeof value === 'object') {
+    const nestedFields = ['zh', 'cn', 'meaning', 'translation', 'text'];
+    for (const field of nestedFields) {
+      const normalized = normalizeMeaningValue(value[field]);
+      if (normalized) return normalized;
+    }
+  }
+  return '';
+};
+
+const isRealChineseMeaning = (value) => {
+  const normalized = normalizeMeaningValue(value);
+  return !!normalized
+    && !PLACEHOLDER_MEANINGS.has(normalized)
+    && /[\u3400-\u9fff]/.test(normalized);
+};
+
+const getReviewWordMeaning = (entry) => {
+  if (!entry || typeof entry !== 'object') {
+    return { meaning: '', field: '', status: 'entry_not_found' };
+  }
+
+  for (const field of MEANING_FIELDS) {
+    const meaning = normalizeMeaningValue(entry[field]);
+    if (isRealChineseMeaning(meaning)) {
+      return { meaning, field, status: 'resolved' };
+    }
+  }
+
+  return { meaning: '', field: '', status: 'source_meaning_missing' };
+};
+
+const getReviewWordPhonetic = (entry) => {
+  if (!entry || typeof entry !== 'object') return '';
+  return normalizeMeaningValue(entry.phonetic || entry.phonetics || entry.pronunciation);
+};
 
 const normalizeWordKey = (value) => String(value || '')
   .replace(/_/g, ' ')
@@ -133,8 +199,74 @@ const resolveReviewWordEntry = (wordId, lookup) => {
   };
 };
 
+const resolveReviewWordObject = (wordId, lookup) => {
+  const resolved = resolveReviewWordEntry(wordId, lookup);
+  const entry = resolved.entry;
+  const meaningInfo = getReviewWordMeaning(entry);
+  const word = entry && entry.word
+    ? String(entry.word).replace(/\s+/g, ' ').trim()
+    : String(resolved.displayWord || '').replace(/\s+/g, ' ').trim();
+
+  return {
+    id: String(wordId || ''),
+    word,
+    meaning: meaningInfo.meaning,
+    translation: meaningInfo.meaning,
+    phonetic: getReviewWordPhonetic(entry),
+    _reviewResolution: {
+      source: resolved.source,
+      meaningField: meaningInfo.field,
+      status: meaningInfo.status
+    }
+  };
+};
+
+const loadReviewWordbookWords = async (wordbook) => {
+  const safeWordbook = wordbook || {};
+  const wordbookId = String(safeWordbook.id || '').trim();
+  const category = String(safeWordbook.category || 'primary').trim() || 'primary';
+
+  if (!wordbookId) {
+    return {
+      words: [],
+      wordbookId,
+      category,
+      dataSource: 'missing_wordbook',
+      loadError: 'missing_wordbook_id'
+    };
+  }
+
+  let dataSource = 'local';
+  if (cloudWordbookLoader.isCloudWordbook(wordbookId)) {
+    dataSource = 'cloud';
+    const cloudWords = await cloudWordbookLoader.ensureWordsLoaded(wordbookId);
+    if (!cloudWordbookLoader.isCompleteWordList(wordbookId, cloudWords)) {
+      return {
+        words: [],
+        wordbookId,
+        category,
+        dataSource,
+        loadError: 'cloud_wordbook_unavailable'
+      };
+    }
+  }
+
+  const words = generateWordsForBook(category, wordbookId, 0, 99999);
+  return {
+    words: Array.isArray(words) ? words : [],
+    wordbookId,
+    category,
+    dataSource,
+    loadError: ''
+  };
+};
+
 module.exports = {
   buildReviewWordLookup,
   extractDisplayWordFromReviewId,
-  resolveReviewWordEntry
+  getReviewWordMeaning,
+  isRealChineseMeaning,
+  loadReviewWordbookWords,
+  resolveReviewWordEntry,
+  resolveReviewWordObject
 };

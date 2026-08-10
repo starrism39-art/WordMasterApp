@@ -4,7 +4,10 @@ const assert = require('assert');
 const { generateWordsForBook } = require('../data/wordbook-loader.js');
 const {
   buildReviewWordLookup,
-  resolveReviewWordEntry
+  getReviewWordMeaning,
+  isRealChineseMeaning,
+  resolveReviewWordEntry,
+  resolveReviewWordObject
 } = require('../utils/review-word-resolver.js');
 
 const sampleWords = [
@@ -26,6 +29,25 @@ assert.strictEqual(
   resolveReviewWordEntry('local_book_unknown_word_42', sampleLookup).displayWord,
   'unknown word'
 );
+assert.strictEqual(
+  resolveReviewWordObject('local_book_real_united_states', sampleLookup).word,
+  'United States',
+  '短语必须保持完整，不能截断为首个单词'
+);
+assert.strictEqual(
+  resolveReviewWordObject('local_book_real_united_states', sampleLookup).meaning,
+  '美国'
+);
+assert.deepStrictEqual(
+  getReviewWordMeaning({ translation: '兼容翻译字段' }),
+  { meaning: '兼容翻译字段', field: 'translation', status: 'resolved' }
+);
+assert.deepStrictEqual(
+  getReviewWordMeaning({ definition: { zh: '兼容嵌套释义' } }),
+  { meaning: '兼容嵌套释义', field: 'definition', status: 'resolved' }
+);
+assert.strictEqual(isRealChineseMeaning('单词释义'), false);
+assert.strictEqual(isRealChineseMeaning('真实中文释义'), true);
 
 const storage = {};
 global.wx = {
@@ -112,5 +134,9 @@ assert.strictEqual(unresolvedProspect.meaning, '单词释义');
 
 const unresolvedLikelihood = runReviewLoad(missingBook, 'legacy_local_book_likelihood_43');
 assert.strictEqual(unresolvedLikelihood.word, 'likelihood', '未知词条兜底不得擅自首字母大写');
+
+storage.cloud_wb_gaokao_reading_words = undefined;
+const missingCloudWords = generateWordsForBook('senior', 'gaokao_reading_words', 0, 99999);
+assert.strictEqual(missingCloudWords.length, 0, '云端词书缓存缺失时不得加载其他词书掩盖失败');
 
 process.stdout.write('review-word-resolution: PASS\n');
