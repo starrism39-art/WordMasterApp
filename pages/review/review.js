@@ -11,7 +11,9 @@ const { resolveCurrentStudent, resolveCurrentWordbook } = require('../../utils/l
 const { stripStableWordOccurrenceSuffix } = require('../../utils/learning-word-ids.js');
 const {
   buildReviewWordLookup,
-  resolveReviewWordEntry
+  loadReviewWordbookWords,
+  resolveReviewWordEntry,
+  resolveReviewWordObject
 } = require('../../utils/review-word-resolver.js');
 
 // 初始化合并后的词书数据和单词映射表
@@ -1008,7 +1010,7 @@ Page({
                 matchedWord = {
                   word: word,
                   meaning: '暂无释义，请尝试其他单词',
-                  phonetic: '/fəˈnetɪk/'
+                  phonetic: ''
                 };
               }
             }
@@ -2327,8 +2329,97 @@ Page({
     });
   },
 
+  loadResolvedReviewWords: async function(wordIds) {
+    const studentId = this.data.currentStudent?.id;
+    const currentWordbook = this.data.currentWordbook || {};
+    const wordbookId = currentWordbook.id;
+
+    if (!Array.isArray(wordIds)) {
+      console.error('[Review] 复习词条列表不是数组:', wordIds);
+      wordIds = [];
+    }
+
+    const loadResult = await loadReviewWordbookWords(currentWordbook);
+    if (this.data.currentWordbook?.id !== wordbookId) {
+      console.warn('[Review] 词书已切换，丢弃过期解析结果:', wordbookId);
+      return [];
+    }
+
+    const lookup = buildReviewWordLookup(loadResult.words, wordbookId);
+    const wordMastery = this.safeGetStorageSync('wordMastery', {});
+    const wordbookMastery = studentId && wordbookId ? wordMastery[studentId]?.[wordbookId] : {};
+    const hasScopedWordIds = wordbookMastery && typeof wordbookMastery === 'object' && !Array.isArray(wordbookMastery)
+      ? Object.keys(wordbookMastery).some((wordIdKey) => String(wordIdKey).startsWith(`${wordbookId}_`))
+      : false;
+    const words = [];
+
+    wordIds.forEach((wordId) => {
+      const wordRecord = wordbookMastery && wordbookMastery[wordId];
+      const filterResult = shouldIncludeAntiForgettingWord(wordId, wordRecord, {
+        studentId,
+        wordbookId,
+        now: Date.now(),
+        hasScopedWordIds
+      });
+      if (!filterResult.include) {
+        console.warn('[Review] 复习会话跳过越界或未到期单词:', wordId, filterResult.reason);
+        return;
+      }
+
+      const resolvedWord = resolveReviewWordObject(wordId, lookup);
+      if (!resolvedWord.word) {
+        console.error('[Review][word-source-issue]', {
+          wordbookId,
+          wordId,
+          dataSource: loadResult.dataSource,
+          loadError: loadResult.loadError,
+          reason: resolvedWord._reviewResolution.status
+        });
+        return;
+      }
+      if (!resolvedWord.meaning) {
+        console.error('[Review][word-source-issue]', {
+          wordbookId,
+          wordId,
+          word: resolvedWord.word,
+          dataSource: loadResult.dataSource,
+          loadError: loadResult.loadError,
+          lookupSource: resolvedWord._reviewResolution.source,
+          reason: resolvedWord._reviewResolution.status
+        });
+      }
+
+      words.push(resolvedWord);
+    });
+
+    this.setData({
+      learningMode: 'review',
+      allWords: words,
+      currentBatchWords: words,
+      currentBatchIndex: 0,
+      totalBatches: 1,
+      currentBatchWordsCount: words.length,
+      previewMastery: {},
+      showMeaning: {},
+      showPhonetic: {},
+      clickCounts: {},
+      loading: false,
+      totalWordsCount: words.length,
+      reviewedCount: 0,
+      correctRate: 0,
+      progressPercentage: 0
+    });
+
+    return words;
+  },
+
   // 加载复习单词
   loadReviewWords: function(wordIds) {
+    return this.loadResolvedReviewWords(wordIds);
+  },
+
+  // 保留旧实现仅供历史排障对照；产品入口统一走 loadResolvedReviewWords。
+  loadReviewWordsLegacyUnused: function(wordIds) {
     console.log('加载复习单词:', wordIds);
     
     const words = [];
@@ -2952,7 +3043,7 @@ Page({
         const capitalizedWord = lowerWord.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
         const definition = {
           word: capitalizedWord,
-          phonetic: '/fəˈnetɪk/',
+          phonetic: '',
           meaning: '地名'
         };
         console.log('使用复合地名默认释义:', word, '→', definition);
@@ -2964,16 +3055,16 @@ Page({
       console.log('使用本地默认定义:', word);
       return {
         word: word,
-        phonetic: '/fəˈnetɪk/',
-        meaning: '单词释义'
+        phonetic: '',
+        meaning: ''
       };
     } catch (error) {
       console.error('获取单词释义失败:', error);
       // 异常时返回本地默认定义
       return {
         word: word,
-        phonetic: '/fəˈnetɪk/',
-        meaning: '单词释义'
+        phonetic: '',
+        meaning: ''
       };
     }
   }

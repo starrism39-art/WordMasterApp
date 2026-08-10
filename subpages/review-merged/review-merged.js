@@ -7,6 +7,11 @@ const {
 } = require('../../utils/anti-forgetting-filter.js');
 const { resolveCurrentStudent, resolveCurrentWordbook } = require('../../utils/learning-context.js');
 const { stripStableWordOccurrenceSuffix } = require('../../utils/learning-word-ids.js');
+const {
+  buildReviewWordLookup,
+  loadReviewWordbookWords,
+  resolveReviewWordObject
+} = require('../../utils/review-word-resolver.js');
 
 // 初始化合并后的词书数据和单词映射表
 let mergedWords = mergeWordbooks();
@@ -645,8 +650,96 @@ Page({
     }
   },
 
+  loadResolvedReviewWords: async function(wordIds) {
+    const studentId = this.data.currentStudent?.id;
+    const currentWordbook = this.data.currentWordbook || {};
+    const wordbookId = currentWordbook.id;
+
+    if (!Array.isArray(wordIds)) {
+      console.error('[ReviewMerged] 复习词条列表不是数组:', wordIds);
+      wordIds = [];
+    }
+
+    const loadResult = await loadReviewWordbookWords(currentWordbook);
+    if (this.data.currentWordbook?.id !== wordbookId) {
+      console.warn('[ReviewMerged] 词书已切换，丢弃过期解析结果:', wordbookId);
+      return [];
+    }
+
+    const lookup = buildReviewWordLookup(loadResult.words, wordbookId);
+    const wordMastery = this.safeGetStorageSync('wordMastery', {});
+    const wordbookMastery = studentId && wordbookId ? wordMastery[studentId]?.[wordbookId] : {};
+    const hasScopedWordIds = wordbookMastery && typeof wordbookMastery === 'object' && !Array.isArray(wordbookMastery)
+      ? Object.keys(wordbookMastery).some((wordIdKey) => String(wordIdKey).startsWith(`${wordbookId}_`))
+      : false;
+    const words = [];
+
+    wordIds.forEach((wordId) => {
+      const wordRecord = wordbookMastery && wordbookMastery[wordId];
+      const filterResult = shouldIncludeAntiForgettingWord(wordId, wordRecord, {
+        studentId,
+        wordbookId,
+        now: Date.now(),
+        hasScopedWordIds
+      });
+      if (!filterResult.include) {
+        console.warn('[ReviewMerged] 复习会话跳过越界或未到期单词:', wordId, filterResult.reason);
+        return;
+      }
+
+      const resolvedWord = resolveReviewWordObject(wordId, lookup);
+      if (!resolvedWord.word) {
+        console.error('[ReviewMerged][word-source-issue]', {
+          wordbookId,
+          wordId,
+          dataSource: loadResult.dataSource,
+          loadError: loadResult.loadError,
+          reason: resolvedWord._reviewResolution.status
+        });
+        return;
+      }
+      if (!resolvedWord.meaning) {
+        console.error('[ReviewMerged][word-source-issue]', {
+          wordbookId,
+          wordId,
+          word: resolvedWord.word,
+          dataSource: loadResult.dataSource,
+          loadError: loadResult.loadError,
+          lookupSource: resolvedWord._reviewResolution.source,
+          reason: resolvedWord._reviewResolution.status
+        });
+      }
+      words.push(resolvedWord);
+    });
+
+    this.setData({
+      learningMode: 'review',
+      allWords: words,
+      currentBatchWords: words,
+      currentBatchIndex: 0,
+      totalBatches: 1,
+      currentBatchWordsCount: words.length,
+      previewMastery: {},
+      showMeaning: {},
+      showPhonetic: {},
+      clickCounts: {},
+      loading: false,
+      totalWordsCount: words.length,
+      reviewedCount: 0,
+      correctRate: 0,
+      progressPercentage: 0
+    });
+
+    return words;
+  },
+
   // 加载复习单词
   loadReviewWords: function(wordIds) {
+    return this.loadResolvedReviewWords(wordIds);
+  },
+
+  // 保留旧实现仅供历史排障对照；产品入口统一走 loadResolvedReviewWords。
+  loadReviewWordsLegacyUnused: function(wordIds) {
     console.log('加载复习单词:', wordIds);
     
     const words = [];
@@ -1171,7 +1264,7 @@ Page({
         const capitalizedWord = lowerWord.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
         const definition = {
           word: capitalizedWord,
-          phonetic: '/fəˈnetɪk/',
+          phonetic: '',
           meaning: '地名'
         };
         console.log('使用复合地名默认释义:', word, '→', definition);
@@ -1183,8 +1276,8 @@ Page({
       console.log('使用本地默认定义:', word);
       const defaultDefinition = {
         word: word.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-        phonetic: '/fəˈnetɪk/',
-        meaning: '单词释义'
+        phonetic: '',
+        meaning: ''
       };
       return defaultDefinition;
       
@@ -1193,8 +1286,8 @@ Page({
       // 异常时返回本地默认定义
       const defaultDefinition = {
         word: word.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-        phonetic: '/fəˈnetɪk/',
-        meaning: '单词释义'
+        phonetic: '',
+        meaning: ''
       };
       return defaultDefinition;
     }

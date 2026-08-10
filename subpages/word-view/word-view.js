@@ -2,6 +2,12 @@
 const { generateWordsForBook } = require('../../data/wordbook-loader.js');
 const { mergeWordbooks, createWordMap, findWord } = require('../../data/wordbook-utils.js');
 const { resolveDictionaryApiAudioUrl, buildYoudaoAudioUrl } = require('../../utils/audio-fallback.js');
+const {
+  buildReviewWordLookup,
+  getReviewWordMeaning,
+  loadReviewWordbookWords,
+  resolveReviewWordObject
+} = require('../../utils/review-word-resolver.js');
 
 // 初始化合并后的词书数据和单词映射表
 let mergedWords = mergeWordbooks();
@@ -62,8 +68,8 @@ Page({
         
         // 检查是否是单词对象数组（从合并视图传递）
         if (Array.isArray(wordsData) && wordsData.length > 0 && wordsData[0].word) {
-          console.log('直接使用传递的单词对象数组');
-          this.initializeWordsView(wordsData, showRecordFilter, masteryStats);
+          console.log('按当前词书校验传递的单词对象数组');
+          this.loadResolvedWordObjects(wordsData, showRecordFilter, masteryStats);
         } else {
           // 否则视为单词ID列表
           console.log('使用单词ID列表加载单词');
@@ -115,8 +121,8 @@ Page({
         sourceWordId: sourceWordId || String((word && word.id) || fallbackId),
         word: incomingWord,
         phonetic: incomingPhonetic,
-        meaning: incomingMeaning || incomingTranslation || '未知释义',
-        translation: incomingTranslation || incomingMeaning || '未知释义',
+        meaning: incomingMeaning || incomingTranslation,
+        translation: incomingTranslation || incomingMeaning,
         masteryStatus: (word && word.masteryStatus) ? word.masteryStatus : 'unknown'
       };
     }).filter(item => {
@@ -541,7 +547,92 @@ Page({
     });
   },
 
+  resolveWordsForCurrentWordbook: async function(sourceItems, sourceIsObject) {
+    const selectedStudent = this.data.currentStudent || wx.getStorageSync('selectedStudent') || {};
+    const currentWordbook = this.data.currentWordbook || wx.getStorageSync('selectedWordbook') || {};
+    const studentId = selectedStudent.id;
+    const wordbookId = currentWordbook.id;
+    const loadResult = await loadReviewWordbookWords(currentWordbook);
+    const lookup = buildReviewWordLookup(loadResult.words, wordbookId);
+    const wordMastery = wx.getStorageSync('wordMastery') || {};
+    const wordbookMastery = studentId && wordbookId ? wordMastery[studentId]?.[wordbookId] : {};
+    const words = [];
+
+    (Array.isArray(sourceItems) ? sourceItems : []).forEach((sourceItem, index) => {
+      const incoming = sourceIsObject && sourceItem && typeof sourceItem === 'object' ? sourceItem : {};
+      const wordId = String(sourceIsObject
+        ? (incoming.sourceWordId || incoming.id || '')
+        : (sourceItem || '')).trim();
+      const resolved = resolveReviewWordObject(wordId, lookup);
+      const incomingMeaningInfo = getReviewWordMeaning(incoming);
+      const word = resolved.word || String(incoming.word || '').replace(/\s+/g, ' ').trim();
+      const meaning = resolved.meaning || incomingMeaningInfo.meaning;
+      const incomingPhonetic = String(incoming.phonetic || '').trim();
+      const safeIncomingPhonetic = incomingPhonetic === '/fəˈnetɪk/' ? '' : incomingPhonetic;
+      const record = wordbookMastery && wordbookMastery[wordId];
+      let masteryStatus = incoming.masteryStatus || 'unknown';
+      if (record && record.mastered === true) {
+        masteryStatus = 'mastered';
+      } else if (record && (record.difficult === true || record.status === 'difficult' || record.status === 'notMastered')) {
+        masteryStatus = 'notMastered';
+      }
+
+      if (!word) {
+        console.error('[WordView][word-source-issue]', {
+          wordbookId,
+          wordId,
+          dataSource: loadResult.dataSource,
+          loadError: loadResult.loadError,
+          reason: resolved._reviewResolution.status
+        });
+        return;
+      }
+      if (!meaning) {
+        console.error('[WordView][word-source-issue]', {
+          wordbookId,
+          wordId,
+          word,
+          dataSource: loadResult.dataSource,
+          loadError: loadResult.loadError,
+          lookupSource: resolved._reviewResolution.source,
+          reason: resolved._reviewResolution.status
+        });
+      }
+
+      words.push({
+        ...incoming,
+        id: String(incoming.id || wordId || `word_${index}`),
+        sourceWordId: wordId || String(incoming.id || `word_${index}`),
+        word,
+        meaning,
+        translation: meaning,
+        phonetic: resolved.phonetic || safeIncomingPhonetic,
+        masteryStatus,
+        _reviewResolution: resolved._reviewResolution
+      });
+    });
+
+    return words;
+  },
+
+  loadResolvedWordObjects: async function(wordsData, showRecordFilter = false, masteryStats = null) {
+    const words = await this.resolveWordsForCurrentWordbook(wordsData, true);
+    this.initializeWordsView(words, showRecordFilter, masteryStats);
+    return words;
+  },
+
+  loadResolvedWords: async function(wordIds, showRecordFilter = false, masteryStats = null) {
+    const words = await this.resolveWordsForCurrentWordbook(wordIds, false);
+    this.initializeWordsView(words, showRecordFilter, masteryStats);
+    return words;
+  },
+
   loadWords: async function(wordIds, showRecordFilter = false, masteryStats = null) {
+    return this.loadResolvedWords(wordIds, showRecordFilter, masteryStats);
+  },
+
+  // 保留旧实现仅供历史排障对照；产品入口统一走 loadResolvedWords。
+  loadWordsLegacyUnused: async function(wordIds, showRecordFilter = false, masteryStats = null) {
     console.log('加载单词:', wordIds);
     
     const words = [];
@@ -1120,7 +1211,7 @@ Page({
           const capitalizedWord = lowerWord.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
           const definition = {
             word: capitalizedWord,
-            phonetic: '/fəˈnetɪk/',
+            phonetic: '',
             meaning: '地名'
           };
           console.log('使用复合地名默认释义:', word, '→', definition);
@@ -1133,8 +1224,8 @@ Page({
         console.log('使用本地默认定义:', word);
         const defaultDefinition = {
           word: word.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-          phonetic: '/fəˈnetɪk/',
-          meaning: '单词释义'
+          phonetic: '',
+          meaning: ''
         };
         resolve(defaultDefinition);
         
@@ -1167,8 +1258,8 @@ Page({
             // 失败时返回本地默认定义
             const defaultDefinition = {
               word: word.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-              phonetic: '/fəˈnetɪk/',
-              meaning: '单词释义'
+              phonetic: '',
+              meaning: ''
             };
             resolve(defaultDefinition);
           }
@@ -1179,8 +1270,8 @@ Page({
         // 异常时返回本地默认定义
         const defaultDefinition = {
           word: word.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-          phonetic: '/fəˈnetɪk/',
-          meaning: '单词释义'
+          phonetic: '',
+          meaning: ''
         };
         resolve(defaultDefinition);
       }
