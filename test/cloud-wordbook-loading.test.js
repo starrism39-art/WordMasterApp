@@ -38,6 +38,7 @@ global.wx = {
 };
 
 const loader = require('../utils/cloud-wordbook-loader.js');
+const wordbooks = require('../data/wordbooks-simple.js');
 
 async function run() {
   assert.strictEqual(
@@ -57,6 +58,31 @@ async function run() {
     'new curriculum senior wordbook should use the verified CloudBase object'
   );
   assert.strictEqual(loader.isCloudWordbook('new_curriculum_senior'), true);
+  assert.deepStrictEqual(
+    loader.CLOUD_WORDBOOK_MAP.senior_exam_syllabus,
+    {
+      path: 'wordbooks/senior_exam_syllabus_words.json',
+      cloudFileID: 'cloud://cloudbase-4gafzdch60ad597b.636c-cloudbase-4gafzdch60ad597b-1390590336/wordbooks/senior_exam_syllabus_words.json',
+      version: 1,
+      totalWords: 2950
+    },
+    'exam syllabus wordbook should use the dedicated CloudBase object'
+  );
+  assert.strictEqual(loader.isCloudWordbook('senior_exam_syllabus'), true);
+  const examSyllabusBook = wordbooks.senior.find(book => book.id === 'senior_exam_syllabus');
+  assert.ok(examSyllabusBook, '高中词书列表应包含高中考纲词');
+  assert.strictEqual(examSyllabusBook.title, '高中考纲词');
+  assert.strictEqual(examSyllabusBook.totalWords, 2950);
+  assert.strictEqual(
+    loader.isCompleteWordList('senior_exam_syllabus', Array.from({ length: 2949 })),
+    false,
+    '2949 words must not be treated as a complete exam syllabus wordbook'
+  );
+  assert.strictEqual(
+    loader.isCompleteWordList('senior_exam_syllabus', Array.from({ length: 2950 })),
+    true,
+    '2950 words should be treated as a complete exam syllabus wordbook'
+  );
   assert.strictEqual(
     loader.isCompleteWordList('new_curriculum_senior', Array.from({ length: 3814 })),
     false,
@@ -96,6 +122,17 @@ async function run() {
   assert.strictEqual(newCurriculumWords.length, 3815);
   assert.strictEqual(storage.cloud_wb_new_curriculum_senior.length, 3815);
   assert.strictEqual(downloadCalls, 2, 'new curriculum senior wordbook should download once');
+
+  downloadedWords = Array.from({ length: 2950 }, (_, index) => ({
+    word: index === 0 ? 'education' : `exam-syllabus-${index}`,
+    phonetic: index === 0 ? '/ˌedʒ.uˈkeɪ.ʃən/' : `/exam-${index}/`,
+    meaning: index === 0 ? '教育' : `释义-${index}`
+  }));
+  const examSyllabusWords = await loader.ensureWordsLoaded('senior_exam_syllabus');
+  assert.strictEqual(examSyllabusWords.length, 2950);
+  assert.strictEqual(examSyllabusWords[0].word, 'education');
+  assert.strictEqual(storage.cloud_wb_senior_exam_syllabus.length, 2950);
+  assert.strictEqual(downloadCalls, 3, '高中考纲词应完整下载一次');
 
   downloadedWords = Array.from({ length: 100 }, (_, index) => ({ word: `short-${index}` }));
   const incomplete = await loader.downloadWordsFromCloud('senior_textbook_real');

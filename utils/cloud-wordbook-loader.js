@@ -30,6 +30,12 @@ const CLOUD_WORDBOOK_MAP = {
     cloudFileID: `cloud://${CLOUD_ENV_ID}.${CLOUD_BUCKET}/wordbooks/gaokao_reading_words.json`,
     version: 1,
     totalWords: 687
+  },
+  senior_exam_syllabus: {
+    path: 'wordbooks/senior_exam_syllabus_words.json',
+    cloudFileID: `cloud://${CLOUD_ENV_ID}.${CLOUD_BUCKET}/wordbooks/senior_exam_syllabus_words.json`,
+    version: 1,
+    totalWords: 2950
   }
 };
 

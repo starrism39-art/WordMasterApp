@@ -550,6 +550,21 @@ const seniorWordbooks = [
     ]
   },
   {
+    "id": "senior_exam_syllabus",
+    "title": "高中考纲词",
+    "description": "按原词书Round 1顺序整理的高中考纲词汇，共2950词",
+    "category": "senior",
+    "grade": "senior",
+    "region": "全国",
+    "version": "考纲",
+    "totalWords": 2950,
+    "words": [
+      { "word": "education", "phonetic": "/ˌedʒ.uˈkeɪ.ʃən/", "meaning": "教育" },
+      { "word": "school", "phonetic": "/skuːl/", "meaning": "学校" },
+      { "word": "student", "phonetic": "/ˈstjuː.dənt/", "meaning": "学生" }
+    ]
+  },
+  {
     "id": "senior_book_1_ren_jiao",
     "title": "高中必修一 (人教版)",
     "description": "基于人教版高中英语必修一的词汇表，包含365个核心单词",
@@ -969,6 +984,15 @@ const generateWordsForBook = function (bookCategory, bookId, startIndex, count) 
           } else {
             // 缓存未命中，使用词书定义中的默认单词
             console.log('高考英语阅读高频词汇云端缓存未命中，使用词书默认单词，数量：', book.words ? book.words.length : 0);
+            words = book.words || [];
+          }
+        } else if (bookId === 'senior_exam_syllabus') {
+          const cloudWords = cloudWordbookLoader.getWordsSync('senior_exam_syllabus');
+          if (cloudWords && cloudWords.length > 0) {
+            words = cloudWords;
+            console.log('成功从云端缓存加载高中考纲词，数量：', words.length);
+          } else {
+            console.log('高中考纲词云端缓存未命中，使用词书默认单词，数量：', book.words ? book.words.length : 0);
             words = book.words || [];
           }
         } else if (bookId === 'senior_textbook_real') {
