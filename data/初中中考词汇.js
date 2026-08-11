@@ -2466,9 +2466,9 @@ module.exports = [
     "meaning": "飞行；苍蝇"
   },
   {
-    "word": "fly(flew, flown)",
+    "word": "fly",
     "phonetic": "flaɪ",
-    "meaning": "vt."
+    "meaning": "飞；飞行；乘飞机"
   },
   {
     "word": "follow",
@@ -7536,9 +7536,9 @@ module.exports = [
     "meaning": ". 欢迎 受欢迎的"
   },
   {
-    "word": "well(better, best)",
+    "word": "well",
     "phonetic": "wel",
-    "meaning": "a."
+    "meaning": "健康的；身体好的"
   },
   {
     "word": "west",
@@ -7871,5 +7871,4 @@ module.exports = [
     "meaning": "动物园"
   }
 ];
-
 
