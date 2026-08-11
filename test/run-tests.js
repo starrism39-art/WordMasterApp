@@ -10,6 +10,7 @@ const tests = [
   'test/learning-context.test.js',
   'test/cross-client-context-restore.test.js',
   'test/learning-word-ids.test.js',
+  'test/preview-completed-filter.test.js',
   'test/learning-progress.test.js',
   'test/app-learning-progress.test.js',
   'test/cloud-wordbook-loading.test.js',

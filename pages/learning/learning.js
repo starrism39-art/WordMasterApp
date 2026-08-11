@@ -19,6 +19,9 @@ const {
 const { resolveAntiForgettingSourceForUpdate } = require('../../utils/anti-forgetting-filter.js');
 const {
   assignStableWordIds,
+  buildCompletionMasterySnapshot,
+  collectProcessedPreviewWordIds,
+  mergeLatePreviewMastery,
   selectPreviewNotMasteredWords
 } = require('../../utils/learning-word-ids.js');
 
@@ -793,6 +796,26 @@ Page({
        });
       debugLog('已合并预习历史标记到过滤列表，数量:', handledPreviewWordIds.length);
      }
+
+     // 预习排除与掌握状态是两个概念：只要当前学生、当前词书的
+     // preview/wordMastery/learningRecords 能证明已处理，就按当前稳定ID排除。
+     // learningRecords 是 wordMastery 缺失或云端晚到时的只读兼容兜底。
+     if (this.data.learningMode !== 'review') {
+       try {
+         masteredWordIdArray = collectProcessedPreviewWordIds({
+           words: allWords,
+           studentId,
+           wordbookId,
+           previewMastery: savedPreviewMastery,
+           previewExcludedWordIds: savedPreviewExcludedWordIds,
+           wordMastery: wx.getStorageSync('wordMastery') || {},
+           learningRecords: wx.getStorageSync('learningRecords') || []
+         });
+         debugLog('兼容历史记录后的预习排除数量:', masteredWordIdArray.length);
+       } catch (processedStateError) {
+         console.warn('读取已完成学习状态失败，保留现有过滤结果:', processedStateError);
+       }
+     }
      
      // Calculate initial mastered and not mastered counts from saved data
      let initialMasteredCount = 0;
@@ -1046,29 +1069,79 @@ Page({
       // 异步从云端加载预习状态，与本地的合并后更新界面
       // 这样换设备后预习标记也能恢复，不丢失
       loadPreviewStateFromCloud(studentId, wordbookId).then(cloudPreview => {
-        if (!cloudPreview || !cloudPreview.mastery) return;
-        const cloudMasteryKeys = Object.keys(cloudPreview.mastery);
-        if (cloudMasteryKeys.length === 0) return;
+        if (!cloudPreview) return;
+        const cloudMastery = cloudPreview.mastery || {};
+        const cloudMasteryKeys = Object.keys(cloudMastery);
+        const cloudExcluded = Array.isArray(cloudPreview.excluded) ? cloudPreview.excluded : [];
+        if (cloudMasteryKeys.length === 0 && cloudExcluded.length === 0) return;
+
+        // 异步结果只能作用于发起请求时的同一学生和词书。
+        const activeStudentId = String(this.data.currentStudent && (this.data.currentStudent.id || this.data.currentStudent.student_id) || '');
+        const activeWordbookId = String(this.data.currentWordbook && this.data.currentWordbook.id || '');
+        if (activeStudentId !== String(studentId) || activeWordbookId !== String(wordbookId)) {
+          return;
+        }
         
         // 合并云端数据到本地（云端优先级高，覆盖本地旧数据）
-        const merged = { ...savedPreviewMastery };
-        let hasNewData = false;
-        cloudMasteryKeys.forEach(key => {
-          const cv = cloudPreview.mastery[key];
-          const lv = merged[key];
-          // 云端有且本地没有，或云端标记状态不同时以云端为准
-          if (cv !== undefined && cv !== null && (lv === undefined || lv === null || cv !== lv)) {
-            merged[key] = cv;
-            hasNewData = true;
-          }
-        });
+        const livePreviewMastery = this.data.previewMastery || {};
+        const merged = mergeLatePreviewMastery(
+          savedPreviewMastery,
+          livePreviewMastery,
+          cloudMastery
+        );
+        const mergedKeys = new Set([
+          ...Object.keys(livePreviewMastery),
+          ...Object.keys(merged)
+        ]);
+        const hasNewData = Array.from(mergedKeys).some(key => merged[key] !== livePreviewMastery[key]);
         
-        if (hasNewData) {
+        const mergedExcluded = Array.from(new Set([
+          ...savedPreviewExcludedWordIds.map(id => String(id)),
+          ...cloudExcluded.map(id => String(id))
+        ]));
+        const hasNewExcluded = mergedExcluded.length !== savedPreviewExcludedWordIds.length;
+
+        if (hasNewData || hasNewExcluded) {
           // 写回本地存储
           wx.setStorageSync(storageKey, merged);
-          // 更新当前界面的 previewMastery 数据
-          this.setData({ previewMastery: merged });
-          console.log('已合并云端预习状态，新增', cloudMasteryKeys.length, '条记录');
+          if (hasNewExcluded) {
+            wx.setStorageSync(`previewExcludedWordIds_${studentId}_${wordbookId}`, mergedExcluded);
+          }
+
+          // 云端状态可能晚于首屏词表到达，必须立即按完整稳定ID重新过滤。
+          const processedIds = new Set(collectProcessedPreviewWordIds({
+            words: this.data.allWords || [],
+            studentId,
+            wordbookId,
+            previewMastery: merged,
+            previewExcludedWordIds: mergedExcluded,
+            wordMastery: wx.getStorageSync('wordMastery') || {},
+            learningRecords: wx.getStorageSync('learningRecords') || []
+          }));
+          const nextAllWords = (this.data.allWords || []).filter(word => !processedIds.has(String(word && word.id || '')));
+          const batchSize = 15;
+          const totalBatchesAfter = Math.ceil(nextAllWords.length / batchSize);
+          const maxBatchIndex = Math.max(0, totalBatchesAfter - 1);
+          const nextBatchIndex = Math.min(this.data.currentBatchIndex || 0, maxBatchIndex);
+          const startIndex = nextBatchIndex * batchSize;
+          const nextBatch = nextAllWords.slice(startIndex, startIndex + batchSize);
+
+          this.setData({
+            previewMastery: merged,
+            allWords: nextAllWords,
+            currentBatchWords: nextBatch,
+            currentBatchIndex: nextBatchIndex,
+            currentBatchWordsCount: nextBatch.length,
+            totalBatches: totalBatchesAfter,
+            totalPages: totalBatchesAfter,
+            hasMoreWords: nextBatchIndex + 1 < totalBatchesAfter,
+            ...(nextAllWords.length === 0 ? {
+              hasError: true,
+              errorMessage: '恭喜您！所有单词都已完成预习，没有需要预习的新单词了。'
+            } : {})
+          });
+          this.updateBatchMasteryStats();
+          console.log('已合并云端预习状态并重新过滤，排除', processedIds.size, '条记录');
         }
       }).catch(err => {
         console.warn('加载云端预习状态失败:', err);
@@ -3159,40 +3232,14 @@ Page({
       // 学习完成后兜底同步 wordMastery，避免仅写学习记录导致抗遗忘列表为空。
       // 优先使用当前 previewMastery；若缺失则回落到本次统计出的掌握/困难结果。
       if (learnedWordIds.length > 0) {
-        const masterySnapshot = {};
-        const antiForgettingSeedSnapshot = {};
-        const masteredIdSet = new Set(masteredWordIds.map(id => String(id)));
-        const notMasteredIdSet = new Set(notMasteredWordIds.map(id => String(id)));
-        const previewNotMasteredIdSet = new Set(startSnapshotNotMasteredWordIds.map(id => String(id)));
-
-        learnedWordIds.forEach((rawId) => {
-          const wordId = String(rawId);
-          if (previewMastery[wordId] !== undefined) {
-            masterySnapshot[wordId] = previewMastery[wordId];
-            if (previewMastery[wordId] === false || previewMastery[wordId] === 'difficult') {
-              antiForgettingSeedSnapshot[wordId] = true;
-            }
-            return;
-          }
-          if (notMasteredIdSet.has(wordId)) {
-            masterySnapshot[wordId] = 'difficult';
-            if (previewNotMasteredIdSet.has(wordId)) {
-              antiForgettingSeedSnapshot[wordId] = true;
-            }
-            return;
-          }
-          if (masteredIdSet.has(wordId)) {
-            masterySnapshot[wordId] = 'mastered';
-          }
+        const { masterySnapshot, antiForgettingSeedSnapshot } = buildCompletionMasterySnapshot({
+          learnedWordIds,
+          previewMastery,
+          startMasteredWordIds: startSnapshotMasteredWordIds,
+          startNotMasteredWordIds: startSnapshotNotMasteredWordIds,
+          masteredWordIds,
+          notMasteredWordIds
         });
-
-        // 兼容历史链路：若状态仍为空，保留“未掌握”状态，但不能据此推断为预习不会。
-        if (Object.keys(masterySnapshot).length === 0) {
-          learnedWordIds.forEach((rawId) => {
-            const wordId = String(rawId);
-            masterySnapshot[wordId] = 'difficult';
-          });
-        }
 
         this.updateWordMasteryStatus(learnedWordIds, 'mastered', masterySnapshot, {
           antiForgettingSeedSnapshot
