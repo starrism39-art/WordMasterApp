@@ -8,6 +8,7 @@ const {
   resolveCurrentStudent,
   resolveCurrentWordbook
 } = require('../../utils/learning-context.js');
+const { extractDisplayWordFromReviewId } = require('../../utils/review-word-resolver.js');
 
 // 初始化合并后的词书数据和单词映射表
 let mergedWords = mergeWordbooks();
@@ -693,13 +694,13 @@ Page({
 
   collectRecordWordStatusMap: function(record) {
     const statusMap = {};
-    const setStatus = (list, status) => {
+    const setStatus = (list, status, wordbookId) => {
       if (!Array.isArray(list)) return;
       list.forEach(item => {
         const key = this.normalizeWordKey(item);
         if (key) statusMap[key] = status;
 
-        const extracted = this.extractWordFromId ? this.extractWordFromId(item) : '';
+        const extracted = this.parseWordFromRecordId(item, wordbookId);
         const extractedKey = this.normalizeWordKey(extracted);
         if (extractedKey) statusMap[extractedKey] = status;
       });
@@ -707,8 +708,8 @@ Page({
 
     const collectSingle = (singleRecord) => {
       if (!singleRecord || typeof singleRecord !== 'object') return;
-      setStatus(singleRecord.masteredWordIds, 'mastered');
-      setStatus(singleRecord.notMasteredWordIds, 'notMastered');
+      setStatus(singleRecord.masteredWordIds, 'mastered', singleRecord.wordbookId);
+      setStatus(singleRecord.notMasteredWordIds, 'notMastered', singleRecord.wordbookId);
     };
 
     if (record && record.isMerged && Array.isArray(record.originalRecords)) {
@@ -1201,7 +1202,7 @@ Page({
   },
 
   // 从记录中的单词ID解析实际单词，优先使用词书ID去前缀，避免短语被误截断
-  parseWordFromRecordId: function(wordId, wordbookId) {
+  parseWordFromRecordIdLegacyUnused: function(wordId, wordbookId) {
     try {
       if (wordId === undefined || wordId === null) {
         return '';
@@ -1363,6 +1364,24 @@ Page({
     }
   },
   
+  parseWordFromRecordId: function(wordId, wordbookId) {
+    try {
+      if (wordId === undefined || wordId === null) return '';
+      if (typeof wordId === 'object') {
+        if (wordId.word) return String(wordId.word).trim();
+        wordId = wordId.sourceWordId || wordId.id || '';
+      }
+
+      const sourceId = String(wordId || '').trim();
+      if (!sourceId) return '';
+      if (/^[a-zA-Z][a-zA-Z\s'\-.,/]*$/.test(sourceId)) return sourceId;
+      return extractDisplayWordFromReviewId(sourceId, wordbookId);
+    } catch (error) {
+      console.error('[records] 完整词条 ID 解析失败:', error, wordId, wordbookId);
+      return '';
+    }
+  },
+
   // 从词书ID和单词数量中生成单词
   generateWordsFromWordbook: function(record, words, wordSet) {
     try {
@@ -1454,7 +1473,7 @@ Page({
         console.log('从learnedWordIds提取单词:', record.learnedWordIds);
         record.learnedWordIds.forEach(wordId => {
           // 提取单词内容
-          const word = this.extractWordFromId(wordId);
+          const word = this.parseWordFromRecordId(wordId, record.wordbookId);
           if (word) {
             learnedWords.add(word);
           }
@@ -1462,7 +1481,7 @@ Page({
       } else if (record.studyWords && Array.isArray(record.studyWords)) {
         console.log('从studyWords提取单词:', record.studyWords);
         record.studyWords.forEach(wordId => {
-          const word = this.extractWordFromId(wordId);
+          const word = this.parseWordFromRecordId(wordId, record.wordbookId);
           if (word) {
             learnedWords.add(word);
           }

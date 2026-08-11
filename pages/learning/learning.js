@@ -24,6 +24,7 @@ const {
   mergeLatePreviewMastery,
   selectPreviewNotMasteredWords
 } = require('../../utils/learning-word-ids.js');
+const { extractDisplayWordFromReviewId } = require('../../utils/review-word-resolver.js');
 
 const ENABLE_VERBOSE_LOG = false;
 const debugLog = (...args) => {
@@ -3033,7 +3034,7 @@ Page({
       };
 
       // 从结构化wordId中提取实际单词（例：senior_bkk_1_ren_jiao_male → male）
-      const extractWordFromStructuredId = (structuredId) => {
+      const extractWordFromStructuredIdLegacyUnused = (structuredId) => {
         if (!structuredId || typeof structuredId !== 'string') return '';
         const text = structuredId.trim();
         // 纯英文直接返回
@@ -3057,9 +3058,16 @@ Page({
         return '';
       };
 
+      const extractWordFromStructuredId = (structuredId) => {
+        if (!structuredId || typeof structuredId !== 'string') return '';
+        const text = structuredId.trim();
+        if (/^[a-zA-Z][a-zA-Z\s'\-]*$/.test(text)) return text;
+        return extractDisplayWordFromReviewId(text, this.data.currentWordbook?.id || '');
+      };
+
       const buildDetailedWord = (rawWord, fallbackId = '') => {
         const sourceId = String((rawWord && (rawWord.sourceWordId || rawWord.id)) || fallbackId || '').trim();
-        const displayWord = String((rawWord && rawWord.word) || '').replace(/\s+/g, ' ').trim();
+        const displayWord = String((rawWord && rawWord.word) || '').trim();
         if (!sourceId && !displayWord) {
           return null;
         }
@@ -3170,9 +3178,7 @@ Page({
           return null;
         }
 
-        const fallbackWordText = extractWordFromStructuredId(key) || (key.includes('_')
-          ? key.slice(key.lastIndexOf('_') + 1).trim()
-          : key.replace(/_/g, ' ').trim());
+        const fallbackWordText = extractWordFromStructuredId(key) || key.replace(/_/g, ' ').trim();
 
         return {
           ...baseWord,

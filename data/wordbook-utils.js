@@ -235,21 +235,11 @@ function findWord(word, wordMap) {
       return wordMap[key];
     }
   }
-  
-  // 尝试查找短语中的核心单词
-  const words = wordKey.split(/\s+/);
-  if (words.length > 1) {
-    // 尝试查找第一个单词
-    const firstWordKey = normalize(words[0]);
-    if (wordMap[firstWordKey]) {
-      return wordMap[firstWordKey];
-    }
-    
-    // 尝试查找最后一个单词
-    const lastWordKey = normalize(words[words.length - 1]);
-    if (wordMap[lastWordKey]) {
-      return wordMap[lastWordKey];
-    }
+
+  // 短语只允许完整精确匹配。未命中时由调用方保留原文，
+  // 不得退化到首词、尾词或其他子串词条，否则释义和音标也会随之错绑。
+  if (wordKey.includes(' ')) {
+    return null;
   }
   
   // 安全兜底：仅允许长度>=4的前后缀匹配，避免 i/a/ms 等短词误命中

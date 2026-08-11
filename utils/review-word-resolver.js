@@ -127,15 +127,23 @@ const extractDisplayWordFromReviewId = (wordId, wordbookId) => {
   if (!sourceId) return '';
 
   let candidate = stripStableWordOccurrenceSuffix(sourceId);
-  const prefix = wordbookId ? `${wordbookId}_` : '';
-  if (prefix && candidate.startsWith(prefix)) {
-    candidate = candidate.slice(prefix.length);
+  const prefixCandidates = [
+    String(wordbookId || '').trim(),
+    normalizeWordIdPart(wordbookId)
+  ]
+    .filter(Boolean)
+    .map((prefix) => `${prefix}_`)
+    .sort((left, right) => right.length - left.length);
+  const lowerCandidate = candidate.toLowerCase();
+  const matchedPrefix = prefixCandidates.find((prefix) => lowerCandidate.startsWith(prefix.toLowerCase()));
+  if (matchedPrefix) {
+    candidate = candidate.slice(matchedPrefix.length);
   }
 
   candidate = candidate
-    .replace(/^word_real_/, '')
-    .replace(/^real_/, '')
-    .replace(/_real_/g, '_')
+    .replace(/^word_real_/i, '')
+    .replace(/^real_/i, '')
+    .replace(/_real_/gi, '_')
     .replace(/_\d+$/, '')
     .replace(/_/g, ' ')
     .replace(/\s+/g, ' ')
@@ -204,7 +212,7 @@ const resolveReviewWordObject = (wordId, lookup) => {
   const entry = resolved.entry;
   const meaningInfo = getReviewWordMeaning(entry);
   const word = entry && entry.word
-    ? String(entry.word).replace(/\s+/g, ' ').trim()
+    ? String(entry.word).trim()
     : String(resolved.displayWord || '').replace(/\s+/g, ' ').trim();
 
   return {
@@ -216,7 +224,8 @@ const resolveReviewWordObject = (wordId, lookup) => {
     _reviewResolution: {
       source: resolved.source,
       meaningField: meaningInfo.field,
-      status: meaningInfo.status
+      status: meaningInfo.status,
+      matchFailureReason: entry ? '' : 'current_wordbook_exact_entry_not_found'
     }
   };
 };
