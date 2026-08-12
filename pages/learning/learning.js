@@ -21,8 +21,7 @@ const {
   assignStableWordIds,
   buildCompletionMasterySnapshot,
   collectProcessedPreviewWordIds,
-  mergeLatePreviewMastery,
-  selectPreviewNotMasteredWords
+  mergeLatePreviewMastery
 } = require('../../utils/learning-word-ids.js');
 const { extractDisplayWordFromReviewId } = require('../../utils/review-word-resolver.js');
 
@@ -336,6 +335,7 @@ Page({
       : '';
 
     this._studyInitializationPromise = null;
+    this._previewWordMap = {};
     this.stopStudyTimer();
     this._destroyCurrentAudioContext();
     this.setData({
@@ -645,6 +645,11 @@ Page({
         ...word,
         phonetic: this.normalizePhoneticDisplay(word.phonetic)
       }));
+      // 预习点击后 allWords 会移除已处理词；保留本轮完整稳定 ID 映射供“开始学习”决策与记录使用。
+      this._previewWordMap = {};
+      allWords.forEach(word => {
+        this._previewWordMap[String(word.id)] = { ...word };
+      });
 
       // ===== 预习顺序策略 =====
       // 课本类：保持数据文件的录入顺序（不随机）
@@ -1992,6 +1997,100 @@ Page({
     }, 300);
   },
 
+  _getPreviewWordMap: function() {
+    const wordMap = Object.assign({}, this._previewWordMap || {});
+    [this.data.allWords || [], this.data.currentBatchWords || []].forEach(words => {
+      words.forEach(word => {
+        if (!word || word.id === undefined || word.id === null) return;
+        wordMap[String(word.id)] = word;
+      });
+    });
+    return wordMap;
+  },
+
+  _buildPreviewStartDecision: function(previewMastery) {
+    const wordMap = this._getPreviewWordMap();
+    const masteredWordIds = [];
+    const notMasteredWordIds = [];
+
+    Object.keys(previewMastery || {}).forEach(wordId => {
+      const normalizedId = String(wordId);
+      if (!wordMap[normalizedId]) return;
+
+      const status = previewMastery[wordId];
+      if (status === true || status === 'mastered') {
+        masteredWordIds.push(normalizedId);
+      } else if (status === false || status === 'difficult') {
+        notMasteredWordIds.push(normalizedId);
+      }
+    });
+
+    const markedWordIds = masteredWordIds.concat(notMasteredWordIds);
+    return {
+      masteredWordIds,
+      notMasteredWordIds,
+      markedWordIds,
+      notMasteredWords: notMasteredWordIds.map(wordId => wordMap[wordId]),
+      wordsDetailed: markedWordIds.map(wordId => {
+        const word = wordMap[wordId];
+        const meaning = word.meaning || word.translation || '未知释义';
+        return {
+          id: wordId,
+          sourceWordId: wordId,
+          word: String(word.word || '').replace(/\s+/g, ' ').trim(),
+          phonetic: this.normalizePhoneticDisplay(word.phonetic),
+          meaning,
+          translation: word.translation || word.meaning || meaning
+        };
+      })
+    };
+  },
+
+  _clearCommittedPreviewState: function(studentId, wordbookId) {
+    wx.removeStorageSync(`previewMastery_${studentId}_${wordbookId}`);
+    wx.removeStorageSync(`previewExcludedWordIds_${studentId}_${wordbookId}`);
+    syncPreviewState(studentId, wordbookId, {
+      mastery: {},
+      order: [],
+      excluded: [],
+      reset: true
+    }).catch(err => {
+      console.warn('[startNewLearning] 清除云端预习状态失败:', err);
+    });
+  },
+
+  _completePreviewOnlyRound: function(decision, studentId, wordbookId) {
+    const totalWords = decision.masteredWordIds.length;
+    this.setData({
+      learningMode: 'completed',
+      pageTitle: '学习完成',
+      completed: true,
+      currentWordIndex: totalWords,
+      progress: 100,
+      testProgress: 100,
+      currentBatchWords: [],
+      correctCount: totalWords,
+      wrongCount: 0,
+      accuracy: '100.0',
+      correctRate: '100.0',
+      accuracyRate: 100,
+      totalTestWords: totalWords,
+      masteredTestWords: totalWords
+    });
+
+    const saved = this.saveLearningRecord('100.0', totalWords, totalWords, {
+      markAntiForgettingSeed: true
+    });
+    if (!saved) {
+      this.setData({ learningMode: 'preview', completed: false, progress: 0 });
+      wx.showToast({ title: '保存失败，请重试', icon: 'none' });
+      return;
+    }
+
+    this._clearCommittedPreviewState(studentId, wordbookId);
+    this.showTestResult('100.0', totalWords, totalWords);
+  },
+
   // 开始学习
   startNewLearning: function() {
     try {
@@ -1999,211 +2098,48 @@ Page({
       this.checkSelectedStudentAndWordbook();
 
       if (!this.data.currentStudent || !this.data.currentWordbook) {
-        wx.showToast({
-          title: '请先选择学生和词书',
-          icon: 'none'
-        });
+        wx.showToast({ title: '请先选择学生和词书', icon: 'none' });
         return;
       }
 
-      // 获取当前词书的类别
-      const wordbookCategory = this.data.currentWordbook.category || 'primary';
       const studentId = this.data.currentStudent.id;
       const wordbookId = this.data.currentWordbook.id;
-      
-      // 加载本地保存的预习状态
-      const storageKey = 'previewMastery_' + studentId + '_' + wordbookId;
+      const storageKey = `previewMastery_${studentId}_${wordbookId}`;
       const previewMastery = wx.getStorageSync(storageKey) || this.data.previewMastery || {};
-      console.log('加载的预习状态:', previewMastery);
+      const decision = this._buildPreviewStartDecision(previewMastery);
 
-      // 冻结“点击开始学习”当刻的预习标记快照，作为学习记录详情单词来源
-      const startLearningSourceWordIds = [];
-      const startLearningSourceMasteredWordIds = [];
-      const startLearningSourceNotMasteredWordIds = [];
-      const startLearningSourceWordsDetailed = [];
-      const startLearningDetailedWordIdSet = new Set();
-      const startLearningSourceWordMap = {};
-
-      (this.data.allWords || []).forEach((word) => {
-        if (!word || word.id === undefined || word.id === null) {
-          return;
-        }
-
-        const normalizedId = String(word.id);
-        if (startLearningSourceWordMap[normalizedId]) {
-          return;
-        }
-
-        const meaning = word.meaning || word.translation || '未知释义';
-        startLearningSourceWordMap[normalizedId] = {
-          id: normalizedId,
-          sourceWordId: normalizedId,
-          word: String(word.word || '').replace(/\s+/g, ' ').trim(),
-          phonetic: this.normalizePhoneticDisplay(word.phonetic),
-          meaning: meaning,
-          translation: word.translation || word.meaning || meaning
-        };
-      });
-
-      Object.keys(previewMastery).forEach(wordId => {
-        // 仅采集当前词书的单词，避免跨词书旧数据干扰
-        if (!String(wordId).startsWith(`${wordbookId}_`)) {
-          return;
-        }
-
-        const status = previewMastery[wordId];
-        if (status === true || status === 'mastered' || status === false || status === 'difficult') {
-          const normalizedId = String(wordId);
-          startLearningSourceWordIds.push(normalizedId);
-          if (status === true || status === 'mastered') {
-            startLearningSourceMasteredWordIds.push(normalizedId);
-          } else {
-            startLearningSourceNotMasteredWordIds.push(normalizedId);
-          }
-
-          const sourceWord = startLearningSourceWordMap[normalizedId];
-          if (sourceWord && sourceWord.word && !startLearningDetailedWordIdSet.has(normalizedId)) {
-            startLearningSourceWordsDetailed.push({ ...sourceWord });
-            startLearningDetailedWordIdSet.add(normalizedId);
-          }
-        }
-      });
-
-      this.setData({
-        startLearningSourceWordIds,
-        startLearningSourceMasteredWordIds,
-        startLearningSourceNotMasteredWordIds,
-        startLearningSourceWordsDetailed
-      });
-
-      // 预习界面决定正式掌握状态：进入学习前先将预习标记写入wordMastery
-      const previewMarkedWordIds = Object.keys(previewMastery).filter(wordId => {
-        const status = previewMastery[wordId];
-        return status === true || status === false || status === 'mastered' || status === 'difficult';
-      });
-      if (previewMarkedWordIds.length > 0) {
-        this.updateWordMasteryStatus(previewMarkedWordIds, 'mastered', previewMastery, { markAntiForgettingSeed: true });
-        console.log('已按预习标记更新正式掌握状态，数量:', previewMarkedWordIds.length);
-      }
-      
-      // 清除本地存储的预习记录，确保每次开始学习都是新的状态
-      const previewMasteryKey = `previewMastery_${studentId}_${wordbookId}`;
-      const previewExcludedKey = `previewExcludedWordIds_${studentId}_${wordbookId}`;
-      wx.removeStorageSync(previewMasteryKey);
-      wx.removeStorageSync(previewExcludedKey);
-      
-      // ★ 修复：同步清除云端 preview_state 中的 mastery 数据
-      // 防止下次进入预习时 cloud load 把旧 master 数据恢复回来
-      syncPreviewState(studentId, wordbookId, {
-        mastery: {},
-        order: [],
-        excluded: [],
-        reset: true
-      }).catch(err => {
-        console.warn('[startNewLearning] 清除云端预习状态失败:', err);
-      });
-      
-      // 获取单词掌握状态存储，确保过滤掉已掌握的单词
-      let masteredWordIdArray = [];
-      try {
-        const wordMastery = wx.getStorageSync('wordMastery') || {};
-        if (wordMastery[studentId] && wordMastery[studentId][wordbookId] && Array.isArray(wordMastery[studentId][wordbookId])) {
-          masteredWordIdArray = wordMastery[studentId][wordbookId];
-          console.log('过滤已掌握单词，数量:', masteredWordIdArray.length);
-        }
-      } catch (err) {
-        console.error('读取单词掌握记录时出错:', err);
-      }
-      
-      // 过滤出未掌握的单词进行新词学习：
-      // 1. 课前预习中明确标记为不会的单词
-      // 2. 不在已掌握单词列表中
-      // 3. 防止重复添加相同ID的单词
-      const notMasteredWords = [];
-      const addedWordIds = new Set();
-      
-      // 只接受当前词书中精确命中的ID；不能去掉重复词后缀做模糊匹配，
-      // 否则标记一个重复词会把同名的所有词条一起加入学习。
-      const selectedNotMasteredWords = selectPreviewNotMasteredWords(
-        this.data.allWords || [],
-        previewMastery,
-        wordbookId
-      );
-      const explicitlyNotMasteredWordIds = selectedNotMasteredWords.map((word) => String(word.id));
-      
-      const explicitlyNotMasteredCount = explicitlyNotMasteredWordIds.length;
-      console.log('明确标记为不会的单词ID:', explicitlyNotMasteredWordIds, '数量:', explicitlyNotMasteredCount);
-      
-      // 直接复用预习页已加载并过滤后的单词，避免再次全量加载导致卡顿
-      const wordsWithId = (this.data.allWords || []).map((word) => ({
-        ...word,
-        phonetic: this.normalizePhoneticDisplay(word.phonetic),
-        id: word.id || (word.word ? `${wordbookId}_${word.word.toLowerCase().replace(/\s+/g, '_')}` : `${wordbookId}_${Math.random().toString(36).substr(2, 9)}`)
-      }));
-      
-      
-      
-      // 第二步：根据是否有明确标记为不会的单词来过滤学习单词
-      if (explicitlyNotMasteredCount > 0) {
-        // 如果有明确标记为不会的单词，则只学习这些单词
-        selectedNotMasteredWords.forEach((word) => {
-          if (word && word.id && !addedWordIds.has(word.id)) {
-            notMasteredWords.push(word);
-            addedWordIds.add(word.id);
-          }
-        });
-      } else {
-        // 如果没有明确标记为未掌握的单词，显示弹框提示用户
-        wx.showModal({
-          title: '提示',
-          content: '您没有选择任何未掌握的单词，是否继续学习所有未掌握的单词？',
-          success: (res) => {
-            if (res.confirm) {
-              // 用户确认继续学习，学习所有不在已掌握列表中的单词
-              for (const word of wordsWithId) {
-                if (word && word.id && !addedWordIds.has(word.id)) {
-                  // 检查单词是否不在已掌握列表中 - 转换为字符串比较以确保类型匹配
-                  const isNotInMasteredList = !masteredWordIdArray.some(id => String(id) === String(word.id));
-                  if (isNotInMasteredList) {
-                    notMasteredWords.push(word);
-                    addedWordIds.add(word.id);
-                  }
-                }
-              }
-              
-              console.log('生成的学习单词列表数量:', notMasteredWords.length);
-              
-              // 继续执行开始学习的逻辑
-              this._continueStartLearning(notMasteredWords);
-            } else if (res.cancel) {
-              // 用户取消，不开始学习
-              console.log('用户取消学习');
-            }
-          }
-        });
-        // 提前返回，等待用户确认
+      // 先完成纯判断；无有效主动标记时不写正式状态，也不清预习状态。
+      if (decision.markedWordIds.length === 0) {
+        wx.showToast({ title: '请先标记本轮单词', icon: 'none' });
         return;
       }
-      
-      console.log('生成的学习单词列表数量:', notMasteredWords.length);
-      
-      // 如果没有明确标记为不会的单词，并且没有未掌握的单词，仍然允许开始学习
-      if (explicitlyNotMasteredCount === 0 && notMasteredWords.length === 0) {
-        wx.showToast({
-          title: '所有单词都已经掌握了，是否继续学习？',
-          icon: 'none',
-          duration: 2000
-        });
+
+      const startPreviewMastery = {};
+      decision.masteredWordIds.forEach(wordId => { startPreviewMastery[wordId] = true; });
+      decision.notMasteredWordIds.forEach(wordId => { startPreviewMastery[wordId] = false; });
+      this.setData({
+        startLearningSourceWordIds: decision.markedWordIds.slice(),
+        startLearningSourceMasteredWordIds: decision.masteredWordIds.slice(),
+        startLearningSourceNotMasteredWordIds: decision.notMasteredWordIds.slice(),
+        startLearningSourceWordsDetailed: decision.wordsDetailed
+      });
+
+      if (decision.notMasteredWords.length === 0) {
+        this._completePreviewOnlyRound(decision, studentId, wordbookId);
+        return;
       }
-      
-      // 继续执行开始学习的逻辑
-      this._continueStartLearning(notMasteredWords);
+
+      this.updateWordMasteryStatus(
+        decision.markedWordIds,
+        'mastered',
+        startPreviewMastery,
+        { markAntiForgettingSeed: true }
+      );
+      this._clearCommittedPreviewState(studentId, wordbookId);
+      this._continueStartLearning(decision.notMasteredWords);
     } catch (error) {
       console.error('开始学习失败:', error);
-      wx.showToast({
-        title: '开始学习失败，请重试',
-        icon: 'none'
-      });
+      wx.showToast({ title: '开始学习失败，请重试', icon: 'none' });
     }
   },
 
@@ -2991,7 +2927,7 @@ Page({
   },
 
   // 保存学习记录
-  saveLearningRecord: function(correctRate, totalWords, masteredWords) {
+  saveLearningRecord: function(correctRate, totalWords, masteredWords, options = {}) {
     try {
       // 停止学习时长统计并更新最终时长
       this.stopStudyTimer();
@@ -3248,7 +3184,8 @@ Page({
         });
 
         this.updateWordMasteryStatus(learnedWordIds, 'mastered', masterySnapshot, {
-          antiForgettingSeedSnapshot
+          antiForgettingSeedSnapshot,
+          markAntiForgettingSeed: options.markAntiForgettingSeed === true
         });
 
         // ★ 立即同步 wordMastery 到云端，防止本地数据丢失导致云端缺失
@@ -3268,7 +3205,10 @@ Page({
       
       // 调用app.js中的方法，这样会触发全局事件
       const app = getApp();
-      app.addLearningRecord(record);
+      const recordSaved = app.addLearningRecord(record);
+      if (recordSaved === false) {
+        throw new Error('学习记录保存失败');
+      }
       
       console.log('学习记录保存成功:', record);
       console.log('本次学习的单词数量:', learnedWordIds.length);
@@ -3285,8 +3225,10 @@ Page({
         startLearningSourceNotMasteredWordIds: [],
         startLearningSourceWordsDetailed: []
       });
+      return true;
     } catch (error) {
       console.error('保存学习记录失败:', error);
+      return false;
     }
   },
   
@@ -3311,6 +3253,20 @@ Page({
       }
       if (!wordMastery[studentId][wordbookId]) {
         wordMastery[studentId][wordbookId] = {};
+      }
+      if (Array.isArray(wordMastery[studentId][wordbookId])) {
+        const legacyRecords = {};
+        wordMastery[studentId][wordbookId].forEach(item => {
+          const legacyWordId = item && typeof item === 'object'
+            ? (item.id || item.wordId || item.sourceWordId)
+            : item;
+          if (legacyWordId === undefined || legacyWordId === null || legacyWordId === '') return;
+          const normalizedId = String(legacyWordId);
+          legacyRecords[normalizedId] = item && typeof item === 'object'
+            ? { mastered: true, difficult: false, ...item }
+            : { mastered: true, difficult: false };
+        });
+        wordMastery[studentId][wordbookId] = legacyRecords;
       }
       
       const wordbookMastery = wordMastery[studentId][wordbookId];
