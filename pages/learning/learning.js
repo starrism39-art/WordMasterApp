@@ -1692,31 +1692,9 @@ Page({
         this._previewSessionMastery = newPreviewMastery;
       }
 
-      // 预习模式下：对勾/错叉后都立即从预习列表移除
-      let effectiveAllWords = this.data.allWords;
-      let effectiveCurrentBatchWords = this.data.currentBatchWords;
-      let effectiveCurrentBatchIndex = this.data.currentBatchIndex || 0;
-
-      const isHandledInPreview = (
-        targetStatus === true ||
-        targetStatus === 'mastered' ||
-        targetStatus === false ||
-        targetStatus === 'difficult'
-      );
-
-      if (this.data.learningMode === 'preview' && isHandledInPreview) {
-        effectiveAllWords = (this.data.allWords || []).filter(word => word.id !== actualId);
-
-        const batchSize = 15;
-        const totalBatchesAfter = Math.max(1, Math.ceil(effectiveAllWords.length / batchSize));
-        if (effectiveCurrentBatchIndex >= totalBatchesAfter) {
-          effectiveCurrentBatchIndex = totalBatchesAfter - 1;
-        }
-
-        const startIndex = effectiveCurrentBatchIndex * batchSize;
-        const endIndex = startIndex + batchSize;
-        effectiveCurrentBatchWords = effectiveAllWords.slice(startIndex, endIndex);
-      }
+      // 预习选择是可编辑草稿：词条保持原位，状态通过按钮选中态表达。
+      const effectiveAllWords = this.data.allWords;
+      const effectiveCurrentBatchWords = this.data.currentBatchWords;
       
       // 计算统计信息
       const { 
@@ -1741,13 +1719,6 @@ Page({
       };
 
       if (this.data.learningMode === 'preview') {
-        updateData.allWords = effectiveAllWords;
-        updateData.currentBatchWords = effectiveCurrentBatchWords;
-        updateData.currentBatchIndex = effectiveCurrentBatchIndex;
-        updateData.currentBatchWordsCount = effectiveCurrentBatchWords.length;
-        updateData.totalBatches = Math.max(1, Math.ceil(effectiveAllWords.length / 15));
-        updateData.totalPages = updateData.totalBatches;
-        updateData.hasMoreWords = effectiveCurrentBatchIndex + 1 < updateData.totalBatches;
         // 预习模式下：按钮数量仅统计明确标记为未掌握的单词
         const wordbookId = this.data.currentWordbook?.id;
         let previewNotMasteredCount = 0;

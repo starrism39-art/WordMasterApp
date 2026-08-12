@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('assert');
+const fs = require('fs');
 const Module = require('module');
 
 const learningPath = require.resolve('../pages/learning/learning.js');
@@ -124,10 +125,69 @@ const flushTimers = () => new Promise((resolve) => setTimeout(resolve, 30));
       [words[3].id]: false,
       [words[4].id]: false
     });
-    assert.deepStrictEqual(page.data.allWords.map((word) => word.id), words.slice(5).map((word) => word.id));
+    assert.deepStrictEqual(page.data.allWords.map((word) => word.id), words.map((word) => word.id), 'selected words must stay in the full preview list');
+    assert.deepStrictEqual(page.data.currentBatchWords.map((word) => word.id), words.map((word) => word.id), 'selected words must stay at their original batch positions');
     assert.deepStrictEqual(storage.wordMastery, {});
     assert.deepStrictEqual(storage.learningRecords, []);
     assert.deepStrictEqual(storage.learningProgress, {});
+  }
+
+  // Selected-state rendering already exists and must remain driven by previewMastery.
+  {
+    const wxml = fs.readFileSync(require.resolve('../pages/learning/learning.wxml'), 'utf8');
+    assert.ok(wxml.includes("previewMastery[item.id] === true"));
+    assert.ok(wxml.includes("previewMastery[item.id] === false"));
+    assert.ok(wxml.includes("correct-button {{(previewMastery[item.id] === true"));
+    assert.ok(wxml.includes("wrong-button {{(previewMastery[item.id] === false"));
+  }
+
+  // Selection is editable in both directions and must not change list order or pagination.
+  {
+    const { page } = createPage();
+    const pagedWords = Array.from({ length: 31 }, (_, index) => ({
+      id: `book-a_paged_${index + 1}`,
+      word: `paged ${index + 1}`,
+      meaning: `meaning ${index + 1}`
+    }));
+    page.data.allWords = clone(pagedWords);
+    page.data.currentBatchWords = clone(pagedWords.slice(15, 30));
+    page.data.currentBatchIndex = 1;
+    page.data.totalBatches = 3;
+    page.data.totalPages = 3;
+    page.data.hasMoreWords = true;
+    page._previewWordMap = Object.fromEntries(pagedWords.map((word) => [word.id, clone(word)]));
+
+    const originalAllIds = page.data.allWords.map((word) => word.id);
+    const originalBatchIds = page.data.currentBatchWords.map((word) => word.id);
+    click(page, pagedWords[16], 'true');
+    assert.strictEqual(page.data.previewMastery[pagedWords[16].id], true, 'mastered button state must be visible in Page.data');
+    click(page, pagedWords[16], 'false');
+    assert.strictEqual(page.data.previewMastery[pagedWords[16].id], false, 'mastered -> unmastered must replace the draft value');
+    click(page, pagedWords[17], 'false');
+    click(page, pagedWords[17], 'true');
+    assert.strictEqual(page.data.previewMastery[pagedWords[17].id], true, 'unmastered -> mastered must replace the draft value');
+
+    assert.deepStrictEqual(page.data.allWords.map((word) => word.id), originalAllIds);
+    assert.deepStrictEqual(page.data.currentBatchWords.map((word) => word.id), originalBatchIds);
+    assert.strictEqual(page.data.currentBatchIndex, 1);
+    assert.strictEqual(page.data.totalBatches, 3);
+    assert.strictEqual(page.data.totalPages, 3);
+    assert.strictEqual(page.data.hasMoreWords, true);
+
+    let submittedMastery = null;
+    let continuedWords = null;
+    page.updateWordMasteryStatus = (wordIds, status, previewMastery) => {
+      submittedMastery = clone(previewMastery);
+    };
+    page._clearCommittedPreviewState = () => {};
+    page._continueStartLearning = (selectedWords) => { continuedWords = clone(selectedWords); };
+    page.startNewLearning();
+
+    assert.deepStrictEqual(submittedMastery, {
+      [pagedWords[16].id]: false,
+      [pagedWords[17].id]: true
+    }, 'Start Learning must submit only the final state for each edited word');
+    assert.deepStrictEqual(continuedWords.map((word) => word.id), [pagedWords[16].id]);
   }
 
   // Scenario 5/6: onHide discards the in-memory draft and onShow reloads the preview session.
