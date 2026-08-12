@@ -57,8 +57,6 @@ function createRuntime({
   const previewKey = `previewMastery_${studentId}_${wordbookId}`;
   const excludedKey = `previewExcludedWordIds_${studentId}_${wordbookId}`;
   const storage = {
-    [previewKey]: clone(previewMastery),
-    [excludedKey]: Object.keys(previewMastery),
     wordMastery: clone(existingWordMastery),
     learningRecords: clone(existingLearningRecords),
     learningProgress: {}
@@ -136,6 +134,7 @@ function createRuntime({
     studyDuration: 30
   };
   page._previewWordMap = Object.fromEntries(words.map((word) => [String(word.id), clone(word)]));
+  page._previewSessionMastery = clone(previewMastery);
   page.setData = function setData(patch) {
     this.data = { ...this.data, ...clone(patch) };
   };

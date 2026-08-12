@@ -12,6 +12,7 @@ const tests = [
   'test/learning-word-ids.test.js',
   'test/preview-completed-filter.test.js',
   'test/preview-start-learning-flow.test.js',
+  'test/preview-session-boundary.test.js',
   'test/learning-progress.test.js',
   'test/app-learning-progress.test.js',
   'test/cloud-wordbook-loading.test.js',

@@ -65,12 +65,11 @@ page.setData = function setData(patch) {
   });
   await new Promise((resolve) => setTimeout(resolve, 30));
 
-  assert.strictEqual(syncCalls.length, 1);
-  assert.deepStrictEqual(
-    syncCalls[0].previewData.excluded,
-    ['book-a-last'],
-    '当前点击的最后一个词必须包含在同一次云同步中，不能让云端排除列表慢一拍'
-  );
+  assert.strictEqual(syncCalls.length, 0, '预习会话草稿不得在按钮点击时同步到云端');
+  assert.strictEqual(storage['previewMastery_student-a_book-a'], undefined);
+  assert.strictEqual(storage['previewExcludedWordIds_student-a_book-a'], undefined);
+  assert.deepStrictEqual(page._previewSessionMastery, { 'book-a-last': false });
+  assert.strictEqual(page.data.previewMastery['book-a-last'], false);
   process.stdout.write('preview-state-sync-order: PASS\n');
 })().catch((error) => {
   console.error(error);
