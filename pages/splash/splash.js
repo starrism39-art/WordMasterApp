@@ -7,6 +7,8 @@ Page({
   },
 
   onLoad() {
+    this._isSplashSessionActive = true;
+
     // 最短展示动画时间（1.5s）
     const MIN_DISPLAY_MS = 1500;
     // 最长等待同步时间（20s 兜底）
@@ -29,6 +31,8 @@ Page({
         syncPromise,
         new Promise(function(r) { setTimeout(r, remaining); })
       ]).then(function(results) {
+        if (!isSplashSessionActive(this)) return;
+
         const syncResult = results && results[0];
         if (syncResult && syncResult.blocked) {
           if (this.splashTimer) {
@@ -66,6 +70,8 @@ Page({
 
     // 安全兜底：超时后强制跳转
     this.splashTimer = setTimeout(function() {
+      if (!isSplashSessionActive(this)) return;
+
       try {
         const app = getApp();
         if (app && app.globalData && app.globalData.upgradeProtectionBlocked) {
@@ -89,6 +95,7 @@ Page({
 
     // 先展示动画
     this.fadeTimer = setTimeout(function() {
+      if (!isSplashSessionActive(this)) return;
       this.setData({ isFading: true });
     }.bind(this), 1120);
 
@@ -97,6 +104,8 @@ Page({
   },
 
   onUnload() {
+    this._isSplashSessionActive = false;
+
     if (this.fadeTimer) {
       clearTimeout(this.fadeTimer);
       this.fadeTimer = null;
@@ -115,6 +124,7 @@ Page({
  * 就尝试切换 tab 导致的 "pageId not exists" 框架错误
  */
 function splashJump() {
+  if (!isSplashSessionActive(this)) return;
   if (this._jumped) return;
   this._jumped = true;
   if (this.splashTimer) {
@@ -130,4 +140,8 @@ function splashJump() {
       });
     }
   });
+}
+
+function isSplashSessionActive(page) {
+  return !!(page && page._isSplashSessionActive === true);
 }
