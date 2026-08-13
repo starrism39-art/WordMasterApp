@@ -504,12 +504,27 @@ const syncDataFromCloud = async (openid) => {
       return { error: 'missing_openid' };
     }
 
+    const {
+      captureAccountSession,
+      isAccountSessionCurrent
+    } = require('./account-session.js');
+    const requestSession = captureAccountSession(openid);
+    const staleResult = () => ({
+      success: false,
+      stale: true,
+      reason: 'account_session_changed'
+    });
+
     const db = wx.cloud.database({ env: DEFAULT_ENV });
 
     // 开发者工具只读模式仅查询教师权限，不创建或升级真实云端记录。
     const teacherResult = isCloudReadOnlyMode()
       ? await readTeacher(db, openid)
       : await ensureTeacher(db, openid);
+    if (!isAccountSessionCurrent(requestSession)) {
+      console.warn('[cloud-migration] stale account session after teacher read; local commit skipped');
+      return staleResult();
+    }
     if (teacherResult.userRole) {
       try {
         const app = getApp();
@@ -576,6 +591,13 @@ const syncDataFromCloud = async (openid) => {
 
     const cloudProgress = buildProgressMap(progressDocs);
     const cloudMastery = buildWordMasteryMap(masteryDocs);
+
+    // Cloud reads may finish naturally, but a request from an invalidated account
+    // session must not observe or mutate the current account's local state.
+    if (!isAccountSessionCurrent(requestSession)) {
+      console.warn('[cloud-migration] stale account session after cloud pull; local commit skipped');
+      return staleResult();
+    }
 
     // ---- 智能合并：本地数据 + 云端数据，本地未同步的条目不丢失 ----
     const localStudents = Array.isArray(wx.getStorageSync('students')) ? wx.getStorageSync('students') : [];
@@ -845,6 +867,10 @@ const selectLocalDataForMigration = (openid, source) => {
 
 const migrateLocalDataToCloud = async (options = {}) => {
   const suppressToast = options && options.suppressToast === true;
+  const requestedAccountId = String(options && options.accountId || '').trim();
+  const accountSession = options && options.accountSession;
+  const { isAccountSessionCurrent } = require('./account-session.js');
+  const workflowIsCurrent = () => !accountSession || isAccountSessionCurrent(accountSession);
   if (isCloudReadOnlyMode()) {
     console.log('[cloud-migration] 只读模式：跳过本地数据上云');
     return createCloudReadOnlyResult('migrateLocalDataToCloud');
@@ -874,7 +900,7 @@ const migrateLocalDataToCloud = async (options = {}) => {
       console.warn('[cloud-migration] migrate: wx.cloud.init() 兜底调用失败（非阻塞）:', reinitError);
     }
 
-    const openid = wx.getStorageSync('openid');
+    const openid = requestedAccountId || wx.getStorageSync('openid');
     if (!openid) {
       wx.showToast({
         title: 'Missing openid',
@@ -882,17 +908,24 @@ const migrateLocalDataToCloud = async (options = {}) => {
       });
       return { error: 'missing_openid' };
     }
+    if (!workflowIsCurrent()) {
+      return { skipped: true, reason: 'account_session_changed' };
+    }
 
     const db = wx.cloud.database({
       env: DEFAULT_ENV
     });
 
     await ensureTeacher(db, openid);
+    if (!workflowIsCurrent()) {
+      return { skipped: true, reason: 'account_session_changed' };
+    }
 
     // 【权限基座-静默升级】迁移时同步教师权限字段到本地
     try {
       const teacherProfile = await db.collection('teachers').where({ teacher_id: openid }).limit(1).get();
       if (teacherProfile && Array.isArray(teacherProfile.data) && teacherProfile.data.length > 0) {
+        if (!workflowIsCurrent()) return { skipped: true, reason: 'account_session_changed' };
         const cloudTeacher = teacherProfile.data[0];
         const app = getApp();
         const normalizedUser = app.ensureUserPermissions({
@@ -910,6 +943,9 @@ const migrateLocalDataToCloud = async (options = {}) => {
       }
     } catch (permSyncError) {
       console.warn('[Permission] migrateLocalDataToCloud: 权限同步到本地失败（非阻塞）:', permSyncError);
+    }
+    if (!workflowIsCurrent()) {
+      return { skipped: true, reason: 'account_session_changed' };
     }
 
     const selectedLocalData = selectLocalDataForMigration(openid, {
@@ -966,7 +1002,8 @@ const migrateLocalDataToCloud = async (options = {}) => {
     let recordFailed = 0;
     for (let i = 0; i < learningRecords.length; i++) {
       try {
-        const result = await syncLearningRecord(learningRecords[i]);
+        if (!workflowIsCurrent()) return { skipped: true, reason: 'account_session_changed' };
+        const result = await syncLearningRecord(learningRecords[i], { accountId: openid, accountSession });
         if (result && result.ok === true && !result.error) {
           recordSynced++;
         } else {
@@ -990,7 +1027,8 @@ const migrateLocalDataToCloud = async (options = {}) => {
     for (let i = 0; i < progressStudentIds.length; i++) {
       var sid = progressStudentIds[i];
       try {
-        const result = await syncLearningProgress(sid, learningProgress[sid]);
+        if (!workflowIsCurrent()) return { skipped: true, reason: 'account_session_changed' };
+        const result = await syncLearningProgress(sid, learningProgress[sid], { accountId: openid, accountSession });
         if (result && result.ok === true && !result.error) {
           progressSynced++;
         } else {
@@ -1025,7 +1063,8 @@ const migrateLocalDataToCloud = async (options = {}) => {
         const wordCount = Object.keys(studentMastery[wbid]).length;
         masteryWordsTotal += wordCount;
         try {
-          const result = await syncWordMasteryBatch(msid, wbid, studentMastery[wbid]);
+          if (!workflowIsCurrent()) return { skipped: true, reason: 'account_session_changed' };
+          const result = await syncWordMasteryBatch(msid, wbid, studentMastery[wbid], { accountId: openid, accountSession });
           if (result && typeof result.failed === 'number') {
             const failedCount = Math.max(0, Math.min(wordCount, result.failed));
             masteryWordsFailed += failedCount;
@@ -1090,6 +1129,9 @@ const migrateLocalDataToCloud = async (options = {}) => {
       };
     }
 
+    if (!workflowIsCurrent()) {
+      return { skipped: true, reason: 'account_session_changed' };
+    }
     wx.setStorageSync('hasMigratedToCloud', true);
     if (!suppressToast) {
       wx.showToast({

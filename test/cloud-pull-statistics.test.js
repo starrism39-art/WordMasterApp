@@ -3,6 +3,7 @@
 const assert = require('assert');
 
 const storage = {
+  openid: 'openid-test',
   students: [{ id: 'student456', student_id: 'student456', name: '测试学生' }],
   learningRecords: [],
   learningProgress: {},

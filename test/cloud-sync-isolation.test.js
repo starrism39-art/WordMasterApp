@@ -5,8 +5,8 @@ const assert = require('assert');
 const storage = {
   openid: 'openid-test',
   students: [
-    { id: 'student-a', name: 'A' },
-    { id: 'student-b', name: 'B' }
+    { id: 'student-a', name: 'A', ownerId: 'openid-test' },
+    { id: 'student-b', name: 'B', ownerId: 'openid-test' }
   ],
   wordMastery: {},
   learningRecords: [],
@@ -61,6 +61,7 @@ const {
   assert.ok(pendingMastery['student-a__book-one__extra']);
   assert.ok(pendingMastery['student-b__book-two__shared']);
   assert.strictEqual(pendingMastery['student-a__book-one__shared'].word_id, 'shared');
+  assert.strictEqual(pendingMastery['student-a__book-one__shared'].accountId, 'openid-test');
   assert.strictEqual(pendingMastery['student-b__book-two__shared'].student_id, 'student-b');
 
   await syncLearningProgress('student-a', {
@@ -73,6 +74,7 @@ const {
   const pendingProgress = storage.pendingLearningProgressSync || {};
   assert.deepStrictEqual(Object.keys(pendingProgress).sort(), ['student-a', 'student-b']);
   assert.strictEqual(pendingProgress['student-a'].studentId, 'student-a');
+  assert.strictEqual(pendingProgress['student-a'].accountId, 'openid-test');
   assert.strictEqual(pendingProgress['student-b'].studentId, 'student-b');
 
   await syncPreviewState('student-a', 'book-one', {

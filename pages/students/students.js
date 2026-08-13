@@ -562,6 +562,7 @@ Page({
         if (res.confirm) {
           // 设置退出中状态
           this.setData({ isLoggingOut: true });
+          loginService.invalidateLoginSession();
           
           // 清除全局用户信息
           if (app.globalData) {

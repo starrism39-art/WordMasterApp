@@ -68,6 +68,7 @@ const record = {
   assert.strictEqual(queuedRecord.id, record.id);
   assert.strictEqual(queuedRecord.studentId, 'student456');
   assert.strictEqual(queuedRecord.wordbookId, 'senior_textbook_real');
+  assert.strictEqual(queuedRecord.accountId, 'openid-test');
   assert.strictEqual(getSyncStatus().pending, 1);
 
   await syncLearningRecord(record);

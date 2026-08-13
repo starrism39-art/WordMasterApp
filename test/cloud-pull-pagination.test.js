@@ -8,6 +8,7 @@ const targetStudentId = 'student-pagination-target';
 const targetWordbookId = 'senior_textbook_real';
 
 const storage = {
+  openid: teacherId,
   students: [{
     id: targetStudentId,
     student_id: targetStudentId,

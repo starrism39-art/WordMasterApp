@@ -14,8 +14,14 @@ const {
   hasCompletedMigration,
   markMigrationComplete
 } = require('./cloud-migration-state.js');
+const {
+  captureAccountSession,
+  establishAccountSession,
+  invalidateAccountSession,
+  isAccountSessionCurrent
+} = require('./account-session.js');
 
-let _loginPromise = null;
+let _loginFlight = null;
 
 // 是否已有登录凭证
 function isLoggedIn() {
@@ -45,7 +51,7 @@ function fetchOpenId() {
 }
 
 // 确保教师记录存在
-function ensureTeacherRecord(openid) {
+function ensureTeacherRecord(openid, accountSession) {
   if (isCloudReadOnlyMode()) {
     return Promise.resolve(createCloudReadOnlyResult('ensureTeacherRecord'));
   }
@@ -56,6 +62,7 @@ function ensureTeacherRecord(openid) {
   return teachersCollection.where({ teacher_id: openid }).limit(1).get().then(function(queryRes) {
     var hasRecord = queryRes && Array.isArray(queryRes.data) && queryRes.data.length > 0;
     if (hasRecord) {
+      if (accountSession && !isAccountSessionCurrent(accountSession)) return;
       var cloudTeacher = queryRes.data[0];
       var app = getApp();
       var normalizedUser = app.ensureUserPermissions({
@@ -68,6 +75,7 @@ function ensureTeacherRecord(openid) {
       app.globalData.currentUser = normalizedUser;
       return;
     }
+    if (accountSession && !isAccountSessionCurrent(accountSession)) return;
     var ts = String(Date.now()).slice(-4);
     return teachersCollection.add({
       data: {
@@ -76,6 +84,7 @@ function ensureTeacherRecord(openid) {
         createdAt: new Date().toISOString(), status: 'active'
       }
     }).then(function() {
+      if (accountSession && !isAccountSessionCurrent(accountSession)) return;
       var app = getApp();
       var normalizedUser = app.ensureUserPermissions({
         id: openid, username: openid, name: '教师' + ts,
@@ -236,7 +245,15 @@ function isLocalSnapshotCoveredByCloud(snapshot, cloudSnapshot, openid) {
 
 // 核心：静默登录（等待云端数据同步完成，确保数据就绪）
 function doSilentLogin() {
-  if (_loginPromise) return _loginPromise;
+  var cachedOpenId = wx.getStorageSync('openid');
+  var requestSession = captureAccountSession(cachedOpenId);
+  if (
+    _loginFlight &&
+    _loginFlight.accountId === requestSession.accountId &&
+    _loginFlight.generation === requestSession.generation
+  ) {
+    return _loginFlight.promise;
+  }
 
   var protectionState = wx.getStorageSync('upgradeProtectionState');
   var appProtectionBlocked = false;
@@ -264,11 +281,19 @@ function doSilentLogin() {
   console.log('[login-service] 开始静默登录');
 
   // 云端拉取必须成功，后续才允许迁移/重试本地待写数据，避免旧设备先覆盖新云端状态。
+  function assertCurrentSession() {
+    if (isAccountSessionCurrent(requestSession)) return;
+    var staleError = new Error('account_session_changed');
+    staleError.code = 'account_session_changed';
+    throw staleError;
+  }
+
   function pullFromCloud(openid) {
     return syncDataFromCloud(openid).then(function(result) {
       if (!result || result.error || result.success === false) {
-        throw new Error(result && result.error ? result.error : 'cloud_pull_failed');
+        throw new Error(result && (result.error || result.reason) ? (result.error || result.reason) : 'cloud_pull_failed');
       }
+      assertCurrentSession();
       try { getApp().emit('cloudSyncComplete'); } catch(e) {}
       console.log('[login-service] 云端数据拉取并合并完成');
       return result;
@@ -276,6 +301,7 @@ function doSilentLogin() {
   }
 
   function pushAfterPull(openid, pullResult) {
+    assertCurrentSession();
     var alreadyMigrated = hasCompletedMigration(openid);
     var hasLocalSnapshot = hasLocalDataToMigrate(localSnapshotBeforePull);
     var cloudCovered = hasLocalSnapshot && isLocalSnapshotCoveredByCloud(
@@ -293,16 +319,25 @@ function doSilentLogin() {
     }
 
     var migration = shouldMigrate
-      ? migrateLocalDataToCloud({ suppressToast: true })
+      ? migrateLocalDataToCloud({
+          suppressToast: true,
+          accountId: openid,
+          accountSession: requestSession
+        })
       : Promise.resolve({ skipped: true });
     return migration.then(function(migrationResult) {
+      assertCurrentSession();
       if (migrationResult && migrationResult.error) {
         throw new Error(migrationResult.error);
       }
       if (shouldMigrate && migrationResult && migrationResult.success === true) {
         markMigrationComplete(openid, 'legacy_migration');
       }
-      return retryPendingSyncs().then(function(retryResult) {
+      return retryPendingSyncs({
+        accountId: openid,
+        accountSession: requestSession
+      }).then(function(retryResult) {
+        assertCurrentSession();
         var pending = Number(retryResult && retryResult.pending) || 0;
         var nonRetryableFailures = migrationResult && migrationResult.partial && migrationResult.failures
           ? Number(migrationResult.failures.students || 0) || 0
@@ -327,7 +362,6 @@ function doSilentLogin() {
     });
   }
 
-  var cachedOpenId = wx.getStorageSync('openid');
   var workflow;
   if (cachedOpenId) {
     console.log('[login-service] 使用缓存 openid:', cachedOpenId);
@@ -337,8 +371,15 @@ function doSilentLogin() {
   } else {
     // 无缓存 openid → 获取身份、建立教师记录，再拉取云端；本地写入仍必须排在拉取成功之后。
     workflow = fetchOpenId().then(function(openid) {
+      assertCurrentSession();
       wx.setStorageSync('openid', openid);
-      return ensureTeacherRecord(openid).then(function() {
+      requestSession = establishAccountSession(openid);
+      if (_loginFlight && _loginFlight.promise === loginPromise) {
+        _loginFlight.accountId = requestSession.accountId;
+        _loginFlight.generation = requestSession.generation;
+      }
+      return ensureTeacherRecord(openid, requestSession).then(function() {
+        assertCurrentSession();
         return pullFromCloud(openid);
       }).then(function(pullResult) {
         return pushAfterPull(openid, pullResult);
@@ -346,7 +387,12 @@ function doSilentLogin() {
     });
   }
 
-  _loginPromise = workflow.then(function(syncResult) {
+  var flight = {
+    accountId: requestSession.accountId,
+    generation: requestSession.generation,
+    promise: null
+  };
+  var loginPromise = workflow.then(function(syncResult) {
     return {
       ok: true,
       pending: Number(syncResult && syncResult.pending) || 0,
@@ -354,19 +400,33 @@ function doSilentLogin() {
       retry: syncResult && syncResult.retry
     };
   }).catch(function(error) {
+    if (error && error.code === 'account_session_changed') {
+      console.log('[login-service] 账号会话已变化，旧登录工作流已跳过');
+      return { ok: false, stale: true, reason: 'account_session_changed', error: error };
+    }
     console.error('[login-service] 登录或同步失败:', error);
     return { ok: false, error: error };
   }).then(function(result) {
-    _loginPromise = null;
+    if (_loginFlight === flight) {
+      _loginFlight = null;
+    }
     return result;
   });
+  flight.promise = loginPromise;
+  _loginFlight = flight;
 
-  return _loginPromise;
+  return loginPromise;
+}
+
+function invalidateLoginSession() {
+  invalidateAccountSession();
+  _loginFlight = null;
 }
 
 module.exports = {
   isLoggedIn: isLoggedIn,
   doSilentLogin: doSilentLogin,
+  invalidateLoginSession: invalidateLoginSession,
   fetchOpenId: fetchOpenId,
   ensureTeacherRecord: ensureTeacherRecord
 };

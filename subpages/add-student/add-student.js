@@ -8,6 +8,7 @@ const STUDENT_NAME_CASCADE_COLLECTIONS = [
   'student_statistics'
 ];
 const { isCloudReadOnlyMode } = require('../../utils/cloud-mode.js');
+const { establishAccountSession } = require('../../utils/account-session.js');
 
 Page({
 
@@ -552,10 +553,11 @@ Page({
               return null;
             }
             wx.setStorageSync('openid', freshOpenId);
+            const accountSession = establishAccountSession(freshOpenId);
             // ★ openid 就绪，重试积压的同步任务
             try {
               const { retryPendingSyncs } = require('../../utils/cloud-sync.js');
-              retryPendingSyncs();
+              retryPendingSyncs({ accountId: freshOpenId, accountSession });
             } catch (e) { /* 非阻塞 */ }
             return syncStudentToCloud(freshOpenId);
           }).then((result) => {
