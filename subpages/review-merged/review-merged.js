@@ -57,6 +57,7 @@ Page({
   },
 
   onLoad: function(options) {
+    this._isPageUnloaded = false;
     console.log('合并视图页面加载，参数:', options);
     // 重新加载合并词书数据，确保使用最新的单词映射表
     reloadWordMap();
@@ -64,6 +65,9 @@ Page({
 
     const app = getApp();
     this._onWordMasteryUpdated = () => {
+      if (this._isPageUnloaded) {
+        return;
+      }
       if (this.data.learningMode === 'review') {
         return;
       }
@@ -84,14 +88,24 @@ Page({
 
   onHide: function() {
     this.clearReviewAvailabilityTimer();
+    this.clearRefreshRecordsTimer();
   },
 
   onUnload: function() {
-    this.clearReviewAvailabilityTimer();
-    const app = getApp();
-    if (app && app.off && this._onWordMasteryUpdated) {
-      app.off('wordMasteryUpdated', this._onWordMasteryUpdated);
+    if (this._isPageUnloaded) {
+      return;
     }
+    this._isPageUnloaded = true;
+    this.clearReviewAvailabilityTimer();
+    this.clearRefreshRecordsTimer();
+    const app = getApp();
+    if (this._onWordMasteryUpdated) {
+      if (app && app.off) {
+        app.off('wordMasteryUpdated', this._onWordMasteryUpdated);
+      }
+      this._onWordMasteryUpdated = null;
+    }
+    console.log('Merged review page unloaded');
   },
 
   formatLocalDate: function(timestamp) {
@@ -119,6 +133,14 @@ Page({
     }
   },
 
+  clearRefreshRecordsTimer: function() {
+    if (this._refreshRecordsTimer) {
+      clearTimeout(this._refreshRecordsTimer);
+      this._refreshRecordsTimer = null;
+      wx.hideLoading();
+    }
+  },
+
   getReviewDayStartTime: function(timestamp) {
     const date = new Date(timestamp);
     date.setHours(0, 0, 0, 0);
@@ -128,7 +150,7 @@ Page({
 
   scheduleReviewAvailabilityRefresh: function(records) {
     this.clearReviewAvailabilityTimer();
-    if (this.data.learningMode === 'review') {
+    if (this._isPageUnloaded || this.data.learningMode === 'review') {
       return;
     }
 
@@ -159,7 +181,7 @@ Page({
     const delay = Math.max(1000, Math.min(nextRefreshTime - now, maxDelay));
     this._reviewAvailabilityTimer = setTimeout(() => {
       this._reviewAvailabilityTimer = null;
-      if (this.data.learningMode === 'review') {
+      if (this._isPageUnloaded || this.data.learningMode === 'review') {
         return;
       }
       this.initMergedViewProcess();
@@ -1296,6 +1318,7 @@ Page({
   // 刷新记录
   refreshRecords: function() {
     console.log('刷新抗遗忘复习记录');
+    this.clearRefreshRecordsTimer();
     
     // 显示加载动画
     wx.showLoading({
@@ -1304,7 +1327,11 @@ Page({
     });
     
     // 延迟执行，模拟网络请求
-    setTimeout(() => {
+    this._refreshRecordsTimer = setTimeout(() => {
+      this._refreshRecordsTimer = null;
+      if (this._isPageUnloaded) {
+        return;
+      }
       // 重新初始化合并视图模式
       this.initMergedViewProcess();
       
@@ -2043,10 +2070,5 @@ Page({
     
     console.log('处理的复习单词数量:', words.length);
     return words;
-  },
-
-  // 页面卸载时清理资源
-  onUnload: function() {
-    console.log('Merged review page unloaded');
   }
 });

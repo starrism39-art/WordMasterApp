@@ -46,6 +46,7 @@ const tests = [
   'test/home-anti-forgetting-source.test.js',
   'test/preview-state-sync-order.test.js',
   'test/preview-state-clear.test.js',
+  'test/review-merged-lifecycle.test.js',
   'test/review-page-generation.test.js',
   'test/review-word-resolution.test.js',
   'test/review-result-persistence.test.js',
