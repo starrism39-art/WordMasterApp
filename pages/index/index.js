@@ -27,6 +27,11 @@ Page({
 
   onLoad: function() {
     console.log('========== [首页] onLoad 开始 ==========');
+
+    // 5E: pending refresh belongs to this Page instance only. A reused test
+    // instance may still carry an old timer, so invalidate it before mounting.
+    this.cancelPendingHomepageRefresh();
+    this._homepageRefreshActive = true;
     
     // 立即设置加载状态为true
     this.setData({ loading: true });
@@ -93,6 +98,11 @@ Page({
     // 注册 cloudSyncComplete 事件作为兜底（静默登录可能晚于 onLoad）
     if (app && app.on && !this._syncHandler) {
       this._syncHandler = () => {
+        // login-service emits this after the two generic full-pull events but
+        // before their zero-delay fallback can run. The complete cloud refresh
+        // owns the final student/wordbook context and supersedes partial work.
+        this.cancelPendingHomepageRefresh();
+        if (this._homepageRefreshActive === false) return;
         this.refreshAfterCloudSync();
 
         this.consumeStartupSyncNotice(app);
@@ -108,12 +118,20 @@ Page({
     // 注册学习记录更新事件监听器
     if (app && app.on) {
       // 保存回调函数引用以便后续移除
-      this.learningRecordUpdateHandler = this.handleLearningRecordUpdate.bind(this);
+      this.learningRecordUpdateHandler = (record) => {
+        this.coordinateLearningRecordRefresh(record);
+      };
       this.learningRecordDeleteHandler = this.handleLearningRecordDelete.bind(this);
       // 新增：单词掌握状态更新事件监听器
       this.wordMasteryUpdateHandler = () => {
-        console.log('收到单词掌握状态更新事件，重新计算抗遗忘时间');
-        this.calculateAntiForgotTime();
+        console.log('收到单词掌握状态更新事件，排队计算抗遗忘时间');
+        // With no usable context there is no expensive scoped scan to merge;
+        // preserve the legacy immediate empty-state behavior (and 5B contract).
+        if (!this.hasHomepageRefreshContext()) {
+          this.calculateAntiForgotTime();
+          return;
+        }
+        this.schedulePendingHomepageRefresh('mastery');
       };
       
       app.on('learningRecordAdded', this.learningRecordUpdateHandler);
@@ -159,6 +177,76 @@ Page({
     }
   },
 
+  hasHomepageRefreshContext: function() {
+    const app = getApp();
+    const student = (app && app.globalData && app.globalData.currentStudent) || this.data.currentStudent;
+    const wordbook = (app && app.globalData && app.globalData.currentWordbook) || this.data.currentWordbook;
+    return !!(student && student.id && wordbook && wordbook.id);
+  },
+
+  cancelPendingHomepageRefresh: function() {
+    if (this._pendingHomepageRefreshTimer !== null && this._pendingHomepageRefreshTimer !== undefined) {
+      clearTimeout(this._pendingHomepageRefreshTimer);
+    }
+    this._pendingHomepageRefreshTimer = null;
+    this._pendingHomepageRefresh = null;
+  },
+
+  schedulePendingHomepageRefresh: function(kind) {
+    if (this._homepageRefreshActive === false) return;
+
+    if (!this._pendingHomepageRefresh) {
+      this._pendingHomepageRefresh = {
+        mastery: false,
+        record: false
+      };
+    }
+    if (kind === 'record') {
+      this._pendingHomepageRefresh.record = true;
+    } else {
+      this._pendingHomepageRefresh.mastery = true;
+    }
+
+    if (this._pendingHomepageRefreshTimer !== null && this._pendingHomepageRefreshTimer !== undefined) {
+      return;
+    }
+
+    this._pendingHomepageRefreshTimer = setTimeout(() => {
+      const pending = this._pendingHomepageRefresh;
+      this._pendingHomepageRefreshTimer = null;
+      this._pendingHomepageRefresh = null;
+
+      if (this._homepageRefreshActive === false || !pending) return;
+
+      // A payload-less record notification is the broader fallback: its
+      // existing handler already refreshes stats, recent records and anti-forget.
+      if (pending.record) {
+        this.handleLearningRecordUpdate();
+        return;
+      }
+      if (pending.mastery) {
+        this.calculateAntiForgotTime();
+      }
+    }, 0);
+  },
+
+  coordinateLearningRecordRefresh: function(record) {
+    if (this._homepageRefreshActive === false) return;
+
+    // Real local records carry their payload and retain the existing immediate
+    // statistics/recent-record/toast behavior. They also subsume pending mastery.
+    if (record && typeof record === 'object') {
+      this.cancelPendingHomepageRefresh();
+      this.handleLearningRecordUpdate(record);
+      return;
+    }
+
+    // Full pulls emit this generic notification without a payload. Defer it by
+    // one event-loop turn so an adjacent login cloudSyncComplete can supersede it;
+    // direct full pulls still execute this fallback when no completion arrives.
+    this.schedulePendingHomepageRefresh('record');
+  },
+
   refreshAfterCloudSync: function() {
     // 新客户端的云拉取发生在首页 onLoad/onShow 之后时，必须重新恢复
     // 学生/词书上下文并立即重算；否则原始记录已到本地但首页仍停留在 0。
@@ -200,6 +288,9 @@ Page({
   },
 
   onUnload: function() {
+    this._homepageRefreshActive = false;
+    this.cancelPendingHomepageRefresh();
+
     // 页面卸载时保存当前状态，确保最后一次操作被记录
     try {
       const currentStudent = this.data.currentStudent;
