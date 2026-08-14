@@ -44,6 +44,7 @@ const tests = [
   'test/cloud-pull-success-throttle.test.js',
   'test/cloud-pull-bounded-concurrency.test.js',
   'test/full-pull-single-flight.test.js',
+  'test/full-pull-freshness.test.js',
   'test/page-stat-consistency.test.js',
   'test/student-list-display.test.js',
   'test/student-edit.test.js',

@@ -195,7 +195,7 @@ Page({
 
     this.setData({ isRefreshingStudents: true });
     try {
-      await syncDataFromCloud(openid);
+      await syncDataFromCloud(openid, { allowFreshness: true });
       const allStudents = wx.getStorageSync('students') || [];
       const students = this.sanitizeStudents(allStudents);
       this.setData({

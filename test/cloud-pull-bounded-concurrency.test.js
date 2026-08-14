@@ -420,7 +420,7 @@ const assertTimingScenario = async ({ durations, failures, serialElapsed, bounde
     boundedElapsed: 1600
   });
   assert.strictEqual(retryTiming.harness.attempts.learning_records, 2);
-  assert.deepStrictEqual(retryTiming.harness.clock.backoffDelays, [1000]);
+  assert.deepStrictEqual(retryTiming.harness.clock.backoffDelays, [1000, 5000]);
 
   const rateLimitRetry = await runPull({
     durations: Object.fromEntries(COLLECTIONS.map((name) => [name, 0])),
@@ -430,7 +430,7 @@ const assertTimingScenario = async ({ durations, failures, serialElapsed, bounde
   });
   assertSuccessfulMapping(rateLimitRetry.harness, rateLimitRetry.result);
   assert.strictEqual(rateLimitRetry.harness.attempts.word_mastery, 3);
-  assert.deepStrictEqual(rateLimitRetry.harness.clock.backoffDelays, [5000, 10000]);
+  assert.deepStrictEqual(rateLimitRetry.harness.clock.backoffDelays, [5000, 10000, 5000]);
   assert.ok(rateLimitRetry.harness.maxActive <= 2);
 
   const coreFailure = await runPull({
@@ -485,7 +485,7 @@ const assertTimingScenario = async ({ durations, failures, serialElapsed, bounde
   assertSuccessfulMapping(pagination.harness, pagination.result, 41);
   assert.deepStrictEqual(pagination.harness.pageOffsets.word_mastery, [0, 20, 40]);
   assert.strictEqual(pagination.harness.maxPageActive.word_mastery, 1);
-  assert.deepStrictEqual(pagination.harness.clock.backoffDelays, []);
+  assert.deepStrictEqual(pagination.harness.clock.backoffDelays, [5000]);
 
   const staleAccount = await runPull({
     durations: equalDurations,

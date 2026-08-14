@@ -6,6 +6,7 @@ const MAX_CONCURRENCY = 5;
 const MAX_QUERY_LIMIT = 20;
 const BATCH_DELAY_MS = 800;
 const FULL_PULL_READ_CONCURRENCY = 2;
+const FULL_PULL_FRESHNESS_TTL_MS = 5000;
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -869,23 +870,92 @@ const performFullPull = async (openid, requestSession) => {
 // Only pending full pulls are shared. Successful results are removed
 // immediately, so freshness remains a separate 4C-2 concern.
 const fullPullFlights = new Map();
+const fullPullFreshness = new Map();
 
-const syncDataFromCloud = (openid) => {
+const clearFullPullFreshness = (flightKey, expectedEntry) => {
+  const currentEntry = fullPullFreshness.get(flightKey);
+  if (!currentEntry || (expectedEntry && currentEntry !== expectedEntry)) return;
+  fullPullFreshness.delete(flightKey);
+  if (currentEntry.expiryTimer) {
+    clearTimeout(currentEntry.expiryTimer);
+  }
+};
+
+const pruneOtherFullPullFreshness = (requestSession) => {
+  fullPullFreshness.forEach((entry, key) => {
+    if (
+      entry.accountId !== requestSession.accountId ||
+      entry.generation !== requestSession.generation
+    ) {
+      clearFullPullFreshness(key, entry);
+    }
+  });
+};
+
+const rememberSuccessfulFullPull = (flightKey, requestSession, result) => {
+  clearFullPullFreshness(flightKey);
+  const entry = {
+    accountId: requestSession.accountId,
+    generation: requestSession.generation,
+    expiresAt: Date.now() + FULL_PULL_FRESHNESS_TTL_MS,
+    result,
+    expiryTimer: null
+  };
+  fullPullFreshness.set(flightKey, entry);
+  entry.expiryTimer = setTimeout(() => {
+    clearFullPullFreshness(flightKey, entry);
+  }, FULL_PULL_FRESHNESS_TTL_MS);
+  // Do not keep isolated Node checks alive solely for the five-second cache.
+  if (entry.expiryTimer && typeof entry.expiryTimer.unref === 'function') {
+    entry.expiryTimer.unref();
+  }
+};
+
+const readFreshFullPullResult = (flightKey) => {
+  const entry = fullPullFreshness.get(flightKey);
+  if (!entry) return null;
+  if (Date.now() >= entry.expiresAt) {
+    clearFullPullFreshness(flightKey, entry);
+    return null;
+  }
+  return entry.result;
+};
+
+const syncDataFromCloud = (openid, options = {}) => {
   const requestedAccountId = String(openid || '').trim();
   if (!requestedAccountId) {
     return performFullPull(requestedAccountId, null);
   }
 
-  const { captureAccountSession } = require('./account-session.js');
+  const {
+    captureAccountSession,
+    isAccountSessionCurrent
+  } = require('./account-session.js');
   const requestSession = captureAccountSession(requestedAccountId);
   const flightKey = JSON.stringify([
     requestSession.accountId,
     requestSession.generation
   ]);
+  if (isAccountSessionCurrent(requestSession)) {
+    pruneOtherFullPullFreshness(requestSession);
+  }
+
+  // A newer real pull always wins over an older successful result.
   const existingFlight = fullPullFlights.get(flightKey);
   if (existingFlight) {
     return existingFlight.promise;
   }
+
+  if (options && options.allowFreshness === true) {
+    const freshResult = readFreshFullPullResult(flightKey);
+    if (freshResult) {
+      return Promise.resolve(freshResult);
+    }
+  }
+
+  // Starting a real pull invalidates the previous result immediately. If the
+  // new pull fails or becomes stale, callers must not fall back to old fresh data.
+  clearFullPullFreshness(flightKey);
 
   const flight = {
     accountId: requestSession.accountId,
@@ -894,6 +964,18 @@ const syncDataFromCloud = (openid) => {
   };
   flight.promise = Promise.resolve()
     .then(() => performFullPull(requestedAccountId, requestSession))
+    .then((result) => {
+      if (
+        result &&
+        result.success === true &&
+        !result.error &&
+        !result.stale &&
+        isAccountSessionCurrent(requestSession)
+      ) {
+        rememberSuccessfulFullPull(flightKey, requestSession, result);
+      }
+      return result;
+    })
     .finally(() => {
       // An old generation may settle after a newer one was registered.
       // It may only remove its own still-current map entry.

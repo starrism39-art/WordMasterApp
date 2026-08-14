@@ -230,8 +230,8 @@ const assertSuccessfulPagination = async (documentCount) => {
 
   assert.deepStrictEqual(
     harness.delays,
-    [],
-    'successful pagination must continue without a fixed inter-page delay'
+    [5000],
+    'successful pagination must have no awaited page delay; only the non-blocking freshness cleanup timer is allowed'
   );
 };
 
@@ -248,7 +248,7 @@ const assertSuccessfulPagination = async (documentCount) => {
   });
   assert.strictEqual(normalRetry.result.success, true);
   assert.strictEqual(normalRetry.harness.pageAttempts.students, 3);
-  assert.deepStrictEqual(normalRetry.harness.delays, [1000, 2000]);
+  assert.deepStrictEqual(normalRetry.harness.delays, [1000, 2000, 5000]);
 
   const rateLimitRetry = await runPull({
     studentCount: 1,
@@ -258,7 +258,7 @@ const assertSuccessfulPagination = async (documentCount) => {
   });
   assert.strictEqual(rateLimitRetry.result.success, true);
   assert.strictEqual(rateLimitRetry.harness.pageAttempts.students, 3);
-  assert.deepStrictEqual(rateLimitRetry.harness.delays, [5000, 10000]);
+  assert.deepStrictEqual(rateLimitRetry.harness.delays, [5000, 10000, 5000]);
 
   const exhaustedRetry = await runPull({
     studentCount: 1,

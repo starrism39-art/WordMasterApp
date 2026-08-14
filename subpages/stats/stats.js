@@ -130,7 +130,7 @@ Page({
       console.log('【验证】openid 是否存在:', !!openid);
       if (openid) {
         console.log('【验证】即将调用 syncDataFromCloud...');
-        pullPromise = cloudMigration.syncDataFromCloud(openid).then(function(res) {
+        pullPromise = cloudMigration.syncDataFromCloud(openid, { allowFreshness: true }).then(function(res) {
           console.log('【验证】云端拉取成功, 结果:', JSON.stringify(res));
         }).catch(function(err) {
           console.log('【验证】云端拉取失败（降级使用本地数据）:', err && err.message);
