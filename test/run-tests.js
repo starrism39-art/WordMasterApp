@@ -25,6 +25,7 @@ const tests = [
   'test/cloud-duplicate-merge.test.js',
   'test/cross-client-convergence.test.js',
   'test/cloud-learning-record-retry.test.js',
+  'test/migration-marker-isolation.test.js',
   'test/cloud-migration-result.test.js',
   'test/data-backup-protection.test.js',
   'test/data-migration-protection.test.js',

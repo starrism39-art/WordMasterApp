@@ -916,6 +916,10 @@ const migrateLocalDataToCloud = async (options = {}) => {
   const suppressToast = options && options.suppressToast === true;
   const requestedAccountId = String(options && options.accountId || '').trim();
   const accountSession = options && options.accountSession;
+  const hasAccountScopedDecision = !!(
+    requestedAccountId ||
+    (accountSession && String(accountSession.accountId || '').trim())
+  );
   const { isAccountSessionCurrent } = require('./account-session.js');
   const workflowIsCurrent = () => !accountSession || isAccountSessionCurrent(accountSession);
   if (isCloudReadOnlyMode()) {
@@ -924,7 +928,9 @@ const migrateLocalDataToCloud = async (options = {}) => {
   }
 
   try {
-    if (wx.getStorageSync('hasMigratedToCloud')) {
+    // Account-scoped callers have already made the migration decision. The
+    // ownerless legacy boolean must not override that decision for another account.
+    if (!hasAccountScopedDecision && wx.getStorageSync('hasMigratedToCloud')) {
       console.log('[cloud-migration] already migrated, skip');
       return { skipped: true };
     }

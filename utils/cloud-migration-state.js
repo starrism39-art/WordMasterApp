@@ -21,23 +21,14 @@ function getMigrationEntry(openid) {
   return entry && entry.completed === true ? entry : null;
 }
 
-function hasCompletedMigration(openid, options) {
+function hasCompletedMigration(openid) {
   const normalizedOpenId = normalizeOpenId(openid);
   if (!normalizedOpenId) return false;
 
+  // The legacy boolean has no account owner, so it cannot prove that this
+  // account completed migration. Cloud coverage handles legacy upgrades.
   const state = readMigrationState();
-  if (state[normalizedOpenId] && state[normalizedOpenId].completed === true) {
-    return true;
-  }
-
-  const allowLegacyMarker = !options || options.allowLegacyMarker !== false;
-  const cachedOpenId = normalizeOpenId(wx.getStorageSync('openid'));
-  return !!(
-    allowLegacyMarker &&
-    Object.keys(state).length === 0 &&
-    cachedOpenId === normalizedOpenId &&
-    wx.getStorageSync(LEGACY_MIGRATION_KEY)
-  );
+  return !!(state[normalizedOpenId] && state[normalizedOpenId].completed === true);
 }
 
 function markMigrationComplete(openid, source) {

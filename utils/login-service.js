@@ -10,7 +10,6 @@ const migrateLocalDataToCloud = require('./cloud-migration.js').migrateLocalData
 const retryPendingSyncs = require('./cloud-sync.js').retryPendingSyncs;
 const { createCloudReadOnlyResult, isCloudReadOnlyMode } = require('./cloud-mode.js');
 const {
-  getMigrationEntry,
   hasCompletedMigration,
   markMigrationComplete
 } = require('./cloud-migration-state.js');
@@ -313,9 +312,6 @@ function doSilentLogin() {
 
     if ((!hasLocalSnapshot || cloudCovered) && !alreadyMigrated) {
       markMigrationComplete(openid, cloudCovered ? 'cloud_reconciled' : 'cloud_bootstrap');
-    } else if (alreadyMigrated && !getMigrationEntry(openid)) {
-      // Promote the old global marker to the account-scoped marker.
-      markMigrationComplete(openid, 'legacy_marker');
     }
 
     var migration = shouldMigrate
