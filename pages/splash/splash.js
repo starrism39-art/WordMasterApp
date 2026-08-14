@@ -131,15 +131,17 @@ function splashJump() {
     clearTimeout(this.splashTimer);
     this.splashTimer = null;
   }
-  wx.reLaunch({
-    url: '/pages/index/index',
-    fail: function(err) {
-      console.error('[splash] reLaunch 失败，降级使用 switchTab:', err);
-      wx.switchTab({
-        url: '/pages/index/index'
-      });
+
+  try {
+    const app = getApp();
+    if (!app || typeof app.requestStartupNavigation !== 'function') {
+      console.error('[splash] App 启动导航协调器不可用，取消独立导航');
+      return;
     }
-  });
+    app.requestStartupNavigation('splash');
+  } catch (error) {
+    console.error('[splash] 申请启动导航失败:', error);
+  }
 }
 
 function isSplashSessionActive(page) {

@@ -34,6 +34,7 @@ const tests = [
   'test/cloud-sync-isolation.test.js',
   'test/account-session-isolation.test.js',
   'test/login-sync-order.test.js',
+  'test/startup-navigation-coordination.test.js',
   'test/startup-splash-session.test.js',
   'test/startup-sync-notice.test.js',
   'test/stats-consistency.test.js',

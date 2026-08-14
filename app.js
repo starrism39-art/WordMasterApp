@@ -21,6 +21,13 @@ const { resolveCloudReadOnlyMode } = require('./utils/cloud-mode.js');
 
 App({
   onLaunch: function () {
+    // 启动导航由 App 和 Splash 共用同一份一次性状态。
+    // pending -> claimed -> completed；离开 Splash 或重试失去资格时直接失效。
+    this._startupNavigationState = 'pending';
+    this._startupNavigationOwner = null;
+    this._splashNavTimer = null;
+    this._splashNavRetryTimer = null;
+
     this.globalData.cloudReadOnly = resolveCloudReadOnlyMode();
     console.log('[app] 云端写入模式:', this.globalData.cloudReadOnly ? '只读' : '正常');
 
@@ -110,33 +117,150 @@ App({
         console.error('加载当前学生信息失败:', error);
       }
 
-      // 【Splash 导航】由 app 层统一控制从 splash 到首页的跳转。
-      // 不在 splash 页面内做任何导航，避免真机调试冷启动阶段
-      // 的框架竞态（pageId/webviewId not exists）。
-      // 延迟 2s（> splash 动画 1.5s），确保框架完全就绪。
+      // 【Splash 导航兜底】快速同步由 Splash 先申请导航；若 2s 时仍未完成，
+      // App 才使用同一份启动导航资格进入首页。
       var app = this;
       this._splashNavTimer = setTimeout(function() {
         console.log('[app] splash 导航定时器触发，准备跳转首页');
-        wx.reLaunch({
-          url: '/pages/index/index',
-          fail: function(err) {
-            console.error('[app] splash→index reLaunch 失败:', err);
-            // 兜底：再延迟 500ms 后重试
-            setTimeout(function() {
-              wx.reLaunch({
-                url: '/pages/index/index',
-                fail: function(err2) {
-                  console.error('[app] splash→index 重试 reLaunch 也失败:', err2);
-                }
-              });
-            }, 500);
-          }
-        });
+        app._splashNavTimer = null;
+        app.requestStartupNavigation('app-timer');
       }, 2000);
 
     } catch (error) {
       console.error('初始化时出错:', error);
     }
+  },
+
+  _clearStartupNavigationTimers: function() {
+    if (this._splashNavTimer) {
+      clearTimeout(this._splashNavTimer);
+      this._splashNavTimer = null;
+    }
+    if (this._splashNavRetryTimer) {
+      clearTimeout(this._splashNavRetryTimer);
+      this._splashNavRetryTimer = null;
+    }
+  },
+
+  _isStartupNavigationRouteEligible: function() {
+    try {
+      if (typeof getCurrentPages !== 'function') return false;
+      const pages = getCurrentPages();
+      // 冷启动极早期可能尚未建立页面；此时仍属于合理启动状态。
+      if (!pages || pages.length === 0) return true;
+      const currentPage = pages[pages.length - 1];
+      return !!(currentPage && currentPage.route === 'pages/splash/splash');
+    } catch (error) {
+      console.warn('[app] 检查启动导航页面失败，取消旧启动导航:', error);
+      return false;
+    }
+  },
+
+  _finishStartupNavigation: function(state) {
+    this._startupNavigationState = state;
+    this._clearStartupNavigationTimers();
+  },
+
+  requestStartupNavigation: function(source) {
+    const owner = source || 'unknown';
+    if (this._startupNavigationState !== 'pending') return false;
+
+    if (!this._isStartupNavigationRouteEligible()) {
+      this._startupNavigationOwner = null;
+      this._finishStartupNavigation('cancelled');
+      console.log('[app] 已离开 Splash，旧启动导航已失效:', owner);
+      return false;
+    }
+
+    // JavaScript 单线程下先同步占有资格，再调用异步导航，保证近同时请求只有一方胜出。
+    this._startupNavigationState = 'claimed';
+    this._startupNavigationOwner = owner;
+    this._clearStartupNavigationTimers();
+    this._runStartupNavigationAttempt(owner, 0);
+    return true;
+  },
+
+  _runStartupNavigationAttempt: function(owner, attemptIndex) {
+    if (
+      this._startupNavigationState !== 'claimed' ||
+      this._startupNavigationOwner !== owner
+    ) {
+      return;
+    }
+
+    if (!this._isStartupNavigationRouteEligible()) {
+      this._finishStartupNavigation('cancelled');
+      console.log('[app] 启动导航重试前已离开 Splash，导航资格失效:', owner);
+      return;
+    }
+
+    const app = this;
+    wx.reLaunch({
+      url: '/pages/index/index',
+      success: function() {
+        if (
+          app._startupNavigationState === 'claimed' &&
+          app._startupNavigationOwner === owner
+        ) {
+          app._finishStartupNavigation('completed');
+        }
+      },
+      fail: function(err) {
+        if (
+          app._startupNavigationState !== 'claimed' ||
+          app._startupNavigationOwner !== owner
+        ) {
+          return;
+        }
+
+        if (!app._isStartupNavigationRouteEligible()) {
+          app._finishStartupNavigation('cancelled');
+          return;
+        }
+
+        if (owner === 'splash') {
+          console.error('[splash] reLaunch 失败，降级使用 switchTab:', err);
+          wx.switchTab({
+            url: '/pages/index/index',
+            success: function() {
+              if (
+                app._startupNavigationState === 'claimed' &&
+                app._startupNavigationOwner === owner
+              ) {
+                app._finishStartupNavigation('completed');
+              }
+            },
+            fail: function(err2) {
+              console.error('[splash] switchTab 也失败:', err2);
+              app._finishStartupNavigation('failed');
+            }
+          });
+          return;
+        }
+
+        console.error('[app] splash→index reLaunch 失败:', err);
+        if (attemptIndex >= 1) {
+          console.error('[app] splash→index 重试 reLaunch 也失败:', err);
+          app._finishStartupNavigation('failed');
+          return;
+        }
+
+        app._splashNavRetryTimer = setTimeout(function() {
+          app._splashNavRetryTimer = null;
+          if (
+            app._startupNavigationState !== 'claimed' ||
+            app._startupNavigationOwner !== owner
+          ) {
+            return;
+          }
+          if (!app._isStartupNavigationRouteEligible()) {
+            app._finishStartupNavigation('cancelled');
+            return;
+          }
+          app._runStartupNavigationAttempt(owner, attemptIndex + 1);
+        }, 500);
+      }
+    });
   },
 
   // 【新增】初始化数据版本，处理升级逻辑

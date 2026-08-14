@@ -23,7 +23,13 @@ const createSplashHarness = (syncPromise) => {
   const timers = new Map();
   const navigation = [];
   const pageUpdates = [];
-  const app = { globalData: {} };
+  const app = {
+    globalData: {},
+    requestStartupNavigation: () => {
+      navigation.push({ method: 'reLaunch', url: '/pages/index/index' });
+      return true;
+    }
+  };
 
   delete require.cache[splashPath];
   require.cache[loginServicePath] = {
@@ -80,8 +86,11 @@ const createSplashHarness = (syncPromise) => {
 (async () => {
   const originalSetTimeout = global.setTimeout;
   const originalClearTimeout = global.clearTimeout;
+  const originalDateNow = Date.now;
 
   try {
+    Date.now = () => 0;
+
     // Root-cause regression: App navigation unloads Splash before the
     // background synchronization promise settles.
     const lateSync = createDeferred();
@@ -159,6 +168,7 @@ const createSplashHarness = (syncPromise) => {
   } finally {
     global.setTimeout = originalSetTimeout;
     global.clearTimeout = originalClearTimeout;
+    Date.now = originalDateNow;
     delete require.cache[splashPath];
     delete require.cache[loginServicePath];
   }
