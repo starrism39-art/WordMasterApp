@@ -43,6 +43,7 @@ const tests = [
   'test/cloud-pull-pagination.test.js',
   'test/cloud-pull-success-throttle.test.js',
   'test/cloud-pull-bounded-concurrency.test.js',
+  'test/full-pull-single-flight.test.js',
   'test/page-stat-consistency.test.js',
   'test/student-list-display.test.js',
   'test/student-edit.test.js',

@@ -511,7 +511,7 @@ const mergeObjectAtWordLevel = (localObj, cloudObj) => {
   return result;
 };
 
-const syncDataFromCloud = async (openid) => {
+const performFullPull = async (openid, requestSession) => {
   try {
     // 【云环境就绪保护】确保 wx.cloud.init() 已执行后才调用云 API
     if (!wx.cloud) {
@@ -533,11 +533,7 @@ const syncDataFromCloud = async (openid) => {
       return { error: 'missing_openid' };
     }
 
-    const {
-      captureAccountSession,
-      isAccountSessionCurrent
-    } = require('./account-session.js');
-    const requestSession = captureAccountSession(openid);
+    const { isAccountSessionCurrent } = require('./account-session.js');
     const staleResult = () => ({
       success: false,
       stale: true,
@@ -868,6 +864,45 @@ const syncDataFromCloud = async (openid) => {
     console.error('[cloud-migration] pull failed:', error);
     return { error: error && error.message ? error.message : 'unknown_error' };
   }
+};
+
+// Only pending full pulls are shared. Successful results are removed
+// immediately, so freshness remains a separate 4C-2 concern.
+const fullPullFlights = new Map();
+
+const syncDataFromCloud = (openid) => {
+  const requestedAccountId = String(openid || '').trim();
+  if (!requestedAccountId) {
+    return performFullPull(requestedAccountId, null);
+  }
+
+  const { captureAccountSession } = require('./account-session.js');
+  const requestSession = captureAccountSession(requestedAccountId);
+  const flightKey = JSON.stringify([
+    requestSession.accountId,
+    requestSession.generation
+  ]);
+  const existingFlight = fullPullFlights.get(flightKey);
+  if (existingFlight) {
+    return existingFlight.promise;
+  }
+
+  const flight = {
+    accountId: requestSession.accountId,
+    generation: requestSession.generation,
+    promise: null
+  };
+  flight.promise = Promise.resolve()
+    .then(() => performFullPull(requestedAccountId, requestSession))
+    .finally(() => {
+      // An old generation may settle after a newer one was registered.
+      // It may only remove its own still-current map entry.
+      if (fullPullFlights.get(flightKey) === flight) {
+        fullPullFlights.delete(flightKey);
+      }
+    });
+  fullPullFlights.set(flightKey, flight);
+  return flight.promise;
 };
 
 const getLocalOwnerId = (value) => String(
