@@ -59,11 +59,15 @@ Page({
     filteredRecords: null,
     lastUpdateTime: 0
   },
+  _loadDataTimer: null,
+  _onShowLogTimer: null,
+  _isRecordsPageActive: false,
 
   
   onLoad: function() {
-    // 获取应用实例
-    const app = getApp();
+    this._isRecordsPageActive = true;
+    this._loadDataTimer = null;
+    this._onShowLogTimer = null;
     
     // 快速设置学生信息
     this.setData({ isLoading: true });
@@ -71,19 +75,15 @@ Page({
     // 初始化缓存
     this._initCache();
     
-    // 重新加载合并词书数据
-    reloadWordMap();
-    
     // 确保有学生信息
     this.ensureStudentInfo();
     this.syncCurrentContext();
-    
-    // 异步加载数据，避免阻塞UI
-    this.loadData();
   },
   
   // 页面显示时同步学生信息并刷新数据
   onShow: function() {
+    this._isRecordsPageActive = true;
+
     // 重新加载合并词书数据
     reloadWordMap();
     
@@ -97,7 +97,10 @@ Page({
     
     // 立即检查displayedRecords
     const that = this;
-    setTimeout(() => {
+    if (this._onShowLogTimer) clearTimeout(this._onShowLogTimer);
+    this._onShowLogTimer = setTimeout(() => {
+      this._onShowLogTimer = null;
+      if (!this._isRecordsPageActive) return;
       console.log('onShow - 当前displayedRecords:', that.data.displayedRecords);
       console.log('onShow - 当前filteredRecords:', that.data.filteredRecords);
     }, 500);
@@ -178,9 +181,19 @@ Page({
     console.log('loadData开始执行，forceRefresh:', forceRefresh);
     
     const that = this; // 保存this引用
+
+    if (this._loadDataTimer) {
+      clearTimeout(this._loadDataTimer);
+      this._loadDataTimer = null;
+    }
     
     // 使用setTimeout确保UI响应流畅
-    setTimeout(() => {
+    const loadDataTimer = setTimeout(() => {
+      if (that._loadDataTimer === loadDataTimer) {
+        that._loadDataTimer = null;
+      }
+      if (!that._isRecordsPageActive) return;
+
       const { currentStudent } = that.data;
       const app = getApp();
       
@@ -332,6 +345,7 @@ Page({
         });
       }
     }, 100);
+    this._loadDataTimer = loadDataTimer;
   },
   
   // 优化的加载更多数据函数 - 性能提升版
@@ -1853,6 +1867,16 @@ Page({
   
   // 页面卸载时清理缓存，避免内存泄漏
   onUnload: function() {
+    this._isRecordsPageActive = false;
+    if (this._loadDataTimer) {
+      clearTimeout(this._loadDataTimer);
+      this._loadDataTimer = null;
+    }
+    if (this._onShowLogTimer) {
+      clearTimeout(this._onShowLogTimer);
+      this._onShowLogTimer = null;
+    }
+
     // 清理所有缓存数据
     this._cache = {
       processedRecords: null,
