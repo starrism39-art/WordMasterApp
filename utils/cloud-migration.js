@@ -5,6 +5,7 @@ const MAX_CONCURRENCY = 5;
 // Keep the requested page size aligned with that cap so skip offsets stay contiguous.
 const MAX_QUERY_LIMIT = 20;
 const BATCH_DELAY_MS = 800;
+const FULL_PULL_READ_CONCURRENCY = 2;
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -59,6 +60,38 @@ const normalizeObject = (value) => {
     return {};
   }
   return value;
+};
+
+const runBoundedReadTasks = async (tasks, concurrency = FULL_PULL_READ_CONCURRENCY) => {
+  const results = {};
+  let nextIndex = 0;
+  let requiredReadFailed = false;
+  const workerCount = Math.min(Math.max(1, concurrency), tasks.length);
+
+  const worker = async () => {
+    while (!requiredReadFailed && nextIndex < tasks.length) {
+      const taskIndex = nextIndex;
+      nextIndex += 1;
+      const task = tasks[taskIndex];
+      try {
+        results[task.key] = {
+          ok: true,
+          value: await task.read()
+        };
+      } catch (error) {
+        results[task.key] = {
+          ok: false,
+          error
+        };
+        if (task.required) {
+          requiredReadFailed = true;
+        }
+      }
+    }
+  };
+
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return results;
 };
 
 const runBatches = async (items, batchSize, worker, label) => {
@@ -540,26 +573,44 @@ const syncDataFromCloud = async (openid) => {
       }
     }
 
-    const studentsDocs = await fetchAllByTeacher(db, 'students', openid);
-    const recordDocs = await fetchAllByTeacher(db, 'learning_records', openid);
-    const progressDocs = await fetchAllByTeacher(db, 'learning_progress', openid);
-    const masteryDocs = await fetchAllByTeacher(db, 'word_mastery', openid);
+    const readResults = await runBoundedReadTasks([
+      { key: 'students', required: true, read: () => fetchAllByTeacher(db, 'students', openid) },
+      { key: 'records', required: true, read: () => fetchAllByTeacher(db, 'learning_records', openid) },
+      { key: 'progress', required: true, read: () => fetchAllByTeacher(db, 'learning_progress', openid) },
+      { key: 'mastery', required: true, read: () => fetchAllByTeacher(db, 'word_mastery', openid) },
+      { key: 'studentStats', read: () => fetchAllByTeacher(db, 'student_statistics', openid) },
+      { key: 'wordbookStats', read: () => fetchAllByTeacher(db, 'wordbook_statistics', openid) }
+    ]);
+
+    const requireCoreRead = (key) => {
+      const result = readResults[key];
+      if (!result || !result.ok) {
+        throw result && result.error ? result.error : new Error(`missing cloud read result: ${key}`);
+      }
+      return result.value;
+    };
+
+    const studentsDocs = requireCoreRead('students');
+    const recordDocs = requireCoreRead('records');
+    const progressDocs = requireCoreRead('progress');
+    const masteryDocs = requireCoreRead('mastery');
+
     // ★ 拉取云端手动修正的统计数据（管理员可覆盖）
-    let statsDocs = [];
-    let statsFetchSucceeded = false;
-    try {
-      statsDocs = await fetchAllByTeacher(db, 'student_statistics', openid);
-      statsFetchSucceeded = true;
-    } catch (e) {
-      console.warn('[cloud-sync] 拉取 student_statistics 失败（非阻塞）:', e);
+    const statsResult = readResults.studentStats;
+    const statsFetchSucceeded = !!(statsResult && statsResult.ok);
+    const statsDocs = statsFetchSucceeded ? statsResult.value : [];
+    if (!statsFetchSucceeded) {
+      console.warn('[cloud-sync] 拉取 student_statistics 失败（非阻塞）:', statsResult && statsResult.error);
     }
-    let wordbookStatsDocs = [];
-    let wordbookStatsFetchSucceeded = false;
-    try {
-      wordbookStatsDocs = await fetchAllByTeacher(db, 'wordbook_statistics', openid);
-      wordbookStatsFetchSucceeded = true;
-    } catch (e) {
-      console.warn('[cloud-sync] 拉取 wordbook_statistics 失败（非阻塞）:', e);
+
+    const wordbookStatsResult = readResults.wordbookStats;
+    const wordbookStatsFetchSucceeded = !!(wordbookStatsResult && wordbookStatsResult.ok);
+    const wordbookStatsDocs = wordbookStatsFetchSucceeded ? wordbookStatsResult.value : [];
+    if (!wordbookStatsFetchSucceeded) {
+      console.warn(
+        '[cloud-sync] 拉取 wordbook_statistics 失败（非阻塞）:',
+        wordbookStatsResult && wordbookStatsResult.error
+      );
     }
 
     const cloudStudents = (studentsDocs || []).map((doc) => {
