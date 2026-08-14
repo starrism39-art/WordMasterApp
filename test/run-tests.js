@@ -40,6 +40,7 @@ const tests = [
   'test/stats-consistency.test.js',
   'test/cloud-pull-statistics.test.js',
   'test/cloud-pull-pagination.test.js',
+  'test/cloud-pull-success-throttle.test.js',
   'test/page-stat-consistency.test.js',
   'test/student-list-display.test.js',
   'test/student-edit.test.js',

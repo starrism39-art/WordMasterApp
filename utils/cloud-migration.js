@@ -131,10 +131,6 @@ const fetchAllByTeacher = async (db, collectionName, openid, limit = MAX_QUERY_L
     if (batch && Array.isArray(batch.data)) {
       items.push(...batch.data);
     }
-    // 分页间节流，避免连续密集查询
-    if (offset + limit < total) {
-      await delay(300);
-    }
   }
 
   return items;
