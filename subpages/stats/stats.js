@@ -32,8 +32,18 @@ Page({
   _handlers: null,
   _refreshTimer: null,
   _lastRefreshAt: 0,
+  _isStatsPageActive: false,
+  _statsShowGeneration: 0,
+  _hasHandledInitialShow: false,
+  _refreshScheduledShowGeneration: 0,
+  _refreshCompletedShowGeneration: 0,
   
   onLoad: function() {
+    this._isStatsPageActive = true;
+    this._statsShowGeneration = 0;
+    this._hasHandledInitialShow = false;
+    this._refreshScheduledShowGeneration = 0;
+    this._refreshCompletedShowGeneration = 0;
     try {
       // 检查登录状态，未登录无 openid 时静默登录
       const openid = wx.getStorageSync('openid');
@@ -82,7 +92,17 @@ Page({
   
   onShow: function() {
     try {
-      this.setData({ loading: true });
+      const isInitialShow = !this._hasHandledInitialShow;
+      const showGeneration = this._statsShowGeneration + 1;
+      this._hasHandledInitialShow = true;
+      this._statsShowGeneration = showGeneration;
+      if (this._refreshTimer) {
+        // 已排队的事件刷新会读取执行时的当前上下文，可承担这一轮最终刷新。
+        this._refreshScheduledShowGeneration = showGeneration;
+      }
+      if (!isInitialShow) {
+        this.setData({ loading: true });
+      }
       const app = getApp();
 
       // 检查登录状态，未登录时静默登录
@@ -139,6 +159,19 @@ Page({
         console.log('【验证】openid 为空 → 跳过云端拉取');
       }
       pullPromise.then(function() {
+        if (!self._isStatsPageActive || self._statsShowGeneration !== showGeneration) {
+          return;
+        }
+
+        const eventRefreshOwnsCompletion = (
+          self._refreshScheduledShowGeneration === showGeneration ||
+          self._refreshCompletedShowGeneration === showGeneration
+        );
+        if (eventRefreshOwnsCompletion || isInitialShow) {
+          console.log('========== 验证结束 ==========');
+          return;
+        }
+
         self.loadAndCalculateStats();
         console.log('========== 验证结束 ==========');
       });
@@ -172,6 +205,8 @@ Page({
 
   // 当页面卸载（退出）时，必须清理全局监听，防止内存泄漏！
   onUnload: function() {
+    this._isStatsPageActive = false;
+    this._statsShowGeneration += 1;
     this.unregisterRealtimeListeners();
     if (this._refreshTimer) {
       clearTimeout(this._refreshTimer);
@@ -193,10 +228,15 @@ Page({
         const now = Date.now();
         const minIntervalMs = 200;
         const delay = now - this._lastRefreshAt < minIntervalMs ? minIntervalMs : 0;
+        const showGeneration = this._statsShowGeneration;
 
         if (this._refreshTimer) clearTimeout(this._refreshTimer);
+        this._refreshScheduledShowGeneration = showGeneration;
         this._refreshTimer = setTimeout(() => {
+          this._refreshTimer = null;
+          if (!this._isStatsPageActive) return;
           this._lastRefreshAt = Date.now();
+          this._refreshCompletedShowGeneration = this._statsShowGeneration;
           console.log('统计页实时刷新，原因:', reason);
           this.loadAndCalculateStats();
         }, delay);
