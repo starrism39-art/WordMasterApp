@@ -230,6 +230,10 @@ Page({
       if (this.learningRecordDeleteHandler) {
         app.off('learningRecordDeleted', this.learningRecordDeleteHandler);
       }
+      if (this.wordMasteryUpdateHandler) {
+        app.off('wordMasteryUpdated', this.wordMasteryUpdateHandler);
+        this.wordMasteryUpdateHandler = null;
+      }
       if (this._syncHandler) {
         app.off('cloudSyncComplete', this._syncHandler);
       }

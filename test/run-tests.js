@@ -39,6 +39,7 @@ const tests = [
   'test/startup-splash-session.test.js',
   'test/startup-sync-notice.test.js',
   'test/homepage-realtime-stats-dedup.test.js',
+  'test/homepage-mastery-listener-lifecycle.test.js',
   'test/stats-consistency.test.js',
   'test/cloud-pull-statistics.test.js',
   'test/cloud-pull-pagination.test.js',
