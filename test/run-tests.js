@@ -38,6 +38,7 @@ const tests = [
   'test/startup-navigation-coordination.test.js',
   'test/startup-splash-session.test.js',
   'test/startup-sync-notice.test.js',
+  'test/homepage-realtime-stats-dedup.test.js',
   'test/stats-consistency.test.js',
   'test/cloud-pull-statistics.test.js',
   'test/cloud-pull-pagination.test.js',

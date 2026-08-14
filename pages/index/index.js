@@ -185,8 +185,10 @@ Page({
       app.globalData.selectedWordbook = syncedWordbook;
     }
 
-    this.loadLearningStats();
-    this.updateRealTimeStats(syncedStudent.id);
+    const realTimeStatsUpdated = this.loadLearningStats();
+    if (realTimeStatsUpdated !== true) {
+      this.updateRealTimeStats(syncedStudent.id);
+    }
     this.loadRecentRecords();
     this.loadRecommendedWordbooks();
     this.calculateAntiForgotTime();
@@ -442,8 +444,10 @@ Page({
         console.log('开始加载最新数据，保持已恢复的状态');
         
         // 强制重新加载所有数据，确保使用新的学生ID
-        this.loadLearningStats();
-        this.updateRealTimeStats(student.id);
+        const realTimeStatsUpdated = this.loadLearningStats();
+        if (realTimeStatsUpdated !== true) {
+          this.updateRealTimeStats(student.id);
+        }
         this.loadRecentRecords();
         this.loadRecommendedWordbooks();
         this.calculateAntiForgotTime();
@@ -966,8 +970,9 @@ Page({
         this.setData({ learningStats: stats });
         
         // 立即调用实时更新方法，确保数据最新
-        this.updateRealTimeStats(student.id);
+        return this.updateRealTimeStats(student.id) !== false;
       }
+      return false;
     } catch (error) {
       console.error('加载学习统计失败:', error);
       // 出错时仍显示基本数据，避免空白
@@ -980,6 +985,7 @@ Page({
         },
         totalUnmasteredWords: 0
       });
+      return false;
     }
   },
   
@@ -1123,8 +1129,10 @@ Page({
       
       // 保存当前页面状态
       this.saveCurrentPageState();
+      return true;
     } catch (error) {
       console.error('更新实时统计数据失败:', error);
+      return false;
     }
   },
 
@@ -1592,9 +1600,9 @@ Page({
         
         // 更新学习统计
         try {
-          this.loadLearningStats();
+          const realTimeStatsUpdated = this.loadLearningStats();
           // 传递正确的studentId参数
-          if (this.data.currentStudent) {
+          if (realTimeStatsUpdated !== true && this.data.currentStudent) {
             this.updateRealTimeStats(this.data.currentStudent.id);
           }
           this.loadRecentRecords();
@@ -1808,8 +1816,8 @@ Page({
         }
         
         // 强制重新加载所有数据
-        this.loadLearningStats();
-        if (currentStudent && currentStudent.id) {
+        const realTimeStatsUpdated = this.loadLearningStats();
+        if (realTimeStatsUpdated !== true && currentStudent && currentStudent.id) {
           this.updateRealTimeStats(currentStudent.id);
         }
         this.loadRecentRecords();
