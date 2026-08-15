@@ -31,6 +31,7 @@ Page({
     // 5E: pending refresh belongs to this Page instance only. A reused test
     // instance may still carry an old timer, so invalidate it before mounting.
     this.cancelPendingHomepageRefresh();
+    this.cancelScheduledHomepageRefresh();
     this._homepageRefreshActive = true;
     
     // 立即设置加载状态为true
@@ -102,6 +103,7 @@ Page({
         // before their zero-delay fallback can run. The complete cloud refresh
         // owns the final student/wordbook context and supersedes partial work.
         this.cancelPendingHomepageRefresh();
+        this.cancelScheduledHomepageRefresh();
         if (this._homepageRefreshActive === false) return;
         this.refreshAfterCloudSync();
 
@@ -110,11 +112,6 @@ Page({
       app.on('cloudSyncComplete', this._syncHandler);
     }
 
-    // 异步加载更多数据
-    setTimeout(() => {
-      this.loadPageData();
-    }, 100);
-    
     // 注册学习记录更新事件监听器
     if (app && app.on) {
       // 保存回调函数引用以便后续移除
@@ -192,6 +189,26 @@ Page({
     this._pendingHomepageRefresh = null;
   },
 
+  cancelScheduledHomepageRefresh: function() {
+    if (this._homepageDataRefreshTimer !== null && this._homepageDataRefreshTimer !== undefined) {
+      clearTimeout(this._homepageDataRefreshTimer);
+    }
+    this._homepageDataRefreshTimer = null;
+  },
+
+  scheduleHomepageDataRefresh: function() {
+    this.cancelScheduledHomepageRefresh();
+    if (this._homepageRefreshActive === false) return;
+
+    const timerId = setTimeout(() => {
+      if (this._homepageDataRefreshTimer !== timerId) return;
+      this._homepageDataRefreshTimer = null;
+      if (this._homepageRefreshActive === false) return;
+      this.loadPageData();
+    }, 100);
+    this._homepageDataRefreshTimer = timerId;
+  },
+
   schedulePendingHomepageRefresh: function(kind) {
     if (this._homepageRefreshActive === false) return;
 
@@ -265,7 +282,8 @@ Page({
       currentWordbook: syncedWordbook || null,
       learningWordbooks: syncedWordbook
         ? (syncedWordbook.title || syncedWordbook.name || '未知词书')
-        : '未知词书'
+        : '未知词书',
+      loading: false
     });
     app.globalData.currentStudent = syncedStudent;
     if (syncedWordbook) {
@@ -290,6 +308,7 @@ Page({
   onUnload: function() {
     this._homepageRefreshActive = false;
     this.cancelPendingHomepageRefresh();
+    this.cancelScheduledHomepageRefresh();
 
     // 页面卸载时保存当前状态，确保最后一次操作被记录
     try {
@@ -455,6 +474,8 @@ Page({
   },
   
   onShow: function() {
+    this.cancelScheduledHomepageRefresh();
+
     if (typeof this.getTabBar === 'function') {
       const tabBar = this.getTabBar();
       if (tabBar && typeof tabBar.setSelected === 'function') {
@@ -534,22 +555,9 @@ Page({
       // 更新学习词书信息
       this.updateLearningWordbooks();
       
-      // 使用异步方式加载最新数据，确保页面响应性和数据实时性
-      setTimeout(() => {
-        console.log('开始加载最新数据，保持已恢复的状态');
-        
-        // 强制重新加载所有数据，确保使用新的学生ID
-        const realTimeStatsUpdated = this.loadLearningStats();
-        if (realTimeStatsUpdated !== true) {
-          this.updateRealTimeStats(student.id);
-        }
-        this.loadRecentRecords();
-        this.loadRecommendedWordbooks();
-        this.calculateAntiForgotTime();
-        
-        // 数据加载完成后设置加载状态为false
-        this.setData({ loading: false });
-      }, 100); // 进一步缩短延迟时间，确保数据快速更新
+      // onShow owns the complete homepage refresh. Re-scheduling keeps later
+      // returns fresh without allowing the first onLoad/onShow pair to duplicate it.
+      this.scheduleHomepageDataRefresh();
     } else {
       // 没有学生数据时，显示空状态
       this.setData({
@@ -557,6 +565,10 @@ Page({
         loading: false
       });
     }
+  },
+
+  onHide: function() {
+    this.cancelScheduledHomepageRefresh();
   },
   
   // 根据学生名字生成头像文本
@@ -583,7 +595,11 @@ Page({
     try {
       this.loadRecentRecords();
       this.loadRecommendedWordbooks();
-      this.loadLearningStats();
+      const realTimeStatsUpdated = this.loadLearningStats();
+      const currentStudent = this.data.currentStudent;
+      if (realTimeStatsUpdated !== true && currentStudent && currentStudent.id) {
+        this.updateRealTimeStats(currentStudent.id);
+      }
       // 只使用实时数据，不使用模拟数据
       this.setData({ loading: false });
       
@@ -1256,13 +1272,6 @@ Page({
             learningWordbooks: selectedWordbook.title || selectedWordbook.name || '未知词书'
           });
           
-          // 词书改变时重新计算抗遗忘时间
-          this.calculateAntiForgotTime();
-          
-          // 词书改变时立即更新统计数据
-          if (this.data.currentStudent) {
-            this.updateRealTimeStats(this.data.currentStudent.id);
-          }
         }
       }
     } catch (error) {

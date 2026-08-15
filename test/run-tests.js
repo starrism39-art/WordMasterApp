@@ -41,6 +41,7 @@ const tests = [
   'test/homepage-realtime-stats-dedup.test.js',
   'test/homepage-mastery-listener-lifecycle.test.js',
   'test/homepage-full-pull-event-coordination.test.js',
+  'test/homepage-initial-lifecycle-refresh.test.js',
   'test/stats-refresh-dedup.test.js',
   'test/records-initial-load-dedup.test.js',
   'test/stats-consistency.test.js',
