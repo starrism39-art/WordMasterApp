@@ -565,6 +565,51 @@ const seniorWordbooks = [
     ]
   },
   {
+    "id": "senior_exam_syllabus_level_0",
+    "title": "高中考纲词书（level0）",
+    "description": "按原PDF中Round 1顺序整理，共1450词",
+    "category": "senior",
+    "grade": "senior",
+    "region": "全国",
+    "version": "考纲 level0",
+    "totalWords": 1450,
+    "words": [
+      { "word": "education", "phonetic": "/ˌedʒ.uˈkeɪ.ʃən/", "meaning": "n. 教育" },
+      { "word": "school", "phonetic": "/skuːl/", "meaning": "n. 学校" },
+      { "word": "student", "phonetic": "/ˈstjuː.dənt/", "meaning": "n. 学生" }
+    ]
+  },
+  {
+    "id": "senior_exam_syllabus_level_1",
+    "title": "高中考纲词书（level1）",
+    "description": "按原PDF中Round 1顺序整理，共500词",
+    "category": "senior",
+    "grade": "senior",
+    "region": "全国",
+    "version": "考纲 level1",
+    "totalWords": 500,
+    "words": [
+      { "word": "memory", "phonetic": "/ˈmeməri/", "meaning": "n. 记忆力；回忆" },
+      { "word": "acquire", "phonetic": "/əˈkwaɪə(r)/", "meaning": "v. 获得，取得；学到" },
+      { "word": "adapt", "phonetic": "/əˈdæpt/", "meaning": "v. 适应；改编" }
+    ]
+  },
+  {
+    "id": "senior_exam_syllabus_level_2",
+    "title": "高中考纲词书（level2）",
+    "description": "按原PDF中Round 1顺序整理，共1000词",
+    "category": "senior",
+    "grade": "senior",
+    "region": "全国",
+    "version": "考纲 level2",
+    "totalWords": 1000,
+    "words": [
+      { "word": "analyse", "phonetic": "/ˈænəlaɪz/", "meaning": "v. 分析" },
+      { "word": "assess", "phonetic": "/əˈses/", "meaning": "v. 评估" },
+      { "word": "assign", "phonetic": "/əˈsaɪn/", "meaning": "v. 布置；分配" }
+    ]
+  },
+  {
     "id": "senior_book_1_ren_jiao",
     "title": "高中必修一 (人教版)",
     "description": "基于人教版高中英语必修一的词汇表，包含365个核心单词",
@@ -986,13 +1031,18 @@ const generateWordsForBook = function (bookCategory, bookId, startIndex, count) 
             console.log('高考英语阅读高频词汇云端缓存未命中，使用词书默认单词，数量：', book.words ? book.words.length : 0);
             words = book.words || [];
           }
-        } else if (bookId === 'senior_exam_syllabus') {
-          const cloudWords = cloudWordbookLoader.getWordsSync('senior_exam_syllabus');
+        } else if (
+          bookId === 'senior_exam_syllabus' ||
+          bookId === 'senior_exam_syllabus_level_0' ||
+          bookId === 'senior_exam_syllabus_level_1' ||
+          bookId === 'senior_exam_syllabus_level_2'
+        ) {
+          const cloudWords = cloudWordbookLoader.getWordsSync(bookId);
           if (cloudWords && cloudWords.length > 0) {
             words = cloudWords;
-            console.log('成功从云端缓存加载高中考纲词，数量：', words.length);
+            console.log('成功从云端缓存加载高中考纲词书，数量：', words.length);
           } else {
-            console.log('高中考纲词云端缓存未命中，使用词书默认单词，数量：', book.words ? book.words.length : 0);
+            console.log('高中考纲词书云端缓存未命中，使用词书默认单词，数量：', book.words ? book.words.length : 0);
             words = book.words || [];
           }
         } else if (bookId === 'senior_textbook_real') {

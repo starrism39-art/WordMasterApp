@@ -36,6 +36,24 @@ const CLOUD_WORDBOOK_MAP = {
     cloudFileID: `cloud://${CLOUD_ENV_ID}.${CLOUD_BUCKET}/wordbooks/senior_exam_syllabus_words.json`,
     version: 1,
     totalWords: 2950
+  },
+  senior_exam_syllabus_level_0: {
+    path: 'wordbooks/senior_exam_syllabus_level_0_words.json',
+    cloudFileID: `cloud://${CLOUD_ENV_ID}.${CLOUD_BUCKET}/wordbooks/senior_exam_syllabus_level_0_words.json`,
+    version: 1,
+    totalWords: 1450
+  },
+  senior_exam_syllabus_level_1: {
+    path: 'wordbooks/senior_exam_syllabus_level_1_words.json',
+    cloudFileID: `cloud://${CLOUD_ENV_ID}.${CLOUD_BUCKET}/wordbooks/senior_exam_syllabus_level_1_words.json`,
+    version: 1,
+    totalWords: 500
+  },
+  senior_exam_syllabus_level_2: {
+    path: 'wordbooks/senior_exam_syllabus_level_2_words.json',
+    cloudFileID: `cloud://${CLOUD_ENV_ID}.${CLOUD_BUCKET}/wordbooks/senior_exam_syllabus_level_2_words.json`,
+    version: 1,
+    totalWords: 1000
   }
 };
 

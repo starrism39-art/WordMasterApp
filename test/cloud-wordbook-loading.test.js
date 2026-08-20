@@ -73,6 +73,58 @@ async function run() {
   assert.ok(examSyllabusBook, '高中词书列表应包含高中考纲词');
   assert.strictEqual(examSyllabusBook.title, '高中考纲词');
   assert.strictEqual(examSyllabusBook.totalWords, 2950);
+  const splitExamSyllabusConfigs = [
+    {
+      id: 'senior_exam_syllabus_level_0',
+      title: '高中考纲词书（level0）',
+      path: 'wordbooks/senior_exam_syllabus_level_0_words.json',
+      totalWords: 1450,
+      firstWord: 'education'
+    },
+    {
+      id: 'senior_exam_syllabus_level_1',
+      title: '高中考纲词书（level1）',
+      path: 'wordbooks/senior_exam_syllabus_level_1_words.json',
+      totalWords: 500,
+      firstWord: 'memory'
+    },
+    {
+      id: 'senior_exam_syllabus_level_2',
+      title: '高中考纲词书（level2）',
+      path: 'wordbooks/senior_exam_syllabus_level_2_words.json',
+      totalWords: 1000,
+      firstWord: 'analyse'
+    }
+  ];
+  splitExamSyllabusConfigs.forEach((config) => {
+    assert.deepStrictEqual(
+      loader.CLOUD_WORDBOOK_MAP[config.id],
+      {
+        path: config.path,
+        cloudFileID: `cloud://cloudbase-4gafzdch60ad597b.636c-cloudbase-4gafzdch60ad597b-1390590336/${config.path}`,
+        version: 1,
+        totalWords: config.totalWords
+      },
+      `${config.id} should use its own CloudBase object`
+    );
+    assert.strictEqual(loader.isCloudWordbook(config.id), true);
+    const book = wordbooks.senior.find(item => item.id === config.id);
+    assert.ok(book, `高中词书列表应包含 ${config.title}`);
+    assert.strictEqual(book.title, config.title);
+    assert.strictEqual(book.totalWords, config.totalWords);
+  });
+  assert.deepStrictEqual(
+    wordbooks.senior
+      .filter(book => book.id.indexOf('senior_exam_syllabus') === 0)
+      .map(book => book.id),
+    [
+      'senior_exam_syllabus',
+      'senior_exam_syllabus_level_0',
+      'senior_exam_syllabus_level_1',
+      'senior_exam_syllabus_level_2'
+    ],
+    '合并版后应依次显示 level0、level1、level2'
+  );
   assert.strictEqual(
     loader.isCompleteWordList('senior_exam_syllabus', Array.from({ length: 2949 })),
     false,
@@ -133,6 +185,23 @@ async function run() {
   assert.strictEqual(examSyllabusWords[0].word, 'education');
   assert.strictEqual(storage.cloud_wb_senior_exam_syllabus.length, 2950);
   assert.strictEqual(downloadCalls, 3, '高中考纲词应完整下载一次');
+
+  for (const config of splitExamSyllabusConfigs) {
+    downloadedWords = Array.from({ length: config.totalWords }, (_, index) => ({
+      word: index === 0 ? config.firstWord : `${config.id}-${index}`,
+      phonetic: `/split-${index}/`,
+      meaning: `n. 释义-${index}`
+    }));
+    const splitWords = await loader.ensureWordsLoaded(config.id);
+    assert.strictEqual(splitWords.length, config.totalWords);
+    assert.strictEqual(splitWords[0].word, config.firstWord);
+    assert.strictEqual(storage[`cloud_wb_${config.id}`].length, config.totalWords);
+    const generatedWords = wordbooks.generateWordsForBook('senior', config.id, 0, config.totalWords);
+    assert.strictEqual(generatedWords.length, config.totalWords);
+    assert.strictEqual(generatedWords[0].word, config.firstWord);
+    assert.ok(generatedWords[0].meaning.startsWith('n. '), '带词性的释义应原样进入学习流程');
+  }
+  assert.strictEqual(downloadCalls, 6, '三本独立高中考纲词书应各完整下载一次');
 
   downloadedWords = Array.from({ length: 100 }, (_, index) => ({ word: `short-${index}` }));
   const incomplete = await loader.downloadWordsFromCloud('senior_textbook_real');
