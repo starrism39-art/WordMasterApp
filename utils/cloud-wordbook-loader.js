@@ -54,6 +54,12 @@ const CLOUD_WORDBOOK_MAP = {
     cloudFileID: `cloud://${CLOUD_ENV_ID}.${CLOUD_BUCKET}/wordbooks/senior_exam_syllabus_level_2_words.json`,
     version: 1,
     totalWords: 1000
+  },
+  junior_exam_syllabus: {
+    path: 'wordbooks/junior_exam_syllabus_words.json',
+    cloudFileID: `cloud://${CLOUD_ENV_ID}.${CLOUD_BUCKET}/wordbooks/junior_exam_syllabus_words.json`,
+    version: 1,
+    totalWords: 1569
   }
 };
 

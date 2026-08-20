@@ -203,6 +203,44 @@ async function run() {
   }
   assert.strictEqual(downloadCalls, 6, '三本独立高中考纲词书应各完整下载一次');
 
+  assert.deepStrictEqual(
+    loader.CLOUD_WORDBOOK_MAP.junior_exam_syllabus,
+    {
+      path: 'wordbooks/junior_exam_syllabus_words.json',
+      cloudFileID: 'cloud://cloudbase-4gafzdch60ad597b.636c-cloudbase-4gafzdch60ad597b-1390590336/wordbooks/junior_exam_syllabus_words.json',
+      version: 1,
+      totalWords: 1569
+    },
+    'junior exam syllabus wordbook should use the dedicated CloudBase object'
+  );
+  assert.strictEqual(loader.isCloudWordbook('junior_exam_syllabus'), true);
+  const juniorExamSyllabusBook = wordbooks.junior.find(book => book.id === 'junior_exam_syllabus');
+  assert.ok(juniorExamSyllabusBook, '初中词书列表应包含初中考纲词书');
+  assert.strictEqual(juniorExamSyllabusBook.title, '初中考纲词书');
+  assert.strictEqual(juniorExamSyllabusBook.totalWords, 1569);
+
+  downloadedWords = Array.from({ length: 1569 }, (_, index) => ({
+    word: index === 0 ? 'education' : `junior-exam-syllabus-${index}`,
+    phonetic: index === 0 ? '/ˌedʒ.uˈkeɪ.ʃən/' : `/junior-${index}/`,
+    pos: index === 0 ? 'n.' : 'v.',
+    meaning: index === 0 ? 'n. 教育' : `v. 释义-${index}`,
+    definition: index === 0 ? 'the process of teaching and learning' : `definition-${index}`,
+    order: index + 1,
+    wordbookId: 'junior_exam_syllabus'
+  }));
+  const juniorExamSyllabusWords = await loader.ensureWordsLoaded('junior_exam_syllabus');
+  assert.strictEqual(juniorExamSyllabusWords.length, 1569);
+  assert.strictEqual(juniorExamSyllabusWords[0].word, 'education');
+  assert.strictEqual(juniorExamSyllabusWords[0].meaning, 'n. 教育');
+  assert.strictEqual(juniorExamSyllabusWords[0].order, 1);
+  assert.strictEqual(storage.cloud_wb_junior_exam_syllabus.length, 1569);
+  const generatedJuniorWords = wordbooks.generateWordsForBook('junior', 'junior_exam_syllabus', 0, 1569);
+  assert.strictEqual(generatedJuniorWords.length, 1569);
+  assert.strictEqual(generatedJuniorWords[0].word, 'education');
+  assert.strictEqual(generatedJuniorWords[0].meaning, 'n. 教育');
+  assert.strictEqual(generatedJuniorWords[0].definition, 'the process of teaching and learning');
+  assert.strictEqual(downloadCalls, 7, '初中考纲词书应完整下载一次并进入初中学习流程');
+
   downloadedWords = Array.from({ length: 100 }, (_, index) => ({ word: `short-${index}` }));
   const incomplete = await loader.downloadWordsFromCloud('senior_textbook_real');
   assert.strictEqual(incomplete, null, '数量不足的云端文件不能进入学习流程');

@@ -219,9 +219,23 @@ class WordbookLoader {
     } catch (error) {
       console.warn('检查云端词书配置失败:', error);
     }
+
+    if (isCloudWordbookId && cloudWordbookLoader) {
+      try {
+        const cloudWords = cloudWordbookLoader.getWordsSync(wordbookId);
+        if (cloudWords && cloudWords.length > 0) {
+          allWords = cloudWords;
+          console.log('成功从云端缓存加载词书，数量:', allWords.length);
+        }
+      } catch (e) {
+        console.warn('云端词书缓存读取失败:', e);
+      }
+    }
     
     // 首先检查是否是人教版重录版（v2）
-    if (wordbookId === 'junior_7th_ren_jiao_v2') {
+    if (allWords.length > 0) {
+      // 云端词书已从缓存加载，跳过本地文件路由。
+    } else if (wordbookId === 'junior_7th_ren_jiao_v2') {
       try {
         allWords = require('./ren_jiao_7th_grade_first_v2.js');
         console.log('成功加载人教版七年级上册 v2（重录版），数量:', allWords.length);

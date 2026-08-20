@@ -42,6 +42,21 @@ const juniorWordbooks = [
     ]
   },
   {
+    "id": "junior_exam_syllabus",
+    "title": "初中考纲词书",
+    "description": "按原PDF顺序整理的初中考纲词汇，共1569词",
+    "category": "junior",
+    "grade": "junior",
+    "region": "全国",
+    "version": "考纲",
+    "totalWords": 1569,
+    "words": [
+      { "word": "education", "phonetic": "/ˌedʒ.uˈkeɪ.ʃən/", "meaning": "n. 教育" },
+      { "word": "school", "phonetic": "/skuːl/", "meaning": "n. 学校" },
+      { "word": "student", "phonetic": "/ˈstjuː.dənt/", "meaning": "n. 学生" }
+    ]
+  },
+  {
     "id": "junior_7th_textbook",
     "title": "外研社七年级上册",
     "description": "基于外研社七年级上册英语教材的词汇表，包含288个核心单词",
@@ -832,6 +847,15 @@ const generateWordsForBook = function (bookCategory, bookId, startIndex, count) 
       } else if (bookId === 'junior_9th_ren_jiao_v2') {
         words = require('./ren_jiao_9th_grade_v2.js');
         console.log('成功加载人教版九年级全一册 v2（重录版），数量：', words.length);
+      } else if (bookId === 'junior_exam_syllabus') {
+        const cloudWords = cloudWordbookLoader.getWordsSync(bookId);
+        if (cloudWords && cloudWords.length > 0) {
+          words = cloudWords;
+          console.log('成功从云端缓存加载初中考纲词书，数量：', words.length);
+        } else {
+          console.log('初中考纲词书云端缓存未命中，使用词书默认单词，数量：', book.words ? book.words.length : 0);
+          words = book.words || [];
+        }
       } else if (bookId.includes('primary')) {
         words = require('./primary_real_words.js');
       } else if (bookId.includes('junior')) {
