@@ -183,6 +183,10 @@
         "type": "folder"
       },
       {
+        "value": "node_modules",
+        "type": "folder"
+      },
+      {
         "value": "portfolio",
         "type": "folder"
       },
@@ -201,6 +205,34 @@
       {
         "value": "test-output",
         "type": "folder"
+      },
+      {
+        "value": "tmp",
+        "type": "folder"
+      },
+      {
+        "value": "storage",
+        "type": "folder"
+      },
+      {
+        "value": "tools",
+        "type": "folder"
+      },
+      {
+        "value": "docs",
+        "type": "folder"
+      },
+      {
+        "value": "__pycache__",
+        "type": "folder"
+      },
+      {
+        "value": "**/__pycache__",
+        "type": "folder"
+      },
+      {
+        "value": "*.pyc",
+        "type": "file"
       }
     ],
     "include": []
