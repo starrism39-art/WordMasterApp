@@ -308,20 +308,10 @@ class WordbookLoader {
         console.error('加载人教版单词失败:', error);
         allWords = [];
       }
-    } else if (wordbookId.includes('7th') || wordbookCategory === 'junior') {
-      // 直接加载外研社七年级下册完整单词表
-      try {
-        // 优先加载完整版本的外研社七年级下册单词
-        const words = require('./new_standard_7th_grade_second_complete.js');
-        console.log('强制加载外研社七年级下册单词（完整版），数量:', words.length);
-        allWords = words;
-      } catch (error) {
-        console.error('加载外研社七年级下册单词（完整版）失败:', error);
-      }
     }
     
     // 如果没有加载到单词，再根据词书ID确定加载哪个单词文件
-    if (allWords.length === 0) {
+    if (allWords.length === 0 && !isCloudWordbookId) {
       if (wordbookId.includes('yi_lin')) {
         // 加载译林牛津版单词
         try {
@@ -407,42 +397,70 @@ class WordbookLoader {
       } else if (wordbookId.includes('8th') && wordbookId.includes('second')) {
         // 加载外研社八年级下册单词
         try {
-          const words = require('./new_standard_8th_grade_second.js');
-          console.log('成功加载外研社八年级下册单词，数量:', words.length);
+          const words = require('./new_standard_8th_grade_second_complete.js');
+          console.log('成功加载外研社八年级下册单词（完整版），数量:', words.length);
           allWords = words;
         } catch (error) {
-          console.error('加载外研社八年级下册单词失败:', error);
-          allWords = [];
+          console.error('加载外研社八年级下册单词（完整版）失败，尝试加载标准版:', error);
+          try {
+            const words = require('./new_standard_8th_grade_second.js');
+            console.log('成功加载外研社八年级下册单词（标准版），数量:', words.length);
+            allWords = words;
+          } catch (fallbackError) {
+            console.error('加载外研社八年级下册单词（标准版）失败:', fallbackError);
+            allWords = [];
+          }
         }
       } else if (wordbookId.includes('8th')) {
         // 加载外研社八年级上册单词
         try {
-          const words = require('./new_standard_8th_grade_words.js');
-          console.log('成功加载外研社八年级上册单词，数量:', words.length);
+          const words = require('./new_standard_8th_grade_words_complete.js');
+          console.log('成功加载外研社八年级上册单词（完整版），数量:', words.length);
           allWords = words;
         } catch (error) {
-          console.error('加载外研社八年级上册单词失败:', error);
-          allWords = [];
+          console.error('加载外研社八年级上册单词（完整版）失败，尝试加载标准版:', error);
+          try {
+            const words = require('./new_standard_8th_grade_words.js');
+            console.log('成功加载外研社八年级上册单词（标准版），数量:', words.length);
+            allWords = words;
+          } catch (fallbackError) {
+            console.error('加载外研社八年级上册单词（标准版）失败:', fallbackError);
+            allWords = [];
+          }
         }
       } else if (wordbookId.includes('9th') && wordbookId.includes('second')) {
         // 加载外研社九年级下册单词
         try {
-          const words = require('./new_standard_9th_grade_second.js');
-          console.log('成功加载外研社九年级下册单词，数量:', words.length);
+          const words = require('./new_standard_9th_grade_second_complete.js');
+          console.log('成功加载外研社九年级下册单词（完整版），数量:', words.length);
           allWords = words;
         } catch (error) {
-          console.error('加载外研社九年级下册单词失败:', error);
-          allWords = [];
+          console.error('加载外研社九年级下册单词（完整版）失败，尝试加载标准版:', error);
+          try {
+            const words = require('./new_standard_9th_grade_second.js');
+            console.log('成功加载外研社九年级下册单词（标准版），数量:', words.length);
+            allWords = words;
+          } catch (fallbackError) {
+            console.error('加载外研社九年级下册单词（标准版）失败:', fallbackError);
+            allWords = [];
+          }
         }
       } else if (wordbookId.includes('9th')) {
         // 加载外研社九年级上册单词
         try {
-          const words = require('./new_standard_9th_grade_words.js');
-          console.log('成功加载外研社九年级上册单词，数量:', words.length);
+          const words = require('./new_standard_9th_grade_first_complete.js');
+          console.log('成功加载外研社九年级上册单词（完整版），数量:', words.length);
           allWords = words;
         } catch (error) {
-          console.error('加载外研社九年级上册单词失败:', error);
-          allWords = [];
+          console.error('加载外研社九年级上册单词（完整版）失败，尝试加载标准版:', error);
+          try {
+            const words = require('./new_standard_9th_grade_words.js');
+            console.log('成功加载外研社九年级上册单词（标准版），数量:', words.length);
+            allWords = words;
+          } catch (fallbackError) {
+            console.error('加载外研社九年级上册单词（标准版）失败:', fallbackError);
+            allWords = [];
+          }
         }
       } else if (wordbookCategory === 'primary') {
         // 加载小学单词

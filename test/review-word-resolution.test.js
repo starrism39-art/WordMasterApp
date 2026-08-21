@@ -206,13 +206,76 @@ const assertResolved = (word, expectedWord, expectedMeaning, expectedPhonetic = 
   assert.strictEqual(word.word, expectedWord);
   assert.strictEqual(word.meaning, expectedMeaning);
   assert.strictEqual(word.translation, expectedMeaning);
+  assert.notStrictEqual(word.meaning, '无释义');
   assert.notStrictEqual(word.meaning, '单词释义');
   if (expectedPhonetic !== null) {
     assert.strictEqual(word.phonetic, expectedPhonetic);
   }
 };
 
+const assertWordRoute = (book, expected) => {
+  const words = generateWordsForBook(book.category, book.id, 0, 99999);
+  const firstWords = words.slice(0, expected.firstWords.length).map((word) => word.word);
+  assert.strictEqual(words._totalCount, expected.total, `${book.id} 应加载正确词表数量`);
+  assert.deepStrictEqual(firstWords, expected.firstWords, `${book.id} 应加载正确词表首词`);
+  assert.notDeepStrictEqual(
+    firstWords.slice(0, 3),
+    ['review', 'chocolate', 'factory'],
+    `${book.id} 不得误加载外研社七年级下册词表`
+  );
+  return words;
+};
+
 async function run() {
+  const newStandard8thFirstBook = {
+    id: 'junior_8th_first',
+    title: '外研社八年级上册',
+    category: 'junior'
+  };
+  const newStandard8thFirstWords = assertWordRoute(newStandard8thFirstBook, {
+    total: 243,
+    firstWords: ['suppose', 'birthmark', 'bright']
+  });
+  assert.strictEqual(newStandard8thFirstWords[0].meaning, '想，认为');
+
+  const newStandard7thSecondBook = {
+    id: 'junior_7th_second',
+    title: '外研社七年级下册',
+    category: 'junior'
+  };
+  const newStandard7thSecondWords = generateWordsForBook(newStandard7thSecondBook.category, newStandard7thSecondBook.id, 0, 99999);
+  assert.strictEqual(newStandard7thSecondWords._totalCount, 381, '外研社七年级下册仍应加载七下完整词表');
+  assert.deepStrictEqual(
+    newStandard7thSecondWords.slice(0, 3).map((word) => word.word),
+    ['review', 'chocolate', 'factory'],
+    '外研社七年级下册首词应保持不变'
+  );
+
+  assertWordRoute({
+    id: 'junior_8th_ji_first',
+    title: '冀教版八年级上册',
+    category: 'junior'
+  }, {
+    total: 429,
+    firstWords: ['chat', 'online', 'communication']
+  });
+
+  assertWordRoute({
+    id: 'junior_8th_yi_lin_first',
+    title: '译林牛津版八年级上册',
+    category: 'junior'
+  }, {
+    total: 330,
+    firstWords: ['almost', 'along', 'amazing']
+  });
+
+  assertResolved(
+    await runReviewLoad(reviewPageDefinition, newStandard8thFirstBook, `${newStandard8thFirstBook.id}_suppose`),
+    'suppose',
+    '想，认为',
+    '/səˈpəʊz/'
+  );
+
   const phraseBook = {
     id: 'junior_7th_ren_jiao_v2',
     title: '人教版七年级上册',
