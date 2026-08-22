@@ -60,6 +60,12 @@ const CLOUD_WORDBOOK_MAP = {
     cloudFileID: `cloud://${CLOUD_ENV_ID}.${CLOUD_BUCKET}/wordbooks/junior_exam_syllabus_words.json`,
     version: 1,
     totalWords: 1569
+  },
+  junior_7th_ren_jiao_new: {
+    path: 'wordbooks/junior_7th_ren_jiao_new_words.json',
+    cloudFileID: `cloud://${CLOUD_ENV_ID}.${CLOUD_BUCKET}/wordbooks/junior_7th_ren_jiao_new_words.json`,
+    version: 1,
+    totalWords: 332
   }
 };
 
