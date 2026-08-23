@@ -241,6 +241,45 @@ async function run() {
   assert.strictEqual(generatedJuniorWords[0].definition, 'the process of teaching and learning');
   assert.strictEqual(downloadCalls, 7, '初中考纲词书应完整下载一次并进入初中学习流程');
 
+  assert.deepStrictEqual(
+    loader.CLOUD_WORDBOOK_MAP.junior_9th_ren_jiao_new,
+    {
+      path: 'wordbooks/junior_9th_ren_jiao_new_words.json',
+      cloudFileID: 'cloud://cloudbase-4gafzdch60ad597b.636c-cloudbase-4gafzdch60ad597b-1390590336/wordbooks/junior_9th_ren_jiao_new_words.json',
+      version: 1,
+      totalWords: 485
+    },
+    '人教版英语九年级上册（新版）应使用专属 CloudBase 对象'
+  );
+  assert.strictEqual(loader.isCloudWordbook('junior_9th_ren_jiao_new'), true);
+  const renJiaoGrade9Book = wordbooks.junior.find(book => book.id === 'junior_9th_ren_jiao_new');
+  assert.ok(renJiaoGrade9Book, '初中词书列表应包含人教版英语九年级上册（新版）');
+  assert.strictEqual(renJiaoGrade9Book.title, '人教版英语九年级上册（新版）');
+  assert.strictEqual(renJiaoGrade9Book.totalWords, 485);
+
+  downloadedWords = Array.from({ length: 485 }, (_, index) => ({
+    wordbookId: 'junior_9th_ren_jiao_new',
+    unit: index === 0 ? 'Unit 1' : 'Unit 8',
+    order: index + 1,
+    word: index === 0 ? 'bring about' : `ren-jiao-9-up-${index}`,
+    phonetic: index === 0 ? '' : `/ren-jiao-9-up-${index}/`,
+    pos: index === 0 ? 'phr.' : 'n.',
+    meaning: index === 0 ? 'phr. 带来；引起' : `n. 释义-${index}`
+  }));
+  const renJiaoGrade9Words = await loader.ensureWordsLoaded('junior_9th_ren_jiao_new');
+  assert.strictEqual(renJiaoGrade9Words.length, 485);
+  assert.strictEqual(renJiaoGrade9Words[0].word, 'bring about');
+  assert.strictEqual(renJiaoGrade9Words[0].phonetic, '', '缺失音标应以空字符串进入正式云端词书');
+  assert.strictEqual(renJiaoGrade9Words[0].meaning, 'phr. 带来；引起');
+  assert.strictEqual(renJiaoGrade9Words[0].order, 1);
+  assert.strictEqual(storage.cloud_wb_junior_9th_ren_jiao_new.length, 485);
+  const generatedRenJiaoGrade9Words = wordbooks.generateWordsForBook('junior', 'junior_9th_ren_jiao_new', 0, 485);
+  assert.strictEqual(generatedRenJiaoGrade9Words.length, 485);
+  assert.strictEqual(generatedRenJiaoGrade9Words[0].word, 'bring about');
+  assert.strictEqual(generatedRenJiaoGrade9Words[0].phonetic, '');
+  assert.strictEqual(generatedRenJiaoGrade9Words[0].meaning, 'phr. 带来；引起');
+  assert.strictEqual(downloadCalls, 8, '人教版英语九年级上册（新版）应完整下载一次并进入初中学习流程');
+
   downloadedWords = Array.from({ length: 100 }, (_, index) => ({ word: `short-${index}` }));
   const incomplete = await loader.downloadWordsFromCloud('senior_textbook_real');
   assert.strictEqual(incomplete, null, '数量不足的云端文件不能进入学习流程');
