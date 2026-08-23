@@ -311,6 +311,17 @@ const juniorWordbooks = [
     "words": []
   },
   {
+    "id": "junior_8th_ren_jiao_second_new",
+    "title": "人教版英语八年级下册（新版）",
+    "description": "按新版教材 Vocabulary in Each Unit 顺序整理，共606词",
+    "category": "junior",
+    "grade": "8th",
+    "region": "全国",
+    "version": "人教版",
+    "totalWords": 606,
+    "words": []
+  },
+  {
     "id": "junior_7th_ren_jiao_second",
     "title": "人教版七年级下册",
     "description": "基于人教版七年级下册英语教材的词汇表，包含276个核心单词",
@@ -914,6 +925,15 @@ const generateWordsForBook = function (bookCategory, bookId, startIndex, count) 
           console.log('成功从云端缓存加载人教版英语八年级上册（新版），数量：', words.length);
         } else {
           console.log('人教版英语八年级上册（新版）云端缓存未命中，使用词书默认单词，数量：', book.words ? book.words.length : 0);
+          words = book.words || [];
+        }
+      } else if (bookId === 'junior_8th_ren_jiao_second_new') {
+        const cloudWords = cloudWordbookLoader.getWordsSync(bookId);
+        if (cloudWords && cloudWords.length > 0) {
+          words = cloudWords;
+          console.log('成功从云端缓存加载人教版英语八年级下册（新版），数量：', words.length);
+        } else {
+          console.log('人教版英语八年级下册（新版）云端缓存未命中，使用词书默认单词，数量：', book.words ? book.words.length : 0);
           words = book.words || [];
         }
       } else if (bookId.includes('primary')) {

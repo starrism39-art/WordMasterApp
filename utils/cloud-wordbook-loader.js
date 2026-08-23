@@ -78,6 +78,12 @@ const CLOUD_WORDBOOK_MAP = {
     cloudFileID: `cloud://${CLOUD_ENV_ID}.${CLOUD_BUCKET}/wordbooks/junior_8th_ren_jiao_new_words.json`,
     version: 1,
     totalWords: 551
+  },
+  junior_8th_ren_jiao_second_new: {
+    path: 'wordbooks/junior_8th_ren_jiao_second_new_words.json',
+    cloudFileID: `cloud://${CLOUD_ENV_ID}.${CLOUD_BUCKET}/wordbooks/junior_8th_ren_jiao_second_new_words.json`,
+    version: 1,
+    totalWords: 606
   }
 };
 
