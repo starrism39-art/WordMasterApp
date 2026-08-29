@@ -1,6 +1,7 @@
 // pages/grid-review/grid-review.js
 const { generateWordsForBook } = require('../../data/wordbook-loader.js');
 const { syncWordMasteryBatch } = require('../../utils/cloud-sync.js');
+const { loadReviewWordbookWords } = require('../../utils/review-word-resolver.js');
 
 Page({
   data: {
@@ -77,7 +78,7 @@ Page({
     }
   },
 
-  initReviewProcess: function() {
+  initReviewProcess: async function() {
     console.log('初始化九宫格复习过程');
     this.setData({
       loading: true,
@@ -90,7 +91,7 @@ Page({
     });
 
     try {
-      this.initializeGridReviewMode();
+      await this.initializeGridReviewMode();
     } catch (error) {
       console.error('初始化九宫格复习过程失败:', error);
       this.setData({
@@ -102,7 +103,7 @@ Page({
     }
   },
 
-  initializeGridReviewMode: function() {
+  initializeGridReviewMode: async function() {
     console.log('初始化九宫格复习模式');
     
     try {
@@ -119,8 +120,21 @@ Page({
       
       // 使用真实词书数据
       const batchSize = 15;
-      const firstBatch = generateWordsForBook(wordbookCategory, wordbookId, 0, batchSize);
-      const totalCount = firstBatch._totalCount || 100;
+      const isTeacherCustom = this.data.currentWordbook.sourceType === 'teacher_custom';
+      const teacherLoadResult = isTeacherCustom
+        ? await loadReviewWordbookWords(this.data.currentWordbook)
+        : null;
+      if (isTeacherCustom && (!teacherLoadResult || teacherLoadResult.loadError)) {
+        throw new Error(teacherLoadResult && teacherLoadResult.loadError
+          ? teacherLoadResult.loadError
+          : 'teacher_wordbook_unavailable');
+      }
+      const firstBatch = isTeacherCustom
+        ? teacherLoadResult.words
+        : generateWordsForBook(wordbookCategory, wordbookId, 0, batchSize);
+      const totalCount = isTeacherCustom
+        ? firstBatch.length
+        : (firstBatch._totalCount || 100);
       let totalBatches = Math.ceil(totalCount / batchSize);
       
       // 获取更多单词来填充allWords数组
@@ -128,7 +142,9 @@ Page({
       const maxWordsToLoad = totalCount; // 使用词书总单词数
       
       for (let i = 0; i < maxWordsToLoad; i += batchSize) {
-        const batch = generateWordsForBook(wordbookCategory, wordbookId, i, batchSize);
+        const batch = isTeacherCustom
+          ? firstBatch.slice(i, i + batchSize)
+          : generateWordsForBook(wordbookCategory, wordbookId, i, batchSize);
         allWords.push(...batch);
       }
       

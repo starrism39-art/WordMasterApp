@@ -553,7 +553,9 @@ Page({
     const studentId = selectedStudent.id;
     const wordbookId = currentWordbook.id;
     const loadResult = await loadReviewWordbookWords(currentWordbook);
-    const lookup = buildReviewWordLookup(loadResult.words, wordbookId);
+    const lookup = buildReviewWordLookup(loadResult.words, wordbookId, {
+      sourceType: currentWordbook.sourceType
+    });
     const wordMastery = wx.getStorageSync('wordMastery') || {};
     const wordbookMastery = studentId && wordbookId ? wordMastery[studentId]?.[wordbookId] : {};
     const words = [];

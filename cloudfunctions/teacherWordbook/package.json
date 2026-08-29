@@ -1,0 +1,11 @@
+{
+  "name": "teacherWordbook",
+  "version": "1.0.0",
+  "description": "教师自定义词书V1管理、上传解析与发布云函数",
+  "main": "index.js",
+  "dependencies": {
+    "cos-nodejs-sdk-v5": "3.0.0",
+    "exceljs": "4.4.0",
+    "wx-server-sdk": "^2.7.2"
+  }
+}

@@ -21,27 +21,122 @@
     <view class="filter-item {{currentFilter === 'inProgress' ? 'active' : ''}}" bindtap="changeFilter" data-filter="inProgress">学习中</view>
   </scroll-view>
   
-  <!-- 词书列表 -->
-  <view class="wordbook-list">
-    <block wx:for="{{wordbooks}}" wx:key="id">
-      <view class="wordbook-item card {{item.isCurrent ? 'current' : ''}}" bindtap="startLearning" data-id="{{item.id}}" hover-class="wordbook-item--pressed">
-        <view wx:if="{{item.isHot}}" class="hot-badge">热门</view>
-        <view class="wordbook-main">
-          <view class="wordbook-info">
-            <view class="wordbook-header">
-              <text class="wordbook-title">{{item.title}}</text>
-              <text wx:if="{{item.isCurrent}}" class="current-badge">当前词书</text>
-            </view>
-            <text class="wordbook-meta">{{item.totalWords}}个单词 · 已学{{item.learnedWords || 0}}词</text>
-          </view>
-          <text class="wordbook-action">{{item.isCurrent ? '继续学习' : '切换'}}</text>
-        </view>
+  <!-- 官方词书目录 -->
+  <view class="catalog-section official-section">
+    <view class="catalog-heading">
+      <view>
+        <text class="catalog-title">官方词书</text>
+        <text class="catalog-subtitle">WordMaster 平台维护</text>
       </view>
-    </block>
-    
-    <!-- 空状态 -->
-    <view wx:if="wordbooks.length === 0" class="empty-state">
-      <text>暂无更多词书</text>
+      <text class="catalog-count">{{wordbooks.length}}本</text>
+    </view>
+
+    <view class="wordbook-list">
+      <block wx:for="{{wordbooks}}" wx:key="id">
+        <view class="wordbook-item card {{item.isCurrent ? 'current' : ''}}" bindtap="switchWordbook" data-id="{{item.id}}" hover-class="wordbook-item--pressed">
+          <view wx:if="{{item.isHot}}" class="hot-badge">热门</view>
+          <view class="wordbook-main">
+            <view class="wordbook-info">
+              <view class="wordbook-header">
+                <text class="wordbook-title">{{item.title}}</text>
+                <text wx:if="{{item.isCurrent}}" class="current-badge">当前词书</text>
+              </view>
+              <text class="wordbook-meta">{{item.totalWords}}个单词 · 已学{{item.learnedWords || 0}}词</text>
+            </view>
+            <text class="wordbook-action">{{item.isCurrent ? '当前词书' : '切换'}}</text>
+          </view>
+        </view>
+      </block>
+
+      <view wx:if="{{wordbooks.length === 0}}" class="empty-state">
+        <text>暂无更多词书</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 教师自定义词书切换目录；仅 active 可进入。 -->
+  <view class="catalog-section teacher-section">
+    <view class="catalog-heading">
+      <view>
+        <text class="catalog-title">我的教师词书</text>
+        <text class="catalog-subtitle">仅当前教师及其学生可见</text>
+      </view>
+      <view class="teacher-heading-actions">
+        <text class="catalog-count teacher-count">{{teacherWordbooks.length}}本</text>
+        <button wx:if="{{!selectMode}}" class="create-teacher-book-btn" bindtap="goToCreateTeacherWordbook">创建词书</button>
+      </view>
+    </view>
+
+    <view class="wordbook-list teacher-wordbook-list">
+      <block wx:for="{{teacherWordbooks}}" wx:key="id">
+        <view class="wordbook-item teacher-wordbook-item card {{item.isCurrent ? 'current' : ''}}" bindtap="switchWordbook" data-id="{{item.id}}" hover-class="wordbook-item--pressed">
+          <view class="teacher-book-tags">
+            <text class="source-badge">教师词书</text>
+            <text class="status-badge status-{{item.status}}">{{item.status === 'active' ? '已发布' : (item.status === 'disabled' ? '已下架' : '草稿')}}</text>
+          </view>
+          <view class="wordbook-main">
+            <view class="wordbook-info">
+              <view class="wordbook-header">
+                <text class="wordbook-title">{{item.title}}</text>
+                <text wx:if="{{item.isCurrent}}" class="current-badge">当前词书</text>
+              </view>
+              <text class="wordbook-meta">{{item.totalWords}}个单词 · 版本 {{item.version}}</text>
+            </view>
+            <view class="teacher-card-actions">
+              <text class="wordbook-action teacher-action">{{item.isCurrent ? '当前词书' : '切换'}}</text>
+              <button
+                wx:if="{{!selectMode && item.sourceType === 'teacher_custom' && item.status === 'active'}}"
+                class="update-teacher-book-btn"
+                catchtap="goToUpdateTeacherWordbook"
+                data-id="{{item.wordbookId || item.id}}"
+              >更新词书</button>
+              <button
+                wx:if="{{!selectMode && item.sourceType === 'teacher_custom' && item.status === 'active'}}"
+                class="disable-teacher-book-btn"
+                loading="{{disablingWordbookId === (item.wordbookId || item.id)}}"
+                disabled="{{!!disablingWordbookId}}"
+                catchtap="disableTeacherWordbook"
+                data-id="{{item.wordbookId || item.id}}"
+              >停用词书</button>
+            </view>
+          </view>
+        </view>
+      </block>
+
+      <view wx:if="{{teacherWordbooks.length === 0}}" class="teacher-empty-state">
+        <text class="teacher-empty-title">暂无教师词书</text>
+        <text class="teacher-empty-copy">词书发布后将在这里显示</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 非 active 教师词书只保留管理态展示，不能触发学习词书切换。 -->
+  <view wx:if="{{!selectMode && managedInactiveTeacherWordbooks.length > 0}}" class="catalog-section teacher-section inactive-teacher-section">
+    <view class="catalog-heading">
+      <view>
+        <text class="catalog-title">非学习状态词书</text>
+        <text class="catalog-subtitle">草稿与已停用词书不会进入切换列表</text>
+      </view>
+      <text class="catalog-count teacher-count">{{managedInactiveTeacherWordbooks.length}}本</text>
+    </view>
+    <view class="wordbook-list teacher-wordbook-list">
+      <block wx:for="{{managedInactiveTeacherWordbooks}}" wx:key="id">
+        <view class="wordbook-item teacher-wordbook-item card">
+          <view class="teacher-book-tags">
+            <text class="source-badge">教师词书</text>
+            <text class="status-badge status-{{item.status}}">{{item.status === 'disabled' ? '已停用' : '草稿'}}</text>
+          </view>
+          <view class="wordbook-main">
+            <view class="wordbook-info">
+              <view class="wordbook-header">
+                <text class="wordbook-title">{{item.title}}</text>
+              </view>
+              <text class="wordbook-meta">{{item.totalWords}}个单词 · 版本 {{item.version}}</text>
+            </view>
+            <text class="wordbook-action teacher-action">不可切换</text>
+          </view>
+        </view>
+      </block>
     </view>
   </view>
 </view>

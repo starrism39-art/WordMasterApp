@@ -3,6 +3,8 @@
 const assert = require('assert');
 const {
   getWordbookMasterySummary,
+  resolveCurrentWordbookTotal,
+  refreshStudentLearningProgressTotals,
   reconcileStudentLearningProgress,
   reconcileLearningProgressMap
 } = require('../utils/learning-progress.js');
@@ -95,6 +97,58 @@ const inflatedTotal = reconcileStudentLearningProgress({
 });
 assert.strictEqual(inflatedTotal.wordbooks.senior_textbook_real.totalCount, 4292);
 assert.strictEqual(inflatedTotal.wordbooks.senior_textbook_real.legacyTotalCount, 9999);
+
+const historicalMastery = {
+  teacher_book: {
+    teacher_book_education: { mastered: true, difficult: false }
+  }
+};
+const historicalRecords = [{
+  id: 'teacher-record-1',
+  studentId: 'student-teacher',
+  wordbookId: 'teacher_book',
+  learnedWordIds: ['teacher_book_education']
+}];
+const masterySnapshot = JSON.parse(JSON.stringify(historicalMastery));
+const recordsSnapshot = JSON.parse(JSON.stringify(historicalRecords));
+const teacherProgress25 = {
+  learnedWords: 1,
+  totalWords: 25,
+  wordbooks: {
+    teacher_book: {
+      completedCount: 1,
+      learnedWords: 1,
+      totalCount: 25,
+      progressSource: 'wordMastery'
+    },
+    zero_book: {
+      completedCount: 0,
+      learnedWords: 0,
+      totalCount: 25
+    }
+  }
+};
+const teacherProgress100 = refreshStudentLearningProgressTotals({
+  progressData: teacherProgress25,
+  bookTotals: { teacher_book: 100, zero_book: 100 }
+});
+assert.strictEqual(teacherProgress100.wordbooks.teacher_book.completedCount, 1);
+assert.strictEqual(teacherProgress100.wordbooks.teacher_book.learnedWords, 1);
+assert.strictEqual(teacherProgress100.wordbooks.teacher_book.totalCount, 100);
+assert.strictEqual(teacherProgress100.wordbooks.zero_book.completedCount, 0);
+assert.strictEqual(teacherProgress100.wordbooks.zero_book.totalCount, 100);
+assert.strictEqual(resolveCurrentWordbookTotal(100, 25), 100);
+assert.strictEqual(resolveCurrentWordbookTotal(0, 25), 25);
+
+const teacherProgressReduced = refreshStudentLearningProgressTotals({
+  progressData: teacherProgress100,
+  bookTotals: { teacher_book: 10 }
+});
+assert.strictEqual(teacherProgressReduced.wordbooks.teacher_book.completedCount, 1);
+assert.strictEqual(teacherProgressReduced.wordbooks.teacher_book.learnedWords, 1);
+assert.strictEqual(teacherProgressReduced.wordbooks.teacher_book.totalCount, 10);
+assert.deepStrictEqual(historicalMastery, masterySnapshot, '刷新分母不能修改 mastery');
+assert.deepStrictEqual(historicalRecords, recordsSnapshot, '刷新分母不能修改 learning records');
 
 const repeatedRecords = [
   {

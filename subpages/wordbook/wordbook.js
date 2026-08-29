@@ -7,23 +7,29 @@ const wordbooks = Array.isArray(wordbookData) ? wordbookData :
                      wordbookData.junior || [], 
                      wordbookData.senior || []
                  );
-const generateWordsForBook = wordbookData.generateWordsForBook || function(wordbook) { return wordbook.words || []; };
-const { syncLearningProgress, markPendingSync } = require('../../utils/cloud-sync.js');
-const cloudWordbookLoader = require('../../utils/cloud-wordbook-loader.js');
 const { resolveCurrentStudent, resolveCurrentWordbook, setCurrentWordbook } = require('../../utils/learning-context.js');
-const { getWordbookMasterySummary } = require('../../utils/learning-progress.js');
+const {
+  getWordbookMasterySummary,
+  resolveCurrentWordbookTotal,
+  refreshStudentLearningProgressTotals
+} = require('../../utils/learning-progress.js');
 const { getWordbookStats } = require('../../utils/stats-engine.js');
+const WordbookRepository = require('../../utils/wordbook-repository.js');
+const { getCategoryForStage, resolveGradeStage } = require('../../utils/grade-stage.js');
 
 Page({
   data: {
     wordbooks: [], // 显示的词书列表
     allWordbooks: [], // 完整的词书列表
+    teacherWordbooks: [], // 当前教师可切换的 active 自定义词书
+    managedInactiveTeacherWordbooks: [], // 管理态可见，但绝不进入学习切换列表
     currentFilter: 'all',
     userInfo: null,
     currentStudent: null,
     currentWordbookId: '',
     currentWordbookName: '未选择词书',
     selectMode: false,
+    disablingWordbookId: '',
     loading: true,
     hasError: false,
     errorMessage: ''
@@ -38,6 +44,7 @@ Page({
       
       // 检查是否是选择模式
       const selectMode = options && options.selectMode === 'true';
+      this._filterInitialized = false;
       this.setData({
         selectMode: selectMode
       });
@@ -102,131 +109,174 @@ Page({
       app.globalData.currentStudent = currentStudent;
     }
 
-    this.setData({
+    const nextData = {
       currentStudent: currentStudent || null,
       currentWordbookId: currentWordbook ? String(currentWordbook.id) : '',
       currentWordbookName: currentWordbook
         ? (currentWordbook.title || currentWordbook.name || '未命名词书')
         : '未选择词书'
+    };
+
+    if (!this._filterInitialized) {
+      nextData.currentFilter = resolveGradeStage(currentStudent && currentStudent.grade) || 'all';
+      this._filterInitialized = true;
+    }
+
+    this.setData(nextData);
+  },
+
+  goToCreateTeacherWordbook: function() {
+    wx.navigateTo({
+      url: '/subpages/wordbook-create/wordbook-create',
+      fail: (error) => {
+        console.error('打开创建教师词书页面失败:', error);
+        wx.showToast({
+          title: '暂时无法打开创建页面',
+          icon: 'none'
+        });
+      }
+    });
+  },
+
+  goToUpdateTeacherWordbook: function(event) {
+    const wordbookId = String(
+      event && event.currentTarget && event.currentTarget.dataset.id || ''
+    ).trim();
+    const wordbook = this.data.teacherWordbooks.find((item) => (
+      String(item.wordbookId || item.id) === wordbookId
+    ));
+
+    if (!wordbook
+      || wordbook.sourceType !== 'teacher_custom'
+      || wordbook.status !== 'active') {
+      wx.showToast({
+        title: '当前词书不可更新',
+        icon: 'none'
+      });
+      return;
+    }
+
+    const query = [
+      'mode=update',
+      `wordbookId=${encodeURIComponent(wordbookId)}`,
+      `title=${encodeURIComponent(wordbook.title || '')}`,
+      `version=${encodeURIComponent(String(wordbook.version || 0))}`,
+      `totalWords=${encodeURIComponent(String(wordbook.totalWords || 0))}`
+    ].join('&');
+
+    wx.navigateTo({
+      url: `/subpages/wordbook-create/wordbook-create?${query}`,
+      fail: (error) => {
+        console.error('打开教师词书更新页面失败:', error);
+        wx.showToast({
+          title: '暂时无法打开更新页面',
+          icon: 'none'
+        });
+      }
+    });
+  },
+
+  performDisableTeacherWordbook: async function(wordbookId) {
+    this.setData({ disablingWordbookId: wordbookId });
+    try {
+      await WordbookRepository.disableTeacherWordbook(wordbookId);
+      wx.showToast({
+        title: '词书已停用',
+        icon: 'success'
+      });
+      await this.loadWordbooks();
+    } catch (error) {
+      console.error('停用教师词书失败:', error);
+      wx.showToast({
+        title: '停用失败，请重试',
+        icon: 'none'
+      });
+    } finally {
+      this.setData({ disablingWordbookId: '' });
+    }
+  },
+
+  disableTeacherWordbook: function(event) {
+    const wordbookId = String(
+      event && event.currentTarget && event.currentTarget.dataset.id || ''
+    ).trim();
+    const wordbook = this.data.teacherWordbooks.find((item) => (
+      String(item.wordbookId || item.id) === wordbookId
+    ));
+
+    if (!wordbook
+      || wordbook.sourceType !== WordbookRepository.SOURCE_TYPES.TEACHER_CUSTOM
+      || wordbook.status !== 'active'
+      || this.data.disablingWordbookId) {
+      wx.showToast({
+        title: '当前词书不可停用',
+        icon: 'none'
+      });
+      return;
+    }
+
+    wx.showModal({
+      title: '确认停用词书？',
+      content: '停用后学生不可继续从当前词书目录选择，但历史版本和学习数据不会删除。',
+      confirmText: '确认停用',
+      confirmColor: '#b34b4b',
+      success: (result) => {
+        if (!result.confirm) return;
+        this.performDisableTeacherWordbook(wordbookId);
+      }
     });
   },
   
   // 加载词书数据
-  loadWordbooks: function() {
+  loadWordbooks: async function() {
     try {
       console.log('开始加载词书数据...');
       this.setData({ loading: true });
       
-      // 从导入的词书数据中获取真实词书列表
-      let bookList = [];
-      
-      // 尝试从wordbookData对象中获取所有级别的词书
-      if (wordbookData && typeof wordbookData === 'object') {
-        // 合并不同级别的词书
-        const allBooks = [];
-        if (Array.isArray(wordbookData.primary)) {
-          allBooks.push(...wordbookData.primary);
+      const catalogWordbooks = await WordbookRepository.listWordbooks({
+        teacherScope: this.data.selectMode ? 'active' : 'manage',
+        onTeacherError: (error) => {
+          console.warn('教师词书目录读取失败，继续显示官方词书:', error);
         }
-        if (Array.isArray(wordbookData.junior)) {
-          allBooks.push(...wordbookData.junior);
-        }
-        if (Array.isArray(wordbookData.senior)) {
-          allBooks.push(...wordbookData.senior);
-        }
-        
-        if (allBooks.length > 0) {
-          bookList = allBooks;
-          console.log('成功加载多级词书数据，共', bookList.length, '本词书');
-        } else if (Array.isArray(wordbooks)) {
-          // 兼容旧格式
-          bookList = wordbooks;
-          console.log('成功加载词书数据（旧格式），共', bookList.length, '本词书');
-        } else {
-          console.error('词书数据格式错误，使用备用数据');
-          // 使用备用模拟数据
-          bookList = this.getFallbackWordbooks();
-        }
-      } else if (Array.isArray(wordbooks)) {
-        // 兼容旧格式
-        bookList = wordbooks;
-        console.log('成功加载词书数据，共', bookList.length, '本词书');
-      } else {
-        console.error('词书数据格式错误，使用备用数据');
-        // 使用备用模拟数据
-        bookList = this.getFallbackWordbooks();
+      });
+      const catalogGroups = WordbookRepository.groupWordbooks(catalogWordbooks);
+      let bookList = catalogGroups.officialWordbooks;
+      const activeTeacherBooks = catalogGroups.teacherWordbooks.filter((book) => (
+        book && book.status === 'active'
+      ));
+      const inactiveTeacherBooks = this.data.selectMode
+        ? []
+        : catalogGroups.teacherWordbooks.filter((book) => (
+          book && book.status !== 'active'
+        ));
+      this.refreshCatalogProgressTotals(bookList.concat(activeTeacherBooks));
+      const teacherWordbooks = this.processWordbooksData(activeTeacherBooks);
+      const managedInactiveTeacherWordbooks = this.processWordbooksData(inactiveTeacherBooks);
+
+      if (bookList.length === 0) {
+        console.error('官方词书数据格式错误，使用备用数据');
+        bookList = this.getFallbackWordbooks().map(
+          WordbookRepository.adaptOfficialWordbook
+        );
       }
+
+      console.log(
+        '统一目录加载完成，官方',
+        bookList.length,
+        '本，教师自定义',
+        teacherWordbooks.length,
+        '本'
+      );
       
-      // 处理词书数据，添加收藏状态和学习进度
+      // 处理词书数据，添加学习进度；官方目录与教师目录保持独立。
       const processedWordbooks = this.processWordbooksData(bookList);
-      
-      // 根据学生年级筛选词书
-      let filteredWordbooks = processedWordbooks;
-      const app = getApp();
-      const currentStudent = app.globalData.currentStudent;
-      
-      console.log('=========== 词书筛选过程 ===========');
-      console.log('当前学生信息:', currentStudent);
-      console.log('筛选前词书总数:', processedWordbooks.length);
-      console.log('各分类词书数量 - primary:', processedWordbooks.filter(wb => wb.category === 'primary').length, 'junior:', processedWordbooks.filter(wb => wb.category === 'junior').length, 'senior:', processedWordbooks.filter(wb => wb.category === 'senior').length);
-      
-      if (currentStudent) {
-        console.log('学生存在，年级:', currentStudent.grade);
-        if (currentStudent.grade) {
-          const studentGrade = currentStudent.grade.toString().toLowerCase().trim();
-          const gradeMatch = studentGrade.match(/(\d+)/);
-          
-          console.log('学生年级(小写):', studentGrade);
-          console.log('年级数字匹配:', gradeMatch);
-          
-          if (gradeMatch && gradeMatch[1]) {
-            const specificGrade = parseInt(gradeMatch[1], 10);
-            console.log('提取的年级数字:', specificGrade);
-            
-            // 根据年级确定教育阶段
-            if (specificGrade >= 1 && specificGrade <= 6) {
-              // 小学阶段
-              filteredWordbooks = processedWordbooks.filter(wordbook => wordbook.category === 'primary');
-              console.log('筛选类型: 小学，筛选后词书数量:', filteredWordbooks.length);
-            } else if (specificGrade >= 7 && specificGrade <= 9) {
-              // 初中阶段
-              filteredWordbooks = processedWordbooks.filter(wordbook => wordbook.category === 'junior');
-              console.log('筛选类型: 初中，筛选后词书数量:', filteredWordbooks.length);
-            } else if (specificGrade >= 10 && specificGrade <= 12) {
-              // 高中阶段
-              filteredWordbooks = processedWordbooks.filter(wordbook => wordbook.category === 'senior');
-              console.log('筛选类型: 高中，筛选后词书数量:', filteredWordbooks.length);
-            }
-          } else {
-            // 通过文字判断
-            console.log('未提取到年级数字，尝试通过文字判断');
-            if (studentGrade.includes('小学')) {
-              filteredWordbooks = processedWordbooks.filter(wordbook => wordbook.category === 'primary');
-              console.log('通过文字判断为小学，筛选后词书数量:', filteredWordbooks.length);
-            } else if (studentGrade.includes('初中') || studentGrade.includes('初一') || studentGrade.includes('七年级') || studentGrade.includes('初二') || studentGrade.includes('八年级') || studentGrade.includes('初三') || studentGrade.includes('九年级')) {
-              filteredWordbooks = processedWordbooks.filter(wordbook => wordbook.category === 'junior');
-              console.log('通过文字判断为初中，筛选后词书数量:', filteredWordbooks.length);
-            } else if (studentGrade.includes('高中') || studentGrade.includes('高一') || studentGrade.includes('高二') || studentGrade.includes('高三')) {
-              filteredWordbooks = processedWordbooks.filter(wordbook => wordbook.category === 'senior');
-              console.log('通过文字判断为高中，筛选后词书数量:', filteredWordbooks.length);
-            } else {
-              console.log('无法判断教育阶段，显示所有词书');
-            }
-          }
-        } else {
-          console.log('学生年级为空，显示所有词书');
-        }
-      } else {
-        console.log('未找到当前学生，显示所有词书');
-      }
-      
-      console.log('最终筛选结果数量:', filteredWordbooks.length);
-      console.log('最终筛选结果的前5个词书:', filteredWordbooks.slice(0, 5).map(book => book.title));
-      console.log('=====================================');
-      
-      // 设置数据到页面：allWordbooks 存全部（供筛选栏使用），wordbooks 存当前显示的
+
+      // allWordbooks 始终保留完整 46 本 official；实际展示只由 currentFilter 决定。
       this.setData({
         allWordbooks: processedWordbooks,
-        wordbooks: filteredWordbooks,
+        wordbooks: processedWordbooks,
+        teacherWordbooks,
+        managedInactiveTeacherWordbooks,
         loading: false,
         hasError: false
       });
@@ -257,12 +307,43 @@ Page({
       this.setData({
         allWordbooks: processedFallback,
         wordbooks: processedFallback,
+        teacherWordbooks: [],
+        managedInactiveTeacherWordbooks: [],
         loading: false,
         hasError: false
       });
       
       this.updateFilteredWordbooks();
     }
+  },
+
+  refreshCatalogProgressTotals: function(catalogWordbooks) {
+    const currentStudent = this.data.currentStudent || getApp().globalData.currentStudent;
+    const studentId = currentStudent && currentStudent.id ? String(currentStudent.id) : '';
+    if (!studentId) return false;
+
+    const learningProgress = wx.getStorageSync('learningProgress') || {};
+    const currentProgress = learningProgress[studentId];
+    if (!currentProgress || typeof currentProgress !== 'object') return false;
+
+    const bookTotals = {};
+    (Array.isArray(catalogWordbooks) ? catalogWordbooks : []).forEach((book) => {
+      const bookId = String(book && (book.wordbookId || book.id) || '').trim();
+      const totalWords = Number(book && book.totalWords);
+      if (bookId && Number.isFinite(totalWords) && totalWords > 0) {
+        bookTotals[bookId] = Math.floor(totalWords);
+      }
+    });
+
+    const refreshedProgress = refreshStudentLearningProgressTotals({
+      progressData: currentProgress,
+      bookTotals
+    });
+    if (refreshedProgress === currentProgress) return false;
+
+    learningProgress[studentId] = refreshedProgress;
+    wx.setStorageSync('learningProgress', learningProgress);
+    return true;
   },
   
   // 获取备用词书数据
@@ -359,6 +440,8 @@ Page({
     this.setData({
       allWordbooks: processedWordbooks,
       wordbooks: processedWordbooks,
+      teacherWordbooks: [],
+      managedInactiveTeacherWordbooks: [],
       loading: false
     });
     this.updateFilteredWordbooks();
@@ -399,8 +482,13 @@ Page({
         const completedCount = masterySummary.entryCount > 0 || (override && override.isManualOverride)
           ? sharedStats.masteredCount
           : (bookProgress.completedCount || bookProgress.learnedWords || 0);
-        const totalCount = bookProgress.totalCount || wordbook.totalWords || 0;
-        const progressPercent = totalCount > 0 ? (completedCount / totalCount * 100) : 0;
+        const totalCount = resolveCurrentWordbookTotal(
+          wordbook.totalWords,
+          bookProgress.totalCount
+        );
+        const progressPercent = totalCount > 0
+          ? Math.min(100, completedCount / totalCount * 100)
+          : 0;
         const isInProgress = completedCount > 0;
         
         // 重要：移除words属性，实现懒加载
@@ -446,33 +534,7 @@ Page({
   
   // 年级到教育阶段的映射
   gradeToStage: function(grade) {
-    if (!grade || typeof grade !== 'string') return null;
-    
-    // 转换为小写以便匹配
-    const lowerGrade = grade.toLowerCase();
-    
-    // 小学阶段
-    if (lowerGrade.includes('一') || lowerGrade.includes('二') || lowerGrade.includes('三') || 
-        lowerGrade.includes('四') || lowerGrade.includes('五') || lowerGrade.includes('六') ||
-        lowerGrade.includes('1') || lowerGrade.includes('2') || lowerGrade.includes('3') ||
-        lowerGrade.includes('4') || lowerGrade.includes('5') || lowerGrade.includes('6') ||
-        lowerGrade.includes('primary')) {
-      return '小学';
-    }
-    // 初中阶段
-    else if (lowerGrade.includes('七') || lowerGrade.includes('八') || lowerGrade.includes('九') ||
-             lowerGrade.includes('7') || lowerGrade.includes('8') || lowerGrade.includes('9') ||
-             lowerGrade.includes('junior')) {
-      return '初中';
-    }
-    // 高中阶段
-    else if (lowerGrade.includes('高一') || lowerGrade.includes('高二') || lowerGrade.includes('高三') ||
-             lowerGrade.includes('10') || lowerGrade.includes('11') || lowerGrade.includes('12') ||
-             lowerGrade.includes('senior')) {
-      return '高中';
-    }
-    
-    return null;
+    return resolveGradeStage(grade);
   },
 
   // 获取筛选后的词书列表
@@ -504,13 +566,8 @@ Page({
       // 根据筛选条件筛选词书
       // 支持根据年级或教育阶段筛选
       const filterLower = currentFilter.toLowerCase();
-      // 映射中文阶段到英文标识，确保所有对应词书都能被筛选出来
-      const gradeMap = {
-        '小学': 'primary',
-        '初中': 'junior',
-        '高中': 'senior'
-      };
-      const englishGrade = gradeMap[currentFilter];
+      // 使用统一学段映射；“大学”当前没有 official，因此结果应为空而不是误落到小学。
+      const englishGrade = getCategoryForStage(currentFilter);
       
       return allWordbooks.filter(wordbook => {
         const bookGrade = (wordbook.grade || '').toString().toLowerCase();
@@ -555,27 +612,27 @@ Page({
     }
   },
   
-  // 开始学习或选择词书（实现单词懒加载）
-  startLearning: function(e) {
-    try {
-      const wordbookId = e.currentTarget.dataset.id;
-      console.log('选择词书，词书ID:', wordbookId);
+  returnToHomepage: function() {
+    const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : [];
+    const previousPage = pages.length > 1 ? pages[pages.length - 2] : null;
+    if (previousPage && previousPage.route === 'pages/index/index') {
+      wx.navigateBack({
+        delta: 1,
+        fail: () => wx.switchTab({ url: '/pages/index/index' })
+      });
+      return;
+    }
+    wx.switchTab({ url: '/pages/index/index' });
+  },
 
-      // 【云端词书】非阻塞触发云端词书预下载
-      if (cloudWordbookLoader.isCloudWordbook(wordbookId)) {
-        cloudWordbookLoader.downloadWordsFromCloud(wordbookId).then((words) => {
-          if (words) {
-            console.log('[cloud-wordbook] 预下载完成:', wordbookId);
-          }
-        });
-      }
-      
+  // 这里只切换当前学生的词书；真正开始学习仍由首页学习入口负责。
+  switchWordbook: function(e) {
+    try {
+      const wordbookId = String(e && e.currentTarget && e.currentTarget.dataset.id || '').trim();
       const app = getApp();
       const currentStudent = this.data.currentStudent || app.globalData.currentStudent;
-      
-      // 检查学生账号（在选择模式下也需要检查，因为需要保存学习进度）
+
       if (!currentStudent) {
-        console.log('未选择学生账号');
         wx.showToast({
           title: '请先选择学生账号',
           icon: 'none'
@@ -586,33 +643,22 @@ Page({
         });
         return;
       }
-      
-      // 设置当前学习的词书
-      let selectedWordbook = this.data.wordbooks.find(wb => wb.id === wordbookId);
-      
-      // 如果在当前列表中找不到，则尝试从全部词书列表中查找
-      if (!selectedWordbook) {
-        console.log('在当前词书列表中未找到，尝试从全部词书列表中查找');
-        selectedWordbook = this.data.allWordbooks.find(wb => wb.id === wordbookId);
-      }
-      
-      // 如果仍然找不到，则尝试直接从词书模块加载
-      if (!selectedWordbook) {
-        console.log('在内存中未找到词书，尝试从词书模块直接加载');
-        try {
-          const wordbooksModule = require('../../data/wordbooks.js');
-          const wordbooks = Array.isArray(wordbooksModule) ? wordbooksModule : 
-                           (wordbooksModule.wordbooks || []);
-          selectedWordbook = wordbooks.find(wb => wb.id === wordbookId);
-        } catch (error) {
-          console.error('从词书模块加载词书失败:', error);
-        }
-      }
+
+      const selectedWordbook = this.data.allWordbooks.find((book) => String(book.id) === wordbookId)
+        || this.data.teacherWordbooks.find((book) => String(book.id) === wordbookId);
       
       if (!selectedWordbook) {
-        console.error('词书信息不存在，ID:', wordbookId);
         wx.showToast({
           title: '词书信息不存在',
+          icon: 'none'
+        });
+        return;
+      }
+
+      if (selectedWordbook.sourceType === WordbookRepository.SOURCE_TYPES.TEACHER_CUSTOM
+        && selectedWordbook.status !== 'active') {
+        wx.showToast({
+          title: selectedWordbook.status === 'disabled' ? '该词书已停用' : '请先发布教师词书',
           icon: 'none'
         });
         return;
@@ -623,134 +669,24 @@ Page({
         throw new Error('保存当前词书失败');
       }
 
-      this.setData({
-        currentWordbookId: persistedWordbook.id,
-        currentWordbookName: persistedWordbook.title,
-        allWordbooks: this.data.allWordbooks.map(book => ({
-          ...book,
-          isCurrent: String(book.id) === persistedWordbook.id
-        })),
-        wordbooks: this.data.wordbooks.map(book => ({
-          ...book,
-          isCurrent: String(book.id) === persistedWordbook.id
-        }))
-      });
-      
-      // 保存到本地存储（统一写入嵌套结构）
-      let learningProgress = wx.getStorageSync('learningProgress') || {};
-      if (!learningProgress[currentStudent.id] || typeof learningProgress[currentStudent.id] !== 'object' || Array.isArray(learningProgress[currentStudent.id])) {
-        learningProgress[currentStudent.id] = {
-          learnedWords: 0,
-          totalWords: 0,
-          wordbooks: {}
-        };
-      }
-
-      if (!learningProgress[currentStudent.id].wordbooks || typeof learningProgress[currentStudent.id].wordbooks !== 'object' || Array.isArray(learningProgress[currentStudent.id].wordbooks)) {
-        learningProgress[currentStudent.id].wordbooks = {};
-      }
-
-      if (!learningProgress[currentStudent.id].wordbooks[wordbookId]) {
-        // 初始化词书学习进度
-        const nowIso = new Date().toISOString();
-        const nowTs = Date.now();
-        learningProgress[currentStudent.id].wordbooks[wordbookId] = {
-          completedCount: 0,
-          learnedWords: 0,
-          totalCount: selectedWordbook.totalWords || 0,
-          lastStudyTime: nowIso,
-          lastStudied: nowIso,
-          updatedAt: nowTs
-        };
-        learningProgress[currentStudent.id].updatedAt = nowTs;
-      }
-
-      wx.setStorageSync('learningProgress', learningProgress);
-      try {
-        const studentProgress = learningProgress[currentStudent.id];
-        if (studentProgress) {
-          syncLearningProgress(currentStudent.id, studentProgress).catch(() => {
-            markPendingSync();
-          });
-        }
-      } catch (syncError) {
-        markPendingSync();
-      }
-      
-      if (this.data.selectMode) {
-        // 选择模式：返回上一页
-        wx.showToast({
-          title: '已选择词书: ' + selectedWordbook.title,
-          icon: 'success',
-          duration: 1000
-        });
-        
-        console.log('已设置selectedWordbook:', selectedWordbook.title);
-        
-        // 延迟返回，确保用户看到提示
-        setTimeout(() => {
-          // 获取页面栈，直接返回上一页
-          const pages = getCurrentPages();
-          if (pages.length > 1) {
-            wx.navigateBack({
-              delta: 1
-            });
-          } else {
-            // 如果没有上一页，则跳转到学习页面
-            wx.navigateTo({
-              url: '/pages/learning/learning'
-            });
-          }
-        }, 500);
-      } else {
-        // 正常模式：实现单词懒加载
-        wx.showLoading({ title: '加载词书内容...' });
-        
-        try {
-          // 懒加载单词列表 - 参数顺序: category, wordbookId
-          const words = generateWordsForBook(selectedWordbook.category || 'general', wordbookId);
-          
-          // 设置全局词书数据（包含加载的单词）
-          const wordbookWithWords = {
-            ...selectedWordbook,
-            words: words
-          };
-          
-          app.globalData.selectedWordbook = wordbookWithWords;
-          app.globalData.currentWordbook = wordbookWithWords; // 同时设置currentWordbook以便持久化
-          
-          console.log('已加载词书:', selectedWordbook.title, '包含', words.length, '个单词');
-          
-          // 跳转到学习页面
-          wx.hideLoading();
-          wx.navigateTo({
-            url: '/pages/learning/learning?wordbookId=' + wordbookId,
-            success: function(res) {
-              console.log('成功跳转到学习页面');
-            },
-            fail: function(err) {
-              console.error('跳转到学习页面失败:', err);
-              wx.showToast({
-                title: '跳转到学习页面失败',
-                icon: 'none'
-              });
-            }
-          });
-        } catch (error) {
-          wx.hideLoading();
-          console.error('加载词书内容失败:', error);
-          wx.showToast({
-            title: '加载失败，请重试',
-            icon: 'none'
-          });
-        }
-      }
-    } catch (error) {
-      console.error('操作过程中发生错误:', error);
+      // 切换本身不创建、不清空也不同步 learningProgress；首页 onShow 会按正式数据源重读。
       wx.showToast({
-        title: '操作失败，请重试',
+        title: '切换成功',
+        icon: 'success',
+        duration: 1000
+      });
+      setTimeout(() => this.returnToHomepage(), 500);
+    } catch (error) {
+      console.error('切换词书失败:', error);
+      wx.showToast({
+        title: '切换失败，请重试',
         icon: 'none'
       });
     }
+  },
+
+  // 兼容已有页面测试或旧调用；语义已统一为“只切换，不开始学习”。
+  startLearning: function(e) {
+    return this.switchWordbook(e);
   }
 });

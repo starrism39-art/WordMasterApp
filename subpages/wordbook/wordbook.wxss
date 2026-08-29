@@ -110,11 +110,80 @@
 }
 
 /* 词书列表 */
+.catalog-section {
+  margin-bottom: 36rpx;
+}
+
+.catalog-heading {
+  margin-bottom: 20rpx;
+  padding: 0 4rpx;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24rpx;
+}
+
+.catalog-title,
+.catalog-subtitle {
+  display: block;
+}
+
+.catalog-title {
+  color: #2c3e50;
+  font-size: 34rpx;
+  font-weight: 700;
+}
+
+.catalog-subtitle {
+  margin-top: 6rpx;
+  color: #8e95a1;
+  font-size: 22rpx;
+}
+
+.catalog-count {
+  flex-shrink: 0;
+  padding: 6rpx 14rpx;
+  border-radius: 999rpx;
+  background: #eaf3fd;
+  color: #4A90E2;
+  font-size: 22rpx;
+  font-weight: 600;
+}
+
+.teacher-count {
+  background: #e6f7ef;
+  color: #07c160;
+}
+
+.teacher-heading-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+}
+
+.create-teacher-book-btn {
+  margin: 0;
+  padding: 0 22rpx;
+  min-width: 0;
+  height: 58rpx;
+  line-height: 56rpx;
+  border: 1rpx solid #4A90E2;
+  border-radius: 12rpx;
+  background: #ffffff;
+  color: #3279bf;
+  font-size: 24rpx;
+  font-weight: 600;
+}
+
+.create-teacher-book-btn::after {
+  border: 0;
+}
+
 .wordbook-list {
   display: flex;
   flex-direction: column;
   gap: 28rpx;
-  flex: 1;
 }
 
 .wordbook-item {
@@ -158,6 +227,126 @@
 .wordbook-item:active {
   transform: translateY(0);
   box-shadow: 0 6rpx 24rpx rgba(0, 0, 0, 0.08);
+}
+
+.teacher-section {
+  margin-top: 12rpx;
+  padding-top: 28rpx;
+  border-top: 1rpx solid rgba(44, 62, 80, 0.12);
+}
+
+.teacher-wordbook-item {
+  border-color: #dcefe4;
+  background: #ffffff;
+}
+
+.teacher-wordbook-item::before {
+  background: #07c160;
+}
+
+.teacher-book-tags {
+  margin-bottom: 16rpx;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.source-badge,
+.status-badge {
+  padding: 6rpx 14rpx;
+  border-radius: 999rpx;
+  font-size: 22rpx;
+  font-weight: 600;
+}
+
+.source-badge {
+  background: #e6f7ef;
+  color: #078f49;
+}
+
+.status-badge {
+  background: #f0f2f5;
+  color: #66717d;
+}
+
+.status-active {
+  background: #e6f7ef;
+  color: #078f49;
+}
+
+.status-disabled {
+  background: #fbecec;
+  color: #b34b4b;
+}
+
+.teacher-action {
+  color: #66717d;
+}
+
+.teacher-card-actions {
+  flex-shrink: 0;
+  margin-left: 20rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 14rpx;
+}
+
+.teacher-card-actions .wordbook-action {
+  margin-left: 0;
+}
+
+.update-teacher-book-btn,
+.disable-teacher-book-btn {
+  margin: 0;
+  padding: 0 20rpx;
+  min-width: 0;
+  height: 56rpx;
+  line-height: 54rpx;
+  border: 1rpx solid #07c160;
+  border-radius: 12rpx;
+  background: #ffffff;
+  color: #078f49;
+  font-size: 23rpx;
+  font-weight: 650;
+}
+
+.update-teacher-book-btn::after,
+.disable-teacher-book-btn::after {
+  border: 0;
+}
+
+.disable-teacher-book-btn {
+  border-color: #d98b8b;
+  color: #b34b4b;
+}
+
+.disable-teacher-book-btn[disabled] {
+  opacity: 0.55;
+}
+
+.teacher-empty-state {
+  padding: 42rpx 28rpx;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1rpx dashed #bfd7ca;
+  border-radius: 18rpx;
+}
+
+.teacher-empty-title,
+.teacher-empty-copy {
+  display: block;
+}
+
+.teacher-empty-title {
+  color: #34404a;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+.teacher-empty-copy {
+  margin-top: 8rpx;
+  color: #8e95a1;
+  font-size: 24rpx;
 }
 
 .wordbook-main {

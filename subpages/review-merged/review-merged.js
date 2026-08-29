@@ -688,7 +688,9 @@ Page({
       return [];
     }
 
-    const lookup = buildReviewWordLookup(loadResult.words, wordbookId);
+    const lookup = buildReviewWordLookup(loadResult.words, wordbookId, {
+      sourceType: currentWordbook.sourceType
+    });
     const wordMastery = this.safeGetStorageSync('wordMastery', {});
     const wordbookMastery = studentId && wordbookId ? wordMastery[studentId]?.[wordbookId] : {};
     const hasScopedWordIds = wordbookMastery && typeof wordbookMastery === 'object' && !Array.isArray(wordbookMastery)

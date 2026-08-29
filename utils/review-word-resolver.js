@@ -6,6 +6,7 @@ const {
 } = require('./learning-word-ids.js');
 const { generateWordsForBook } = require('../data/wordbook-loader.js');
 const cloudWordbookLoader = require('./cloud-wordbook-loader.js');
+const teacherCustomWordbookLoader = require('./teacher-custom-wordbook-loader.js');
 
 const PLACEHOLDER_MEANINGS = new Set([
   '单词释义',
@@ -79,10 +80,13 @@ const normalizeWordKey = (value) => String(value || '')
 
 const normalizeWordIdPart = (value) => normalizeWordKey(value).replace(/\s+/g, '_');
 
-const buildReviewWordLookup = (words, wordbookId) => {
+const buildReviewWordLookup = (words, wordbookId, options = {}) => {
   const sourceWords = Array.isArray(words) ? words : [];
   const normalizedWordbookId = String(wordbookId || '').trim();
-  const stableWords = assignStableWordIds(sourceWords, normalizedWordbookId);
+  const isTeacherCustom = options.sourceType === teacherCustomWordbookLoader.SOURCE_TYPE;
+  const stableWords = isTeacherCustom
+    ? sourceWords
+    : assignStableWordIds(sourceWords, normalizedWordbookId);
   const byId = Object.create(null);
   const byWord = Object.create(null);
 
@@ -242,6 +246,39 @@ const loadReviewWordbookWords = async (wordbook) => {
       category,
       dataSource: 'missing_wordbook',
       loadError: 'missing_wordbook_id'
+    };
+  }
+
+  if (safeWordbook.sourceType === teacherCustomWordbookLoader.SOURCE_TYPE) {
+    try {
+      const loadedBook = await teacherCustomWordbookLoader.loadTeacherCustomWordbook(safeWordbook);
+      return {
+        words: loadedBook.words,
+        wordbookId,
+        category,
+        version: loadedBook.version,
+        dataSource: 'teacher_custom',
+        loadError: ''
+      };
+    } catch (error) {
+      return {
+        words: [],
+        wordbookId,
+        category,
+        version: Number(safeWordbook.version || 0),
+        dataSource: 'teacher_custom',
+        loadError: error && error.message ? error.message : 'teacher_wordbook_unavailable'
+      };
+    }
+  }
+
+  if (!safeWordbook.sourceType && wordbookId.startsWith('twb_')) {
+    return {
+      words: [],
+      wordbookId,
+      category,
+      dataSource: 'teacher_custom',
+      loadError: 'teacher_wordbook_source_required'
     };
   }
 

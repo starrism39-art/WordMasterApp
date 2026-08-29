@@ -1,0 +1,183 @@
+<view class="create-page">
+  <view class="page-intro">
+    <text class="eyebrow">我的教师词书</text>
+    <text class="page-title">{{mode === 'update' ? '更新教师词书' : (wordbookId ? '上传并发布词书' : '创建词书草稿')}}</text>
+    <text class="page-description">{{mode === 'update' ? '上传新的CSV或XLSX，确认解析结果后生成新版本。当前版本在更新成功前保持可用。' : '先建立草稿，再上传CSV或XLSX。解析结果需要教师确认后才会正式发布。'}}</text>
+  </view>
+
+  <form wx:if="{{mode === 'create' && !wordbookId}}" class="draft-form" bindsubmit="submitDraft">
+    <view class="form-field">
+      <view class="field-heading">
+        <text class="field-label">词书名称</text>
+        <text class="required-mark">必填</text>
+      </view>
+      <input
+        class="text-input name-input"
+        value="{{name}}"
+        maxlength="50"
+        placeholder="例如：高一拓展词汇"
+        bindinput="onNameInput"
+      />
+      <text class="field-help">不能与自己的词书或官方词书重名</text>
+    </view>
+
+    <view class="form-field">
+      <view class="field-heading">
+        <text class="field-label">分类</text>
+        <text class="optional-mark">选填</text>
+      </view>
+      <input
+        class="text-input category-input"
+        value="{{category}}"
+        maxlength="30"
+        placeholder="例如：高中 / 拓展"
+        bindinput="onCategoryInput"
+      />
+    </view>
+
+    <view class="form-field">
+      <view class="field-heading">
+        <text class="field-label">描述</text>
+        <text class="optional-mark">选填</text>
+      </view>
+      <textarea
+        class="description-input"
+        value="{{description}}"
+        maxlength="500"
+        auto-height="true"
+        placeholder="说明适用班级、教学目标或内容范围"
+        bindinput="onDescriptionInput"
+      />
+      <text class="character-count">{{description.length}} / 500</text>
+    </view>
+
+    <view wx:if="{{errorMessage}}" class="error-message">{{errorMessage}}</view>
+
+    <button
+      class="submit-button"
+      form-type="submit"
+      loading="{{submitting}}"
+      disabled="{{submitting}}"
+    >{{submitting ? '创建中...' : '创建草稿'}}</button>
+  </form>
+
+  <view wx:if="{{wordbookId}}" class="workflow-panel">
+    <view class="workflow-step workflow-step-ready">
+      <text class="step-number">01</text>
+      <view class="step-content">
+        <text class="step-kicker">{{mode === 'update' ? '当前词书' : '草稿'}}</text>
+        <text class="step-title">{{draftBook.title || (mode === 'update' ? '教师词书' : '教师词书草稿')}}</text>
+        <text class="step-meta">{{mode === 'update' ? '当前版本：v' + currentVersion + ' · 单词数量：' + currentTotalWords : wordbookId}}</text>
+      </view>
+      <text class="step-state">{{mode === 'update' ? '当前' : '已完成'}}</text>
+    </view>
+
+    <view class="workflow-step">
+      <text class="step-number">02</text>
+      <view class="step-content">
+        <text class="step-kicker">上传与解析</text>
+        <text class="step-title">选择CSV或XLSX文件</text>
+        <text class="step-meta">最大5MB，首个工作表，最多10,000条非空数据</text>
+      </view>
+    </view>
+
+    <button
+      class="upload-button"
+      loading="{{processing}}"
+      disabled="{{processing || publishedVersion}}"
+      bindtap="chooseAndUpload"
+    >{{processing ? '正在处理...' : (selectedFile ? '重新选择并解析' : '选择文件并解析')}}</button>
+
+    <view wx:if="{{selectedFile}}" class="file-strip">
+      <view class="file-copy">
+        <text class="file-name">{{selectedFile.name}}</text>
+        <text class="file-meta">{{fileSizeText}} · {{fileExtensionLabel}}</text>
+      </view>
+      <text class="file-stage">{{uploadStatusText}}</text>
+    </view>
+
+    <view wx:if="{{summary}}" class="preview-section">
+      <view class="workflow-step preview-heading">
+        <text class="step-number">03</text>
+        <view class="step-content">
+          <text class="step-kicker">预览确认</text>
+          <text class="step-title">解析结果</text>
+          <text class="step-meta">上传完成不会自动发布</text>
+        </view>
+      </view>
+
+      <view class="summary-grid">
+        <view class="summary-block summary-total">
+          <text class="summary-value">{{summary.totalRows}}</text>
+          <text class="summary-label">总数量</text>
+        </view>
+        <view class="summary-block summary-valid">
+          <text class="summary-value">{{summary.validRows}}</text>
+          <text class="summary-label">有效</text>
+        </view>
+        <view class="summary-block summary-invalid">
+          <text class="summary-value">{{summary.invalidRows}}</text>
+          <text class="summary-label">失败</text>
+        </view>
+      </view>
+
+      <view wx:if="{{validPreview.length}}" class="preview-list valid-list">
+        <view class="list-heading">
+          <text class="list-title">有效词条预览</text>
+          <text class="list-note">最多展示前20条</text>
+        </view>
+        <view
+          wx:for="{{validPreview}}"
+          wx:key="index"
+          class="word-row"
+        >
+          <text class="word-order">{{index + 1}}</text>
+          <view class="word-copy">
+            <text class="word-text">{{item.word}}</text>
+            <text class="word-phonetic">{{item.phonetic || '无音标'}}</text>
+            <text class="word-meaning">{{item.meaning}}</text>
+          </view>
+        </view>
+      </view>
+
+      <view wx:if="{{errorPreview.length}}" class="preview-list error-list">
+        <view class="list-heading">
+          <text class="list-title">失败原因</text>
+          <text class="list-note">完整明细保存在暂存报告</text>
+        </view>
+        <view
+          wx:for="{{errorPreview}}"
+          wx:key="index"
+          class="error-row"
+        >
+          <text class="error-row-number">第{{item.rowNumber}}行</text>
+          <view class="error-copy">
+            <text class="error-code">{{item.reasonCode}}</text>
+            <text class="error-text">{{item.reasonText}}</text>
+          </view>
+        </view>
+      </view>
+
+      <button
+        wx:if="{{!publishedVersion}}"
+        class="publish-button"
+        loading="{{publishing}}"
+        disabled="{{publishing || summary.validRows < 1}}"
+        bindtap="confirmPublish"
+      >{{publishing ? (mode === 'update' ? '更新中...' : '发布中...') : (mode === 'update' ? '更新为' : '发布') + summary.validRows + '条有效词条'}}</button>
+    </view>
+
+    <view wx:if="{{publishedVersion}}" class="published-panel">
+      <text class="published-kicker">{{mode === 'update' ? '更新成功' : '发布完成'}}</text>
+      <text class="published-title">{{mode === 'update' ? '当前版本' : '正式版本'}} v{{publishedVersion.version}}</text>
+      <text class="published-meta">共 {{publishedVersion.totalWords}} 条词汇，返回词书中心后目录将自动刷新。</text>
+    </view>
+  </view>
+
+  <view wx:if="{{errorMessage && (wordbookId || mode === 'update')}}" class="page-error-message">{{errorMessage}}</view>
+
+  <view class="draft-note">
+    <text class="draft-note-title">阶段边界</text>
+    <text class="draft-note-copy">本页只负责创建或更新教师词书正式版本，不改变学习、复习、统计和同步逻辑。</text>
+  </view>
+</view>

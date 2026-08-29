@@ -164,6 +164,44 @@ const resolveKnownWordbookTotal = (wordbookId) => {
   }
 };
 
+const resolveCurrentWordbookTotal = (currentTotal, storedTotal) => (
+  toCount(currentTotal) || toCount(storedTotal)
+);
+
+const refreshStudentLearningProgressTotals = (options = {}) => {
+  const sourceProgress = isPlainObject(options.progressData) ? options.progressData : {};
+  const sourceWordbooks = isPlainObject(sourceProgress.wordbooks) ? sourceProgress.wordbooks : {};
+  const bookTotals = isPlainObject(options.bookTotals) ? options.bookTotals : {};
+  const nextWordbooks = { ...sourceWordbooks };
+  let changed = false;
+
+  Object.keys(bookTotals).forEach((bookId) => {
+    const currentBook = sourceWordbooks[bookId];
+    if (!isPlainObject(currentBook)) return;
+
+    const currentTotal = toCount(bookTotals[bookId]);
+    if (currentTotal < 1 || toCount(currentBook.totalCount) === currentTotal) return;
+
+    nextWordbooks[bookId] = {
+      ...currentBook,
+      totalCount: currentTotal
+    };
+    changed = true;
+  });
+
+  if (!changed) return sourceProgress;
+
+  const totalWords = Object.keys(nextWordbooks).reduce((sum, bookId) => (
+    sum + toCount(nextWordbooks[bookId] && nextWordbooks[bookId].totalCount)
+  ), 0);
+
+  return {
+    ...sourceProgress,
+    totalWords,
+    wordbooks: nextWordbooks
+  };
+};
+
 const reconcileStudentLearningProgress = (options = {}) => {
   const studentId = String(options.studentId || '');
   const sourceProgress = isPlainObject(options.progressData) ? options.progressData : {};
@@ -311,6 +349,8 @@ module.exports = {
   getWordbookMasterySummary,
   getRecordLearnedWordIds,
   resolveKnownWordbookTotal,
+  resolveCurrentWordbookTotal,
+  refreshStudentLearningProgressTotals,
   reconcileStudentLearningProgress,
   reconcileLearningProgressMap
 };

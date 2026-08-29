@@ -1,6 +1,9 @@
 // pages/index/index.js
 const { shouldIncludeAntiForgettingWord } = require('../../utils/anti-forgetting-filter.js');
-const { getWordbookMasterySummary } = require('../../utils/learning-progress.js');
+const {
+  getWordbookMasterySummary,
+  resolveCurrentWordbookTotal
+} = require('../../utils/learning-progress.js');
 const { resolveCurrentWordbook, setCurrentWordbook } = require('../../utils/learning-context.js');
 const { getWordbookStats } = require('../../utils/stats-engine.js');
 
@@ -1010,8 +1013,13 @@ Page({
             const completedCount = masterySummary.entryCount > 0 || (override && override.isManualOverride)
               ? sharedStats.masteredCount
               : (bookProgress.completedCount || bookProgress.learnedWords || 0);
-            const totalCount = bookProgress.totalCount || wordbook.totalWords;
-            const progressPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+            const totalCount = resolveCurrentWordbookTotal(
+              wordbook.totalWords,
+              bookProgress.totalCount
+            );
+            const progressPercent = totalCount > 0
+              ? Math.min(100, Math.round((completedCount / totalCount) * 100))
+              : 0;
             
             return {
               ...wordbook,

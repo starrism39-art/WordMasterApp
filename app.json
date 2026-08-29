@@ -38,6 +38,7 @@
       "root": "subpages",
       "pages": [
         "wordbook/wordbook",
+        "wordbook-create/wordbook-create",
         "stats/stats",
         "records/records",
         "add-student/add-student",

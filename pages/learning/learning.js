@@ -10,6 +10,8 @@ const {
   selectWordMasteryRecords
 } = require('../../utils/cloud-sync.js');
 const cloudWordbookLoader = require('../../utils/cloud-wordbook-loader.js');
+const WordbookRepository = require('../../utils/wordbook-repository.js');
+const { resolveExplicitWordbook } = require('../../utils/learning-wordbook-route.js');
 const {
   createLearningContextKey,
   resolveCurrentStudent,
@@ -132,6 +134,9 @@ Page({
     this._previewSessionMastery = {};
     this._previewSessionNeedsReset = false;
     this._previewInitializationGeneration = 0;
+    this._explicitWordbookId = String((options && options.wordbookId) || '').trim();
+    this._explicitRoutePending = !!this._explicitWordbookId;
+    this._explicitRouteFailed = false;
     console.log('Learning page loaded with options:', options);
 
     // 读取全局音标显示模式（默认关闭，兼容历史预习键）
@@ -148,25 +153,20 @@ Page({
       this.setData({ learningMode: options.mode });
     }
 
-    // 路由显式指定词书时，以路由为准并同步为当前词书，不能沿用旧的全局词书。
-    if (options.wordbookId) {
-      const app = getApp();
-      const currentStudent = resolveCurrentStudent(app);
-      const routeWordbook = typeof wordbooksModule.getBookById === 'function'
-        ? wordbooksModule.getBookById(options.wordbookId)
-        : null;
-      if (currentStudent && routeWordbook) {
-        setCurrentWordbook(app, currentStudent, routeWordbook, { emit: false });
-      }
-    }
-    
     // 为测试目的，强制设置学习模式
     if (options.mode === 'review') {
       console.log('强制设置为复习模式');
       this.setData({ learningMode: 'review' });
     }
     
-    // 立即从globalData同步数据
+    // 显式路由必须先完成精确解析。解析失败时不能同步 current/default 词书，更不能 fallback official。
+    if (this._explicitWordbookId) {
+      this.setData({ currentWordbook: null, learningWordbooks: '' });
+      this._explicitRouteInitializationPromise = this._initializeExplicitWordbookRoute();
+      return this._explicitRouteInitializationPromise;
+    }
+
+    // 未显式传入 wordbookId 时，保留原 currentWordbook/default 行为。
     const initialContext = this.syncFromGlobalData();
     this._activeContextKey = createLearningContextKey(
       initialContext && initialContext.currentStudent,
@@ -189,6 +189,11 @@ Page({
 
   onShow: function() {
     console.log('Learning page shown');
+
+    // onLoad 的显式路由门禁尚未结束或已经失败时，不得同步全局 official 词书。
+    if (this._explicitRoutePending || this._explicitRouteFailed) {
+      return;
+    }
     
     // 每次页面显示时，优先从globalData同步最新数据
     const context = this.syncFromGlobalData();
@@ -226,6 +231,56 @@ Page({
       this.initStudyProcess();
     } else if (this.data.currentStudent && this.data.currentWordbook && !this.data.learningMode && this.data.currentBatchWords.length === 0) {
       this.initStudyProcess();
+    }
+  },
+
+  _initializeExplicitWordbookRoute: async function() {
+    try {
+      const app = getApp();
+      const currentStudent = resolveCurrentStudent(app);
+      const routeWordbook = await resolveExplicitWordbook(
+        this._explicitWordbookId,
+        WordbookRepository
+      );
+      if (this._isPageUnloaded) return null;
+
+      this._explicitRoutePending = false;
+      this._explicitRouteFailed = false;
+      this.setData({
+        currentStudent: currentStudent || null,
+        currentWordbook: routeWordbook,
+        learningWordbooks: routeWordbook.title || '未知词书',
+        hasError: false,
+        errorMessage: ''
+      });
+      if (currentStudent) {
+        setCurrentWordbook(app, currentStudent, routeWordbook, { emit: false });
+      }
+      this._activeContextKey = createLearningContextKey(currentStudent, routeWordbook);
+      return this.initStudyProcess();
+    } catch (error) {
+      if (error && error.userMessage) {
+        console.warn('显式词书路由已拒绝:', error.code || error.message);
+      } else {
+        console.error('显式词书路由解析失败:', error);
+      }
+      if (this._isPageUnloaded) return null;
+
+      this._explicitRoutePending = false;
+      this._explicitRouteFailed = true;
+      this.setData({
+        currentWordbook: null,
+        learningWordbooks: '',
+        currentBatchWords: [],
+        allWords: [],
+        showLoadingModal: false,
+        loading: false,
+        hasError: true,
+        errorMessage: error && error.userMessage
+          ? error.userMessage
+          : '指定词书暂时无法读取，当前不可学习'
+      });
+      return null;
     }
   },
 
@@ -355,6 +410,7 @@ Page({
 
     this._studyInitializationPromise = null;
     this._previewWordMap = {};
+    this._teacherCustomSourceWords = null;
     this._previewHistoricalMastery = {};
     this._previewSessionMastery = {};
     this._previewInitializationGeneration = (this._previewInitializationGeneration || 0) + 1;
@@ -564,7 +620,19 @@ Page({
       // 根据不同的学习模式初始化
       if (this.data.learningMode === 'review' || this.data.learningMode === 'gridReview' || !this.data.learningMode) {
         const requestedWordbookId = String(this.data.currentWordbook.id || '');
-        if (cloudWordbookLoader.isCloudWordbook(requestedWordbookId)) {
+        const isTeacherCustom = this.data.currentWordbook.sourceType === WordbookRepository.SOURCE_TYPES.TEACHER_CUSTOM;
+        let preloadedWords = null;
+        if (isTeacherCustom) {
+          this.setData({ loadingMessage: '正在加载教师词书…' });
+          const loadedBook = await WordbookRepository.loadWordbook(this.data.currentWordbook);
+          if (this._isPageUnloaded) return;
+          const currentWordbookId = String((this.data.currentWordbook && this.data.currentWordbook.id) || '');
+          if (currentWordbookId !== requestedWordbookId) {
+            return this._initializeStudyProcess();
+          }
+          preloadedWords = loadedBook.words;
+          this._teacherCustomSourceWords = preloadedWords.slice();
+        } else if (cloudWordbookLoader.isCloudWordbook(requestedWordbookId)) {
           this.setData({ loadingMessage: '正在下载完整词书…' });
           const loadedWords = await cloudWordbookLoader.ensureWordsLoaded(requestedWordbookId);
 
@@ -590,10 +658,12 @@ Page({
             });
             return;
           }
+        } else {
+          this._teacherCustomSourceWords = null;
         }
 
         // 只有在复习模式、网格复习模式或未设置学习模式时，才初始化预习模式
-        this.initializePreviewMode();
+        this.initializePreviewMode(preloadedWords);
       } else {
         // 其他模式（如newLearning、finalTest）保持当前状态，不重新初始化
         console.log('保持当前学习模式:', this.data.learningMode);
@@ -615,7 +685,7 @@ Page({
   },
 
   // 初始化预习模式
-  initializePreviewMode: function() {
+  initializePreviewMode: function(preloadedWords = null) {
     console.log('Initializing preview mode...');
     const previewInitializationGeneration = (this._previewInitializationGeneration || 0) + 1;
     this._previewInitializationGeneration = previewInitializationGeneration;
@@ -628,6 +698,7 @@ Page({
       
       const studentId = this.data.currentStudent.id;
       const wordbookId = this.data.currentWordbook.id;
+      const isTeacherCustom = this.data.currentWordbook.sourceType === WordbookRepository.SOURCE_TYPES.TEACHER_CUSTOM;
       
       // 获取当前词书的类别
       const wordbookCategory = this.data.currentWordbook.category || 'primary';
@@ -643,8 +714,15 @@ Page({
         loadingMessage: '正在加载词书数据…'
       });
       const loadStartTime = Date.now();
-      const allWordsRaw = generateWordsForBook(wordbookCategory, this.data.currentWordbook.id, 0, 99999);
-      const totalCount = allWordsRaw._totalCount || allWordsRaw.length || 100;
+      const allWordsRaw = isTeacherCustom
+        ? (Array.isArray(preloadedWords) ? preloadedWords : [])
+        : generateWordsForBook(wordbookCategory, this.data.currentWordbook.id, 0, 99999);
+      if (isTeacherCustom && allWordsRaw.length === 0) {
+        throw new Error('教师词书正式版本为空或不可用');
+      }
+      const totalCount = isTeacherCustom
+        ? allWordsRaw.length
+        : (allWordsRaw._totalCount || allWordsRaw.length || 100);
       console.log('词书总单词数:', totalCount);
       
       // 分批组装 + 进度提示：虽然数据已全部返回，但 setData 刷新视图需要分段进行
@@ -664,8 +742,9 @@ Page({
       // 初始计算totalBatches（后面会根据过滤结果重新计算）
       let totalBatches = Math.ceil(totalCount / batchSize);
 
-      // 首个词条保留旧ID；同词书中的重复词条使用确定性后缀，避免预习状态相互覆盖。
-      allWords = assignStableWordIds(allWords, wordbookId).map((word) => ({
+      // 官方词书继续生成兼容稳定ID；教师词书必须保留正式JSON中的服务端ID。
+      const identifiedWords = isTeacherCustom ? allWords : assignStableWordIds(allWords, wordbookId);
+      allWords = identifiedWords.map((word) => ({
         ...word,
         phonetic: this.normalizePhoneticDisplay(word.phonetic)
       }));
@@ -978,12 +1057,16 @@ Page({
       // 仅在复习模式下兜底重载，预习模式需保持“已掌握不再显示”
       if (allWords.length === 0 && this.data.learningMode === 'review') {
         console.log('过滤后无单词，重新加载更多单词');
-        allWords = [];
-        const largerBatchSize = 30;
-        const largerMaxLoad = 200;
-        for (let i = 0; i < largerMaxLoad; i += largerBatchSize) {
-          const batch = generateWordsForBook(wordbookCategory, this.data.currentWordbook.id, i, largerBatchSize);
-          allWords.push(...batch);
+        allWords = isTeacherCustom
+          ? (this._teacherCustomSourceWords || []).slice()
+          : [];
+        if (!isTeacherCustom) {
+          const largerBatchSize = 30;
+          const largerMaxLoad = 200;
+          for (let i = 0; i < largerMaxLoad; i += largerBatchSize) {
+            const batch = generateWordsForBook(wordbookCategory, this.data.currentWordbook.id, i, largerBatchSize);
+            allWords.push(...batch);
+          }
         }
         
         // 再次尝试过滤（如果有掌握记录）
@@ -1239,6 +1322,9 @@ Page({
   // 使用真实词书数据，已替换generateMockWords函数
   // 获取更多单词用于学习过程
   loadMoreWordsForAllWords: function(wordbookCategory, wordbookId, startIndex, count) {
+    if (this.data.currentWordbook?.sourceType === WordbookRepository.SOURCE_TYPES.TEACHER_CUSTOM) {
+      return (this._teacherCustomSourceWords || []).slice(startIndex, startIndex + count);
+    }
     return generateWordsForBook(wordbookCategory, wordbookId, startIndex, count);
   },
 
@@ -1895,7 +1981,11 @@ Page({
         
         // 从真实词书数据中获取下一批单词
         const wordbookCategory = this.data.currentWordbook.category || 'primary';
-        const nextBatch = generateWordsForBook(wordbookCategory, this.data.currentWordbook.id, startIndex, batchSize);
+        const isTeacherCustom = this.data.currentWordbook.sourceType === WordbookRepository.SOURCE_TYPES.TEACHER_CUSTOM;
+        const teacherWords = this._teacherCustomSourceWords || [];
+        const nextBatch = isTeacherCustom
+          ? teacherWords.slice(startIndex, startIndex + batchSize)
+          : generateWordsForBook(wordbookCategory, this.data.currentWordbook.id, startIndex, batchSize);
         const normalizedNextBatch = nextBatch.map(word => ({
           ...word,
           phonetic: this.normalizePhoneticDisplay(word.phonetic)
@@ -1903,9 +1993,13 @@ Page({
         
         if (normalizedNextBatch.length > 0) {
           // 检查是否达到词书总单词数
-          const firstBatch = generateWordsForBook(wordbookCategory, this.data.currentWordbook.id, 0, 15);
+          const firstBatch = isTeacherCustom
+            ? teacherWords
+            : generateWordsForBook(wordbookCategory, this.data.currentWordbook.id, 0, 15);
           // 直接使用firstBatch._totalCount获取总单词数，确保能加载所有单词
-          const totalCount = firstBatch._totalCount || 1000;
+          const totalCount = isTeacherCustom
+            ? teacherWords.length
+            : (firstBatch._totalCount || 1000);
           const isMoreWordsAvailable = nextBatchIndex * 15 < totalCount;
           console.log(`词书总单词数: ${totalCount}, 当前批次索引: ${nextBatchIndex}, 是否有更多单词: ${isMoreWordsAvailable}`);
           
@@ -3378,6 +3472,13 @@ Page({
       hasError: false,
       errorMessage: ''
     });
+    if (this._explicitWordbookId) {
+      this._explicitRoutePending = true;
+      this._explicitRouteFailed = false;
+      this.setData({ currentWordbook: null, learningWordbooks: '' });
+      this._explicitRouteInitializationPromise = this._initializeExplicitWordbookRoute();
+      return this._explicitRouteInitializationPromise;
+    }
     this.initStudyProcess();
   },
 

@@ -191,4 +191,54 @@ assert.deepStrictEqual(syncRefreshCalls, [
   'review'
 ], '云同步晚于首页加载时必须立即刷新首页、记录和抗遗忘摘要');
 
+const teacherStudent = { id: 'student-teacher-progress', name: 'teacher-progress' };
+const teacherBook = {
+  id: 'twb_progress_refresh',
+  wordbookId: 'twb_progress_refresh',
+  title: '教师词书进度刷新',
+  sourceType: 'teacher_custom',
+  status: 'active',
+  totalWords: 100
+};
+storage.learningProgress[teacherStudent.id] = {
+  learnedWords: 1,
+  totalWords: 25,
+  wordbooks: {
+    [teacherBook.id]: {
+      completedCount: 1,
+      learnedWords: 1,
+      totalCount: 25
+    }
+  }
+};
+storage.wordMastery[teacherStudent.id] = {
+  [teacherBook.id]: {
+    [`${teacherBook.id}_education`]: { mastered: true, difficult: false }
+  }
+};
+storage.learningRecords.push({
+  id: 'teacher-progress-record',
+  studentId: teacherStudent.id,
+  wordbookId: teacherBook.id,
+  learnedWordIds: [`${teacherBook.id}_education`]
+});
+app.globalData.currentStudent = teacherStudent;
+const teacherWordbookPage = createPage(wordbookDefinition, {
+  currentStudent: teacherStudent,
+  currentWordbookId: teacherBook.id,
+  userInfo: null
+});
+const recordsBeforeRefresh = JSON.parse(JSON.stringify(storage.learningRecords));
+const masteryBeforeRefresh = JSON.parse(JSON.stringify(storage.wordMastery));
+assert.strictEqual(teacherWordbookPage.refreshCatalogProgressTotals([teacherBook]), true);
+const refreshedTeacherProgress = storage.learningProgress[teacherStudent.id].wordbooks[teacherBook.id];
+assert.strictEqual(refreshedTeacherProgress.completedCount, 1);
+assert.strictEqual(refreshedTeacherProgress.learnedWords, 1);
+assert.strictEqual(refreshedTeacherProgress.totalCount, 100);
+const teacherCard = teacherWordbookPage.processWordbooksData([teacherBook])[0];
+assert.strictEqual(teacherCard.learnedWords, 1);
+assert.strictEqual(teacherCard.progressPercent, 1);
+assert.deepStrictEqual(storage.learningRecords, recordsBeforeRefresh);
+assert.deepStrictEqual(storage.wordMastery, masteryBeforeRefresh);
+
 console.log('page-stat-consistency: PASS');
