@@ -115,20 +115,101 @@ const dataEvent = (key, value) => ({ currentTarget: { dataset: { [key]: value } 
     isMerged: true,
     recordType: 'learning',
     originalRecords: [
-      learningRecord,
-      { ...learningRecord, id: 'record-learning-2', originalRecordId: 'record-learning-2', completedAt: '2026-08-30T11:00:00+08:00' }
+      {
+        ...learningRecord,
+        completedAt: '2026-08-30T20:01:00+08:00'
+      },
+      {
+        ...learningRecord,
+        id: 'record-learning-2',
+        originalRecordId: 'record-learning-2',
+        completedAt: '2026-08-30T20:55:00+08:00',
+        wordsSnapshot: [
+          { wordId: 'w3', word: 'banana', meaning: '香蕉', phonetic: '/bəˈnɑːnə/', masteryStatus: 'notMastered' }
+        ],
+        totalWords: 1
+      },
+      {
+        ...learningRecord,
+        id: 'record-learning-3',
+        originalRecordId: 'record-learning-3',
+        completedAt: '2026-08-30T21:49:00+08:00',
+        wordsSnapshot: [
+          { ...learningRecord.wordsSnapshot[0], masteryStatus: 'mastered' }
+        ],
+        totalWords: 1
+      }
     ]
   };
   const mergedPage = createPage([merged]);
   mergedPage.onExportTap(exportEvent(merged.id));
   assert.strictEqual(mergedPage.data.exportDialogStep, 'record');
+  assert.strictEqual(mergedPage.data.exportMergedChoice.label, '全部导出 · 3次 · 共3词');
   assert.deepStrictEqual(
     mergedPage.data.exportRecordChoices.map((item) => item.recordId),
-    ['record-learning-1', 'record-learning-2']
+    ['record-learning-1', 'record-learning-2', 'record-learning-3']
   );
   mergedPage.onChooseOriginalRecord(dataEvent('recordId', 'record-learning-2'));
   assert.strictEqual(mergedPage.data.selectedExportRecordId, 'record-learning-2');
   assert.strictEqual(mergedPage.data.exportDialogStep, 'scope');
+
+  const mergedAllPage = createPage([merged]);
+  mergedAllPage.onExportTap(exportEvent(merged.id));
+  mergedAllPage.onChooseMergedRecords();
+  assert.deepStrictEqual(
+    mergedAllPage.data.selectedExportRecordIds,
+    ['record-learning-1', 'record-learning-2', 'record-learning-3']
+  );
+  assert.strictEqual(mergedAllPage.data.exportDialogStep, 'scope');
+  let mergedSelected = null;
+  mergedAllPage.executeRecordExport = (options) => { mergedSelected = options; };
+  mergedAllPage.onChooseExportScope(dataEvent('scope', 'mastered'));
+  mergedAllPage.onChooseExportFormat(dataEvent('format', 'xlsx'));
+  assert.deepStrictEqual(mergedSelected, {
+    recordIds: ['record-learning-1', 'record-learning-2', 'record-learning-3'],
+    scope: 'mastered',
+    format: 'xlsx'
+  });
+
+  const antiMerged = {
+    ...merged,
+    id: 'merged-anti-card',
+    recordType: 'anti_forgetting_review',
+    isAntiForgettingReview: true,
+    originalRecords: merged.originalRecords.map((record, index) => ({
+      ...record,
+      id: `record-anti-${index + 1}`,
+      originalRecordId: `record-anti-${index + 1}`,
+      recordKind: 'anti_forgetting_review',
+      recordType: 'anti_forgetting_review',
+      isAntiForgettingReview: true,
+      wordsSnapshot: record.wordsSnapshot.map(({ masteryStatus, ...word }) => word)
+    }))
+  };
+  const antiMergedPage = createPage([antiMerged]);
+  antiMergedPage.onExportTap(exportEvent(antiMerged.id));
+  antiMergedPage.onChooseMergedRecords();
+  assert.strictEqual(antiMergedPage.data.exportDialogStep, 'format');
+  assert.strictEqual(antiMergedPage.data.selectedExportScope, 'all');
+  let antiMergedSelected = null;
+  antiMergedPage.executeRecordExport = (options) => { antiMergedSelected = options; };
+  antiMergedPage.onChooseExportFormat(dataEvent('format', 'pdf'));
+  assert.deepStrictEqual(antiMergedSelected, {
+    recordIds: ['record-anti-1', 'record-anti-2', 'record-anti-3'],
+    scope: 'all',
+    format: 'pdf'
+  });
+
+  const singleOriginalPage = createPage([{
+    id: 'single-wrapper',
+    isMerged: true,
+    recordType: 'learning',
+    originalRecords: [learningRecord]
+  }]);
+  singleOriginalPage.onExportTap(exportEvent('single-wrapper'));
+  assert.strictEqual(singleOriginalPage.data.exportMergedChoice, null);
+  assert.strictEqual(singleOriginalPage.data.exportDialogStep, 'scope');
+  assert.strictEqual(singleOriginalPage.data.selectedExportRecordId, learningRecord.id);
 
   const unstablePage = createPage([{ ...learningRecord, id: 'display-only', originalRecordId: '', hasStableRecordId: false }]);
   unstablePage.onExportTap(exportEvent('display-only'));
@@ -198,6 +279,8 @@ const dataEvent = (key, value) => ({ currentTarget: { dataset: { [key]: value } 
   assert.match(wxml, /data-scope="mastered"/);
   assert.match(wxml, /data-scope="notMastered"/);
   assert.match(wxml, /抗遗忘复习记录/);
+  assert.match(wxml, /catchtap="onChooseMergedRecords"/);
+  assert.match(wxml, /exportMergedChoice\.label/);
 
   process.stdout.write('records-export-interaction: PASS\n');
 })().finally(() => {

@@ -163,7 +163,15 @@
       </view>
 
       <view wx:if="{{exportDialogStep === 'record'}}" class="export-dialog-section">
-        <text class="export-dialog-hint">该卡片包含多条原始记录，请选择具体时间</text>
+        <text class="export-dialog-hint">该卡片包含多条原始记录，可整体导出或选择具体时间</text>
+        <button
+          wx:if="{{exportMergedChoice}}"
+          class="export-choice-btn export-choice-all {{exportMergedChoice.available ? '' : 'export-choice-unavailable'}}"
+          catchtap="onChooseMergedRecords"
+        >
+          {{exportMergedChoice.label}}
+        </button>
+        <text class="export-choice-divider">单次导出</text>
         <button wx:for="{{exportRecordChoices}}" wx:key="recordId" class="export-choice-btn" catchtap="onChooseOriginalRecord" data-record-id="{{item.recordId}}">
           {{item.label}}
         </button>
@@ -171,7 +179,7 @@
 
       <view wx:elif="{{exportDialogStep === 'scope'}}" class="export-dialog-section">
         <text class="export-dialog-hint">选择导出范围</text>
-        <button class="export-choice-btn" catchtap="onChooseExportScope" data-scope="all">全部</button>
+        <button class="export-choice-btn" catchtap="onChooseExportScope" data-scope="all">全部单词</button>
         <button class="export-choice-btn" catchtap="onChooseExportScope" data-scope="mastered">已掌握</button>
         <button class="export-choice-btn" catchtap="onChooseExportScope" data-scope="notMastered">未掌握</button>
       </view>

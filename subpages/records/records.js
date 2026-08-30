@@ -9,7 +9,12 @@ const {
   resolveCurrentWordbook
 } = require('../../utils/learning-context.js');
 const { extractDisplayWordFromReviewId } = require('../../utils/review-word-resolver.js');
-const { buildOriginalRecordChoices, EXPORT_FORMATS, EXPORT_SCOPES } = require('../../utils/local-record-export.js');
+const {
+  buildMergedRecordExportChoice,
+  buildOriginalRecordChoices,
+  EXPORT_FORMATS,
+  EXPORT_SCOPES
+} = require('../../utils/local-record-export.js');
 const { generateAndOpenRecordExport } = require('./export/export-service.js');
 
 // 初始化合并后的词书数据和单词映射表
@@ -53,8 +58,10 @@ Page({
     exportDialogVisible: false,
     exportDialogStep: '',
     exportRecordChoices: [],
+    exportMergedChoice: null,
     exportRecordKind: '',
     selectedExportRecordId: '',
+    selectedExportRecordIds: [],
     selectedExportScope: EXPORT_SCOPES.ALL,
     isExporting: false
   },
@@ -896,13 +903,36 @@ Page({
     }
 
     const isAnti = this.isAntiForgettingRecord(displayRecord);
+    const mergedChoice = choices.length > 1
+      ? buildMergedRecordExportChoice(displayRecord)
+      : null;
     this.setData({
       exportDialogVisible: true,
       exportDialogStep: choices.length > 1 ? 'record' : (isAnti ? 'format' : 'scope'),
       exportRecordChoices: choices,
+      exportMergedChoice: mergedChoice,
       exportRecordKind: isAnti ? 'anti_forgetting_review' : 'learning',
       selectedExportRecordId: choices.length === 1 ? choices[0].recordId : '',
+      selectedExportRecordIds: [],
       selectedExportScope: EXPORT_SCOPES.ALL
+    });
+  },
+
+  onChooseMergedRecords: function() {
+    const choice = this.data.exportMergedChoice;
+    if (!choice || !choice.available) {
+      wx.showToast({
+        title: (choice && choice.userMessage) || '该合并历史记录无法整体导出',
+        icon: 'none',
+        duration: 3000
+      });
+      return;
+    }
+    this.setData({
+      selectedExportRecordId: '',
+      selectedExportRecordIds: choice.recordIds.slice(),
+      selectedExportScope: EXPORT_SCOPES.ALL,
+      exportDialogStep: this.data.exportRecordKind === 'anti_forgetting_review' ? 'format' : 'scope'
     });
   },
 
@@ -911,6 +941,7 @@ Page({
     if (!recordId) return;
     this.setData({
       selectedExportRecordId: recordId,
+      selectedExportRecordIds: [],
       exportDialogStep: this.data.exportRecordKind === 'anti_forgetting_review' ? 'format' : 'scope'
     });
   },
@@ -925,18 +956,26 @@ Page({
     const format = e.currentTarget.dataset.format;
     if (![EXPORT_FORMATS.PDF, EXPORT_FORMATS.XLSX].includes(format)) return;
     const recordId = this.data.selectedExportRecordId;
+    const recordIds = Array.isArray(this.data.selectedExportRecordIds)
+      ? this.data.selectedExportRecordIds.slice()
+      : [];
     const scope = this.data.exportRecordKind === 'anti_forgetting_review'
       ? EXPORT_SCOPES.ALL
       : this.data.selectedExportScope;
     this.closeExportDialog();
-    this.executeRecordExport({ recordId, scope, format });
+    this.executeRecordExport(recordIds.length > 1
+      ? { recordIds, scope, format }
+      : { recordId, scope, format });
   },
 
   closeExportDialog: function() {
     this.setData({
       exportDialogVisible: false,
       exportDialogStep: '',
-      exportRecordChoices: []
+      exportRecordChoices: [],
+      exportMergedChoice: null,
+      selectedExportRecordId: '',
+      selectedExportRecordIds: []
     });
   },
 
@@ -963,7 +1002,8 @@ Page({
         this.setData({ isExporting: false });
         wx.showModal({
           title: '历史兼容记录',
-          content: '该记录属于历史兼容记录，部分历史字段不可保证。导出只包含能够证明的历史字段，是否继续？',
+          content: error.userMessage
+            || '该记录属于历史兼容记录，部分历史字段不可保证。导出只包含能够证明的历史字段，是否继续？',
           confirmText: '继续导出',
           success: (res) => {
             if (res.confirm) this.executeRecordExport(options, true);

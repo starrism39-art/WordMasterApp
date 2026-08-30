@@ -1210,6 +1210,36 @@
   font-weight: 600;
 }
 
+.export-choice-all {
+  border-color: rgba(7, 193, 96, 0.32);
+  background: #EAF8F1;
+  color: #078F49;
+  font-weight: 700;
+}
+
+.export-choice-unavailable {
+  border-color: #E3E6E9;
+  background: #F5F6F7;
+  color: #8E95A1;
+}
+
+.export-choice-divider {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin: 4rpx 0 0;
+  color: #8E95A1;
+  font-size: 22rpx;
+}
+
+.export-choice-divider::before,
+.export-choice-divider::after {
+  height: 1rpx;
+  flex: 1;
+  background: #E8ECEF;
+  content: '';
+}
+
 .record-footer-arrow {
   color: #07C160;
 }

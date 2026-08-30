@@ -1,6 +1,11 @@
 'use strict';
 
-const { MASTERY_STATUSES, RECORD_KINDS } = require('./record-export-contract.js');
+const {
+  COMPATIBILITY_LEVELS,
+  MASTERY_STATUSES,
+  RECORD_KINDS,
+  normalizeRecordForExport
+} = require('./record-export-contract.js');
 
 const EXPORT_SCOPES = Object.freeze({
   ALL: 'all',
@@ -109,12 +114,56 @@ const getOriginalRecordId = (record) => {
   return normalizeText(record.originalRecordId || record.id || record.recordId || record._id);
 };
 
+const getRecordCompletedAt = (record = {}) => (
+  record.completedAt || record.studyDate || record.timestamp || record.learningDate || record.date
+);
+
+const getExportWordIdentity = (word) => {
+  const safeWord = word && typeof word === 'object' ? word : {};
+  const wordId = normalizeText(safeWord.wordId || safeWord.sourceWordId || safeWord.id);
+  if (wordId) return Object.freeze({ key: `id:${wordId}`, source: 'wordId' });
+
+  const wordText = normalizeText(safeWord.word);
+  if (wordText) {
+    return Object.freeze({ key: `word:${wordText.toLowerCase()}`, source: 'word' });
+  }
+  return Object.freeze({ key: '', source: 'missing' });
+};
+
+// snapshots 必须按原始记录时间从旧到新传入；Map 只保留一个身份，后写入的快照自然胜出。
+const mergeWordSnapshotsForExport = (snapshots = []) => {
+  const wordsByIdentity = new Map();
+  let usedFallbackWordText = false;
+  let missingIdentityCount = 0;
+
+  (Array.isArray(snapshots) ? snapshots : []).forEach((snapshot) => {
+    const words = snapshot && Array.isArray(snapshot.wordsSnapshot)
+      ? snapshot.wordsSnapshot
+      : [];
+    words.forEach((word) => {
+      const identity = getExportWordIdentity(word);
+      if (!identity.key) {
+        missingIdentityCount += 1;
+        return;
+      }
+      if (identity.source === 'word') usedFallbackWordText = true;
+      wordsByIdentity.set(identity.key, Object.freeze({ ...word }));
+    });
+  });
+
+  return Object.freeze({
+    wordsSnapshot: Object.freeze(Array.from(wordsByIdentity.values())),
+    usedFallbackWordText,
+    missingIdentityCount
+  });
+};
+
 const buildOriginalRecordChoices = (displayRecord) => {
   const originals = displayRecord && Array.isArray(displayRecord.originalRecords)
     ? displayRecord.originalRecords
     : [displayRecord];
   return originals.filter(Boolean).map((record, index) => {
-    const completedAt = record.completedAt || record.studyDate || record.timestamp || record.learningDate || record.date;
+    const completedAt = getRecordCompletedAt(record);
     const words = Array.isArray(record.wordsSnapshot)
       ? record.wordsSnapshot
       : (Array.isArray(record.studyWordsDetailed) ? record.studyWordsDetailed : []);
@@ -130,15 +179,57 @@ const buildOriginalRecordChoices = (displayRecord) => {
   });
 };
 
+const buildMergedRecordExportChoice = (displayRecord) => {
+  const originals = displayRecord && Array.isArray(displayRecord.originalRecords)
+    ? displayRecord.originalRecords.filter(Boolean)
+    : [];
+  if (originals.length <= 1) return null;
+
+  const normalizedRecords = originals.map((record) => normalizeRecordForExport(record));
+  const recordIds = originals.map(getOriginalRecordId);
+  const mergedWords = mergeWordSnapshotsForExport(
+    normalizedRecords.map((record) => record.snapshot)
+  );
+  const hasBlockedRecord = normalizedRecords.some((record) => (
+    record.compatibility.level === COMPATIBILITY_LEVELS.D
+  ));
+  const hasStableRecordIds = recordIds.every(Boolean);
+  const available = hasStableRecordIds
+    && !hasBlockedRecord
+    && mergedWords.missingIdentityCount === 0
+    && mergedWords.wordsSnapshot.length > 0;
+  const userMessage = !hasStableRecordIds
+    ? '该合并历史记录缺少稳定 recordId，无法整体导出'
+    : (hasBlockedRecord || mergedWords.missingIdentityCount > 0
+        ? '该合并历史记录含无法可靠识别的词条，无法整体导出，请逐次导出'
+        : '');
+
+  return Object.freeze({
+    recordIds: Object.freeze(recordIds.slice()),
+    recordCount: originals.length,
+    totalWords: mergedWords.wordsSnapshot.length,
+    available,
+    usedFallbackWordText: mergedWords.usedFallbackWordText,
+    userMessage,
+    label: available
+      ? `全部导出 · ${originals.length}次 · 共${mergedWords.wordsSnapshot.length}词`
+      : `全部导出 · ${originals.length}次 · 无法可靠去重`
+  });
+};
+
 module.exports = {
   EXPORT_FORMATS,
   EXPORT_SCOPES,
+  buildMergedRecordExportChoice,
   buildOriginalRecordChoices,
   buildRecordExportFilename,
   createExportError,
   filterWordsForExport,
   formatShanghaiDate,
   formatShanghaiTime,
+  getExportWordIdentity,
   getOriginalRecordId,
+  getRecordCompletedAt,
+  mergeWordSnapshotsForExport,
   sanitizeFilenamePart
 };
