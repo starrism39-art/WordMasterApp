@@ -40,9 +40,9 @@ assert.strictEqual(learningRecord.masteredPercentage, 33);
 assert.strictEqual(learningRecord.notMasteredPercentage, 67);
 assert.strictEqual(learningRecord.recordCountLabel, '当日 3 次学习已合并');
 assert.strictEqual(reviewRecord.recordCategory, 'anti');
-assert.strictEqual(reviewRecord.recordTypeLabel, '复习记录');
+assert.strictEqual(reviewRecord.recordTypeLabel, '抗遗忘复习记录');
 assert.strictEqual(reviewRecord.displayWordbookTitle, '高中统编版英语词书');
-assert.strictEqual(reviewRecord.recordCountLabel, '当日 2 次复习已合并');
+assert.strictEqual(reviewRecord.recordCountLabel, '当日 2 次抗遗忘复习已合并');
 assert.strictEqual(normalizeWordbookTitle('高中统编版英语词书（抗遗忘复习）'), '高中统编版英语词书');
 assert.notStrictEqual(learningRecord.wordbookTone, readingRecord.wordbookTone);
 

@@ -420,6 +420,28 @@ const updateCsv = 'word,meaning,phonetic\npear,梨,/peə/\ngrape,葡萄,\n';
   assert.strictEqual(v2Words.every((word) => /^twb_update_w_[0-9a-f]{16}$/.test(word.id)), true);
   assert.strictEqual(new Set(v2Words.map((word) => word.id)).size, 2);
 
+  const historicalV1 = await harness.main({
+    action: 'getPublishedVersion',
+    wordbookId: 'twb_update',
+    version: 1
+  });
+  assert.strictEqual(historicalV1.success, true);
+  assert.strictEqual(historicalV1.historicalVersion, true);
+  assert.strictEqual(historicalV1.book.version, 1);
+  assert.deepStrictEqual(
+    historicalV1.book.words,
+    JSON.parse(originalV1.toString('utf8'))
+  );
+  assert.strictEqual(
+    (await harness.main({
+      action: 'getPublished',
+      wordbookId: 'twb_update',
+      version: 1
+    })).reason,
+    'VERSION_NOT_ACTIVE',
+    '既有 getPublished 必须继续保持仅当前版本语义'
+  );
+
   const duplicate = await harness.main({
     action: 'updateVersion',
     wordbookId: 'twb_update',

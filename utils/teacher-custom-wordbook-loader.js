@@ -72,7 +72,7 @@ const validateWords = (words, wordbookId, totalWords) => {
   });
 };
 
-const normalizeLoadedBook = (book, teacherId) => {
+const normalizeLoadedBook = (book, teacherId, options = {}) => {
   const wordbookId = normalizeText(book && (book.wordbookId || book.id));
   const version = normalizeNumber(book && book.version);
   const totalWords = normalizeNumber(book && book.totalWords);
@@ -86,7 +86,11 @@ const normalizeLoadedBook = (book, teacherId) => {
     order: normalizeNumber(entry.order)
   })) : [];
 
-  if (!wordbookId || version < 1 || status !== 'active'
+  const statusAllowed = options.allowHistorical === true
+    ? status === 'active' || status === 'disabled'
+    : status === 'active';
+
+  if (!wordbookId || version < 1 || !statusAllowed
     || !validateWords(words, wordbookId, totalWords)) {
     throw new Error('TEACHER_WORDBOOK_PAYLOAD_INVALID');
   }
@@ -159,11 +163,66 @@ const loadTeacherCustomWordbook = async (book, options = {}) => {
   return loadedBook;
 };
 
+const loadTeacherCustomWordbookVersion = async (book, options = {}) => {
+  const sourceType = normalizeText(book && book.sourceType);
+  const wordbookId = normalizeText(book && (book.wordbookId || book.id));
+  const version = normalizeNumber(book && book.version);
+  if (sourceType !== SOURCE_TYPE) throw new Error('TEACHER_WORDBOOK_SOURCE_REQUIRED');
+  if (!wordbookId || version < 1) throw new Error('TEACHER_WORDBOOK_ARGUMENT_INVALID');
+
+  const localTeacherId = normalizeText(options.teacherId) || getLocalTeacherId();
+  const cacheKey = localTeacherId ? buildCacheKey(localTeacherId, wordbookId, version) : '';
+  if (!options.forceRefresh && cacheKey) {
+    const cached = readCache(cacheKey);
+    if (cached
+      && normalizeText(cached.teacherId) === localTeacherId
+      && normalizeText(cached.wordbookId) === wordbookId
+      && normalizeNumber(cached.version) === version) {
+      return normalizeLoadedBook(cached, localTeacherId, { allowHistorical: true });
+    }
+  }
+
+  const callFunction = options.callFunction || callTeacherWordbook;
+  const response = await callFunction({
+    action: 'getPublishedVersion',
+    wordbookId,
+    version
+  });
+  const result = response && response.result ? response.result : response;
+  if (!result || result.success !== true || result.historicalVersion !== true) {
+    const error = new Error(result && (result.reason || result.error)
+      ? (result.reason || result.error)
+      : 'TEACHER_WORDBOOK_HISTORY_LOAD_FAILED');
+    error.code = result && result.error ? result.error : 'TEACHER_WORDBOOK_HISTORY_LOAD_FAILED';
+    throw error;
+  }
+
+  const responseTeacherId = normalizeText(result.teacherId);
+  if (!responseTeacherId || (localTeacherId && responseTeacherId !== localTeacherId)) {
+    throw new Error('TEACHER_WORDBOOK_OWNER_MISMATCH');
+  }
+  const loadedBook = normalizeLoadedBook(
+    result.book,
+    responseTeacherId,
+    { allowHistorical: true }
+  );
+  if (loadedBook.wordbookId !== wordbookId || loadedBook.version !== version) {
+    throw new Error('TEACHER_WORDBOOK_VERSION_MISMATCH');
+  }
+
+  writeCache(buildCacheKey(responseTeacherId, wordbookId, version), {
+    ...loadedBook,
+    cachedAt: Date.now()
+  });
+  return loadedBook;
+};
+
 module.exports = {
   SOURCE_TYPE,
   CACHE_PREFIX,
   buildCacheKey,
   getLocalTeacherId,
   loadTeacherCustomWordbook,
+  loadTeacherCustomWordbookVersion,
   validateWords
 };

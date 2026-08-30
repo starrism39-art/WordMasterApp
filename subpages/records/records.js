@@ -9,6 +9,8 @@ const {
   resolveCurrentWordbook
 } = require('../../utils/learning-context.js');
 const { extractDisplayWordFromReviewId } = require('../../utils/review-word-resolver.js');
+const { buildOriginalRecordChoices, EXPORT_FORMATS, EXPORT_SCOPES } = require('../../utils/local-record-export.js');
+const { generateAndOpenRecordExport } = require('./export/export-service.js');
 
 // 初始化合并后的词书数据和单词映射表
 let mergedWords = mergeWordbooks();
@@ -47,7 +49,14 @@ Page({
     // 新增性能优化参数
     pageSize: 10, // 每页显示记录数
     enablePullRefresh: true, // 是否启用下拉刷新
-    lastRefreshTime: 0 // 上次刷新时间，用于防抖
+    lastRefreshTime: 0, // 上次刷新时间，用于防抖
+    exportDialogVisible: false,
+    exportDialogStep: '',
+    exportRecordChoices: [],
+    exportRecordKind: '',
+    selectedExportRecordId: '',
+    selectedExportScope: EXPORT_SCOPES.ALL,
+    isExporting: false
   },
   
   // 记录当前打开的滑动项ID
@@ -230,18 +239,26 @@ Page({
 
         console.log('学习记录保留策略：不按单词ID过滤，记录总数:', recordsToProcess.length, '非对象脏数据数:', nonObjectRecordCount);
 
+        let legacyRecordIndex = 0;
         for (const record of recordsToProcess) {
           if (!record || typeof record !== 'object') {
             continue;
           }
 
-          // 生成唯一ID
-          const recordId = record.id || `${record.studentId || 'unknown'}-${record.timestamp || Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          // 导出身份只能来自原始稳定 ID；无 ID 的旧脏记录仅保留确定性的页面展示 ID，禁止伪装成可导出 recordId。
+          const originalRecordId = String(record.id || record.recordId || record._id || '').trim();
+          const legacyToken = String(record.timestamp || record.studyDate || record.learningDate || 'unknown')
+            .replace(/[^a-zA-Z0-9_-]/g, '_');
+          const recordId = originalRecordId || `legacy_unstable_${record.studentId || 'unknown'}_${legacyToken}_${legacyRecordIndex}`;
+          legacyRecordIndex += 1;
           
           if (!recordMap.has(recordId)) {
-            // 只保留必要字段，减少内存占用
+            // 保留 Stage2A/B 历史快照与版本字段；页面展示字段只在副本上补充，不修改原记录。
             recordMap.set(recordId, {
+              ...record,
               id: recordId,
+              originalRecordId,
+              hasStableRecordId: !!originalRecordId,
               studentId: record.studentId,
               wordbookId: record.wordbookId,
               wordbookTitle: record.wordbookTitle || record.wordbookName || '未知词书',
@@ -847,6 +864,125 @@ Page({
     } else {
       // 查看记录中的单词
       this.viewRecordWords(id);
+    }
+  },
+
+  findDisplayedRecord: function(recordId) {
+    const sources = [
+      this.data.displayedRecords,
+      this.data.filteredRecords,
+      this.data.studyRecords,
+      this._cache && this._cache.processedRecords
+    ];
+    for (const source of sources) {
+      const match = (Array.isArray(source) ? source : []).find((record) => record && record.id === recordId);
+      if (match) return match;
+    }
+    return null;
+  },
+
+  onExportTap: function(e) {
+    if (this._isExporting || this.data.isExporting) return;
+    const displayRecord = this.findDisplayedRecord(e.currentTarget.dataset.id);
+    if (!displayRecord) {
+      wx.showToast({ title: '未找到该条原始记录', icon: 'none' });
+      return;
+    }
+
+    const choices = buildOriginalRecordChoices(displayRecord);
+    if (choices.length === 0 || choices.some((choice) => !choice.stable)) {
+      wx.showToast({ title: '该历史记录缺少稳定 recordId，无法导出', icon: 'none', duration: 2500 });
+      return;
+    }
+
+    const isAnti = this.isAntiForgettingRecord(displayRecord);
+    this.setData({
+      exportDialogVisible: true,
+      exportDialogStep: choices.length > 1 ? 'record' : (isAnti ? 'format' : 'scope'),
+      exportRecordChoices: choices,
+      exportRecordKind: isAnti ? 'anti_forgetting_review' : 'learning',
+      selectedExportRecordId: choices.length === 1 ? choices[0].recordId : '',
+      selectedExportScope: EXPORT_SCOPES.ALL
+    });
+  },
+
+  onChooseOriginalRecord: function(e) {
+    const recordId = String(e.currentTarget.dataset.recordId || '');
+    if (!recordId) return;
+    this.setData({
+      selectedExportRecordId: recordId,
+      exportDialogStep: this.data.exportRecordKind === 'anti_forgetting_review' ? 'format' : 'scope'
+    });
+  },
+
+  onChooseExportScope: function(e) {
+    const scope = e.currentTarget.dataset.scope;
+    if (![EXPORT_SCOPES.ALL, EXPORT_SCOPES.MASTERED, EXPORT_SCOPES.NOT_MASTERED].includes(scope)) return;
+    this.setData({ selectedExportScope: scope, exportDialogStep: 'format' });
+  },
+
+  onChooseExportFormat: function(e) {
+    const format = e.currentTarget.dataset.format;
+    if (![EXPORT_FORMATS.PDF, EXPORT_FORMATS.XLSX].includes(format)) return;
+    const recordId = this.data.selectedExportRecordId;
+    const scope = this.data.exportRecordKind === 'anti_forgetting_review'
+      ? EXPORT_SCOPES.ALL
+      : this.data.selectedExportScope;
+    this.closeExportDialog();
+    this.executeRecordExport({ recordId, scope, format });
+  },
+
+  closeExportDialog: function() {
+    this.setData({
+      exportDialogVisible: false,
+      exportDialogStep: '',
+      exportRecordChoices: []
+    });
+  },
+
+  stopDialogTap: function() {},
+
+  executeRecordExport: async function(options, allowPartial = false) {
+    if (this._isExporting || this.data.isExporting) return null;
+    this._isExporting = true;
+    this.setData({ isExporting: true });
+    wx.showLoading({ title: '正在生成文件', mask: true });
+
+    try {
+      const result = await generateAndOpenRecordExport({
+        ...options,
+        records: this.data.studyRecords,
+        currentStudent: this.data.currentStudent,
+        allowPartial
+      });
+      return result;
+    } catch (error) {
+      if (error && error.code === 'PARTIAL_EXPORT_CONFIRMATION_REQUIRED' && !allowPartial) {
+        wx.hideLoading();
+        this._isExporting = false;
+        this.setData({ isExporting: false });
+        wx.showModal({
+          title: '历史兼容记录',
+          content: '该记录属于历史兼容记录，部分历史字段不可保证。导出只包含能够证明的历史字段，是否继续？',
+          confirmText: '继续导出',
+          success: (res) => {
+            if (res.confirm) this.executeRecordExport(options, true);
+          }
+        });
+        return null;
+      }
+
+      const message = error && error.userMessage
+        ? error.userMessage
+        : ((error && String(error.errMsg || '').includes('openDocument')) ? '文件打开失败，请重试' : '导出失败，请重试');
+      wx.showToast({ title: message, icon: 'none', duration: 2500 });
+      return null;
+    } finally {
+      if (this._isExporting) {
+        wx.hideLoading();
+        this._isExporting = false;
+        this.setData({ isExporting: false });
+      }
     }
   },
 
@@ -1893,6 +2029,7 @@ Page({
       wordbooks: {},
       movedX: {}
     });
+    this._isExporting = false;
   },
   
   // 添加下拉刷新支持

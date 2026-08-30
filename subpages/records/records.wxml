@@ -43,7 +43,7 @@
         <text class="tab-count">{{visibleLearningCount}}</text>
       </view>
       <view class="record-type-tab {{recordTypeFilter === 'anti' ? 'active' : ''}}" bindtap="changeRecordTypeFilter" data-filter="anti">
-        <text class="tab-text">复习</text>
+        <text class="tab-text">抗遗忘复习</text>
         <text class="tab-count">{{visibleReviewCount}}</text>
       </view>
     </view>
@@ -122,8 +122,11 @@
           </view>
 
           <view class="record-footer">
-            <text>查看本次单词明细</text>
-            <text class="record-footer-arrow">›</text>
+            <view class="record-detail-link">
+              <text>查看本次单词明细</text>
+              <text class="record-footer-arrow">›</text>
+            </view>
+            <button class="record-export-btn" catchtap="onExportTap" data-id="{{item.id}}" disabled="{{isExporting}}">导出</button>
           </view>
         </view>
       </view>
@@ -149,6 +152,35 @@
     <view wx:else class="empty-state">
       <text class="empty-title">暂无学习记录</text>
       <text class="empty-subtitle">当前筛选条件下没有记录，请切换时间、类型或词书</text>
+    </view>
+  </view>
+
+  <view wx:if="{{exportDialogVisible}}" class="export-dialog-mask" catchtap="closeExportDialog">
+    <view class="export-dialog" catchtap="stopDialogTap">
+      <view class="export-dialog-header">
+        <text class="export-dialog-title">导出{{exportRecordKind === 'anti_forgetting_review' ? '抗遗忘复习记录' : '学习记录'}}</text>
+        <text class="export-dialog-close" catchtap="closeExportDialog">×</text>
+      </view>
+
+      <view wx:if="{{exportDialogStep === 'record'}}" class="export-dialog-section">
+        <text class="export-dialog-hint">该卡片包含多条原始记录，请选择具体时间</text>
+        <button wx:for="{{exportRecordChoices}}" wx:key="recordId" class="export-choice-btn" catchtap="onChooseOriginalRecord" data-record-id="{{item.recordId}}">
+          {{item.label}}
+        </button>
+      </view>
+
+      <view wx:elif="{{exportDialogStep === 'scope'}}" class="export-dialog-section">
+        <text class="export-dialog-hint">选择导出范围</text>
+        <button class="export-choice-btn" catchtap="onChooseExportScope" data-scope="all">全部</button>
+        <button class="export-choice-btn" catchtap="onChooseExportScope" data-scope="mastered">已掌握</button>
+        <button class="export-choice-btn" catchtap="onChooseExportScope" data-scope="notMastered">未掌握</button>
+      </view>
+
+      <view wx:elif="{{exportDialogStep === 'format'}}" class="export-dialog-section">
+        <text class="export-dialog-hint">选择文件格式</text>
+        <button class="export-choice-btn export-choice-primary" catchtap="onChooseExportFormat" data-format="pdf">PDF</button>
+        <button class="export-choice-btn" catchtap="onChooseExportFormat" data-format="xlsx">Excel</button>
+      </view>
     </view>
   </view>
 </view>

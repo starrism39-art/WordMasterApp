@@ -44,7 +44,7 @@ function prepareRecordForDisplay(record) {
     recordCategory: isReview ? 'anti' : 'word',
     displayWordbookTitle,
     wordbookTone: getWordbookTone(source.wordbookId, displayWordbookTitle),
-    recordTypeLabel: isReview ? '复习记录' : '学习记录',
+    recordTypeLabel: isReview ? '抗遗忘复习记录' : '学习记录',
     totalWords,
     masteredCount,
     notMasteredCount,
@@ -52,8 +52,8 @@ function prepareRecordForDisplay(record) {
     notMasteredPercentage: masteryTotal > 0 ? Math.round(notMasteredCount / masteryTotal * 100) : 0,
     recordCount,
     recordCountLabel: recordCount > 1
-      ? `当日 ${recordCount} 次${isReview ? '复习' : '学习'}已合并`
-      : `单次${isReview ? '复习' : '学习'}`,
+      ? `当日 ${recordCount} 次${isReview ? '抗遗忘复习' : '学习'}已合并`
+      : `单次${isReview ? '抗遗忘复习' : '学习'}`,
     totalLabel: isReview ? '复习词汇' : '本日学习'
   });
 }

@@ -80,7 +80,13 @@ function createRuntime({
   activeApp = {
     globalData: {
       currentStudent: { id: studentId, name: 'Student A' },
-      currentWordbook: { id: wordbookId, title: 'Book A', totalWords: wordbookTotalWords }
+      currentWordbook: {
+        id: wordbookId,
+        title: 'Book A',
+        sourceType: 'official',
+        version: 1,
+        totalWords: wordbookTotalWords
+      }
     },
     emit: (name) => emitted.push(name),
     syncPreviewState: async (...args) => {
@@ -176,6 +182,25 @@ function assertFormalScope(runtime, expectedIds) {
   assert.deepStrictEqual(Object.keys(records).sort(), [...expectedIds].sort());
   const record = runtime.storage.learningRecords[0];
   assert.deepStrictEqual([...record.learnedWordIds].sort(), [...expectedIds].sort());
+  assert.strictEqual(record.recordSchemaVersion, 1);
+  assert.strictEqual(record.recordKind, 'learning');
+  assert.ok(record.completedAt);
+  assert.deepStrictEqual(record.studentSnapshot, { id: 'student-a', name: 'Student A' });
+  assert.deepStrictEqual(record.wordbookSnapshot, {
+    id: 'book-a',
+    title: 'Book A',
+    sourceType: 'official',
+    version: null
+  });
+  assert.deepStrictEqual(
+    record.wordsSnapshot.map((word) => word.wordId).sort(),
+    [...expectedIds].sort()
+  );
+  record.wordsSnapshot.forEach((word) => {
+    assert.ok(word.masteryStatus === 'mastered' || word.masteryStatus === 'notMastered');
+    assert.ok(word.wordId && word.word && word.meaning);
+    assert.strictEqual(typeof word.phonetic, 'string');
+  });
 }
 
 async function runAllMasteredScenario({ totalWords = 5, existingMastery = {} } = {}) {
@@ -344,6 +369,30 @@ async function runAllMasteredScenario({ totalWords = 5, existingMastery = {} } =
     assert.ok(!Array.isArray(bookMastery));
     assert.strictEqual(bookMastery['book-a_legacy_word'].mastered, true);
     words.forEach((word) => assert.strictEqual(bookMastery[word.id].mastered, true));
+  }
+
+  // The record must use the version that actually supplied teacher_custom words,
+  // even if the catalog descriptor has already moved to a newer version.
+  {
+    const words = makeWords(2);
+    const runtime = createRuntime({ words, previewMastery: statusMap(words, 2, 0) });
+    runtime.page.data.currentWordbook = {
+      ...runtime.page.data.currentWordbook,
+      sourceType: 'teacher_custom',
+      version: 4
+    };
+    runtime.page._recordWordbookSnapshotSource = {
+      id: 'book-a',
+      wordbookId: 'book-a',
+      title: 'Book A',
+      sourceType: 'teacher_custom',
+      version: 3,
+      totalWords: 2
+    };
+    runtime.page.startNewLearning();
+    await flushPromises();
+    assert.strictEqual(runtime.storage.learningRecords[0].wordbookSnapshot.sourceType, 'teacher_custom');
+    assert.strictEqual(runtime.storage.learningRecords[0].wordbookSnapshot.version, 3);
   }
 
   process.stdout.write('preview-start-learning-flow: PASS\n');

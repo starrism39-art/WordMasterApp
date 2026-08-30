@@ -175,6 +175,23 @@ const createFunctionHarness = () => {
   assert.ok(storage[cacheKeyA]);
   await loader.loadTeacherCustomWordbook(descriptor, { callFunction });
   assert.strictEqual(calls, 1, '同教师、同词书、同版本应命中隔离缓存');
+
+  let historicalCalls = 0;
+  const historicalLoaded = await loader.loadTeacherCustomWordbookVersion(descriptor, {
+    forceRefresh: true,
+    callFunction: async (request) => {
+      historicalCalls += 1;
+      assert.deepStrictEqual(request, {
+        action: 'getPublishedVersion',
+        wordbookId: 'twb_shared',
+        version: 1
+      });
+      return { result: { ...resultA, historicalVersion: true } };
+    }
+  });
+  assert.strictEqual(historicalLoaded.version, 1);
+  assert.deepStrictEqual(historicalLoaded.words, harness.wordsA);
+  assert.strictEqual(historicalCalls, 1);
   assert.notStrictEqual(
     loader.buildCacheKey('teacher-a', 'twb_shared', 1),
     loader.buildCacheKey('teacher-a', 'twb_shared', 2)

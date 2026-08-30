@@ -42,6 +42,15 @@ const populatedRecords = [
     duration: 60,
     timestamp: Date.parse('2026-08-13T10:00:00+08:00'),
     studyDate: '2026-08-13T10:00:00+08:00',
+    recordSchemaVersion: 1,
+    recordKind: 'learning',
+    completedAt: '2026-08-13T10:00:00+08:00',
+    studentSnapshot: { id: student.id, name: student.name },
+    wordbookSnapshot: { id: wordbook.id, title: wordbook.title, sourceType: 'official', version: null },
+    wordsSnapshot: [
+      { wordId: 'records_word_1', word: 'apple', meaning: '苹果', phonetic: '/ˈæpəl/', masteryStatus: 'mastered' },
+      { wordId: 'records_word_2', word: 'example', meaning: '例子', phonetic: '', masteryStatus: 'notMastered' }
+    ],
     learnedWordIds: ['records_word_1', 'records_word_2'],
     masteredWordIds: ['records_word_1'],
     notMasteredWordIds: ['records_word_2'],
@@ -261,6 +270,11 @@ async function flushPromises() {
     assert.strictEqual(initial.page.data.isLoading, false);
     assert.strictEqual(initial.page.data.studyRecords.length, 1);
     assert.strictEqual(initial.page.data.displayedRecords.length, 1);
+    assert.strictEqual(initial.page.data.studyRecords[0].recordSchemaVersion, 1);
+    assert.strictEqual(initial.page.data.studyRecords[0].completedAt, populatedRecords[0].completedAt);
+    assert.deepStrictEqual(initial.page.data.studyRecords[0].studentSnapshot, populatedRecords[0].studentSnapshot);
+    assert.deepStrictEqual(initial.page.data.studyRecords[0].wordbookSnapshot, populatedRecords[0].wordbookSnapshot);
+    assert.deepStrictEqual(initial.page.data.studyRecords[0].wordsSnapshot, populatedRecords[0].wordsSnapshot);
 
     // 2. A genuine later show keeps one necessary refresh.
     if (typeof initial.page.onHide === 'function') initial.page.onHide();

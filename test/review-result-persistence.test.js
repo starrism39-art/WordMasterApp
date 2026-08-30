@@ -75,10 +75,15 @@ assert.ok(pageDefinition, 'review page should register');
 const page = Object.assign({}, pageDefinition);
 page.data = {
   currentStudent: { id: 'student456', name: 'Test Student' },
-  currentWordbook: { id: 'senior_textbook_real', title: 'Senior Textbook' },
+  currentWordbook: {
+    id: 'senior_textbook_real',
+    title: 'Senior Textbook',
+    sourceType: 'official',
+    version: 1
+  },
   allWords: [
-    { id: 'senior_textbook_real_wrong', word: 'wrong' },
-    { id: 'senior_textbook_real_right', word: 'right' }
+    { id: 'senior_textbook_real_wrong', word: 'wrong', meaning: '错误的', phonetic: '/rɒŋ/' },
+    { id: 'senior_textbook_real_right', word: 'right', meaning: '正确的', phonetic: '/raɪt/' }
   ],
   previewMastery: {
     senior_textbook_real_wrong: 'difficult',
@@ -128,6 +133,25 @@ assert.deepStrictEqual(learningRecords[0].reviewStats, {
   masteredCount: 1,
   difficultCount: 1
 });
+assert.strictEqual(learningRecords[0].recordSchemaVersion, 1);
+assert.strictEqual(learningRecords[0].recordKind, 'anti_forgetting_review');
+assert.ok(learningRecords[0].completedAt);
+assert.deepStrictEqual(learningRecords[0].studentSnapshot, {
+  id: 'student456',
+  name: 'Test Student'
+});
+assert.deepStrictEqual(learningRecords[0].wordbookSnapshot, {
+  id: 'senior_textbook_real',
+  title: 'Senior Textbook',
+  sourceType: 'official',
+  version: null
+});
+assert.deepStrictEqual(
+  learningRecords[0].wordsSnapshot.map((word) => word.wordId),
+  ['senior_textbook_real_wrong', 'senior_textbook_real_right']
+);
+assert.ok(learningRecords[0].wordsSnapshot.every((word) => word.masteryStatus === null));
+assert.ok(learningRecords[0].wordsSnapshot.every((word) => word.word && word.meaning));
 assert.deepStrictEqual(
   page.data.allWords.map((word) => word.id),
   ['senior_textbook_real_wrong'],
@@ -158,5 +182,28 @@ assert.strictEqual(backCount, 1);
 assert.ok(emittedEvents.filter((eventName) => eventName === 'wordMasteryUpdated').length >= 2);
 assert.ok(toasts.every((toast) => toast.title !== '保存失败，请重试'));
 assert.strictEqual(storage.pendingWordMasterySync, undefined, 'read-only test must not queue a cloud write');
+
+page.data.currentWordbook = {
+  id: 'twb_stage2b',
+  title: 'Stage2B Teacher Book',
+  sourceType: 'teacher_custom',
+  version: 2
+};
+page._recordWordbookSnapshotSource = {
+  ...page.data.currentWordbook,
+  version: 1
+};
+page.addAntiForgettingLearningRecord([
+  {
+    id: 'twb_stage2b_w_0000000000000001',
+    word: 'history',
+    meaning: '历史（v1）',
+    phonetic: '/v1/'
+  }
+], [], []);
+assert.strictEqual(learningRecords.at(-1).wordbookSnapshot.sourceType, 'teacher_custom');
+assert.strictEqual(learningRecords.at(-1).wordbookSnapshot.version, 1);
+assert.strictEqual(learningRecords.at(-1).wordsSnapshot[0].meaning, '历史（v1）');
+assert.strictEqual(learningRecords.at(-1).wordsSnapshot[0].masteryStatus, null);
 
 process.stdout.write('review-result-persistence: PASS\n');

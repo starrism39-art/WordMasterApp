@@ -15,6 +15,10 @@ const {
   resolveReviewWordEntry,
   resolveReviewWordObject
 } = require('../../utils/review-word-resolver.js');
+const {
+  buildRecordSnapshotFields,
+  RECORD_KINDS
+} = require('../../utils/record-export-contract.js');
 
 // 初始化合并后的词书数据和单词映射表
 let mergedWords = mergeWordbooks();
@@ -2095,7 +2099,23 @@ Page({
         return;
       }
 
+      const completedAt = new Date().toISOString();
+      const loadedSnapshotWordbook = this._recordWordbookSnapshotSource;
+      const snapshotWordbook = loadedSnapshotWordbook
+        && String(loadedSnapshotWordbook.id || loadedSnapshotWordbook.wordbookId || '')
+          === String(currentWordbook.id || '')
+        ? loadedSnapshotWordbook
+        : currentWordbook;
+      const snapshotFields = buildRecordSnapshotFields({
+        recordKind: RECORD_KINDS.ANTI_FORGETTING_REVIEW,
+        completedAt,
+        student: currentStudent,
+        wordbook: snapshotWordbook,
+        words: allWords
+      });
+
       app.addLearningRecord({
+        ...snapshotFields,
         studentId: currentStudent.id,
         wordbookId: currentWordbook.id,
         wordbookTitle: `${currentWordbook.title || '未知词书'}（抗遗忘复习）`,
@@ -2344,6 +2364,13 @@ Page({
       console.warn('[Review] 词书已切换，丢弃过期解析结果:', wordbookId);
       return [];
     }
+
+    this._recordWordbookSnapshotSource = {
+      ...currentWordbook,
+      version: loadResult.dataSource === 'teacher_custom'
+        ? loadResult.version
+        : currentWordbook.version
+    };
 
     const lookup = buildReviewWordLookup(loadResult.words, wordbookId, {
       sourceType: currentWordbook.sourceType

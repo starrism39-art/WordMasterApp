@@ -2,6 +2,8 @@
 
 const REVIEW_INTERVAL_DAYS = [1, 2, 4, 7, 15];
 const DAY_MS = 24 * 60 * 60 * 1000;
+const ASIA_SHANGHAI_OFFSET_MS = 8 * 60 * 60 * 1000;
+const PRODUCT_TIME_ZONE = 'Asia/Shanghai';
 const ANTI_FORGETTING_SOURCES = Object.freeze({
   PREVIEW_NOT_MASTERED: 'preview_not_mastered',
   PREVIEW_MASTERED: 'preview_mastered',
@@ -130,6 +132,43 @@ const getLocalDateKey = (timestamp) => {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+};
+
+/**
+ * 以记录完成时所在的 Asia/Shanghai 产品日期为基准，生成完整五轮复习日期。
+ * 只复用正式 REVIEW_INTERVAL_DAYS，不读取页面状态，也不修改输入数据。
+ */
+const buildFiveRoundDates = (completedAt) => {
+  const completedTimestamp = toTimestamp(completedAt);
+  if (!completedTimestamp) {
+    const error = new Error('INVALID_COMPLETED_AT');
+    error.code = 'INVALID_COMPLETED_AT';
+    throw error;
+  }
+
+  const shanghaiDate = new Date(completedTimestamp + ASIA_SHANGHAI_OFFSET_MS);
+  const year = shanghaiDate.getUTCFullYear();
+  const monthIndex = shanghaiDate.getUTCMonth();
+  const dayOfMonth = shanghaiDate.getUTCDate();
+
+  return REVIEW_INTERVAL_DAYS.map((offsetDays, index) => {
+    const scheduledTimestamp = Date.UTC(year, monthIndex, dayOfMonth + offsetDays) - ASIA_SHANGHAI_OFFSET_MS;
+    const scheduledShanghaiDate = new Date(scheduledTimestamp + ASIA_SHANGHAI_OFFSET_MS);
+    const date = [
+      scheduledShanghaiDate.getUTCFullYear(),
+      String(scheduledShanghaiDate.getUTCMonth() + 1).padStart(2, '0'),
+      String(scheduledShanghaiDate.getUTCDate()).padStart(2, '0')
+    ].join('-');
+
+    return Object.freeze({
+      round: index + 1,
+      offsetDays,
+      date,
+      scheduledAt: `${date}T00:00:00+08:00`,
+      timestamp: scheduledTimestamp,
+      timeZone: PRODUCT_TIME_ZONE
+    });
+  });
 };
 
 const getLocalDayStartTime = (timestamp) => {
@@ -348,6 +387,7 @@ module.exports = {
   ANTI_FORGETTING_SOURCES,
   REVIEW_INTERVAL_DAYS,
   buildAntiForgettingSchedule,
+  buildFiveRoundDates,
   resolveAntiForgettingSourceForUpdate,
   shouldIncludeAntiForgettingWord,
 };

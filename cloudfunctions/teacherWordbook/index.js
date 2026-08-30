@@ -564,6 +564,73 @@ const handleGetPublished = async (event) => {
   }
 };
 
+// 历史导出专用只读入口：只按调用者身份 + 词书 ID + 明确版本读取。
+// 不回退 currentVersion，也不修改既有 getPublished 的“仅当前活跃版本”契约。
+const handleGetPublishedVersion = async (event) => {
+  const callerOpenid = getCallerOpenid();
+  if (!callerOpenid) return failure(ERROR_CODES.UNAUTHORIZED);
+
+  try {
+    const teacher = await findTeacher(callerOpenid);
+    if (!teacher) return failure(ERROR_CODES.TEACHER_NOT_FOUND);
+
+    const wordbookId = normalizeIdentifier(event && event.wordbookId);
+    const requestedVersion = normalizeNumber(event && event.version, 0);
+    if (!wordbookId || requestedVersion < 1) {
+      return failure(ERROR_CODES.INVALID_ARGUMENT, { reason: 'HISTORICAL_VERSION_REQUIRED' });
+    }
+
+    const book = await findOwnedWordbook(callerOpenid, wordbookId);
+    if (!book || normalizeIdentifier(book.source_type) !== SOURCE_TYPE) {
+      return failure(ERROR_CODES.INVALID_ARGUMENT, { reason: 'WORDBOOK_NOT_FOUND' });
+    }
+
+    const versionDocument = await findPublishedVersion(
+      callerOpenid,
+      wordbookId,
+      requestedVersion
+    );
+    if (!versionDocument
+      || normalizeIdentifier(versionDocument.source_type) !== SOURCE_TYPE
+      || normalizeIdentifier(versionDocument.status) !== TEACHER_WORDBOOK_VERSION_STATUS.PUBLISHED
+      || normalizeNumber(versionDocument.version, 0) !== requestedVersion) {
+      return failure(ERROR_CODES.INVALID_ARGUMENT, { reason: 'PUBLISHED_VERSION_NOT_FOUND' });
+    }
+
+    const wordsFileId = normalizeIdentifier(versionDocument.words_file_id);
+    const expectedPath = buildVersionPath({
+      teacherId: callerOpenid,
+      wordbookId,
+      version: requestedVersion
+    });
+    if (!wordsFileId || !fileIdMatchesPath(wordsFileId, expectedPath)) {
+      return failure(ERROR_CODES.INTERNAL_ERROR, { reason: 'PUBLISHED_FILE_MISMATCH' });
+    }
+
+    const words = await downloadJson(wordsFileId);
+    const expectedTotal = normalizeNumber(versionDocument.total_words, 0);
+    if (expectedTotal < 1 || !validatePublishedWords(words, wordbookId, expectedTotal)) {
+      return failure(ERROR_CODES.INTERNAL_ERROR, { reason: 'PUBLISHED_WORDS_INVALID' });
+    }
+
+    return {
+      success: true,
+      schemaVersion: SCHEMA_VERSION,
+      teacherId: callerOpenid,
+      historicalVersion: true,
+      book: {
+        ...toCatalogBook(book),
+        version: requestedVersion,
+        totalWords: expectedTotal,
+        words
+      }
+    };
+  } catch (error) {
+    console.error('[teacherWordbook] getPublishedVersion failed:', error);
+    return failure(ERROR_CODES.INTERNAL_ERROR);
+  }
+};
+
 const handleCreateDraft = async (event) => {
   const callerOpenid = getCallerOpenid();
 
@@ -1533,6 +1600,10 @@ exports.main = async (event) => {
 
   if (action === 'getPublished') {
     return handleGetPublished(event);
+  }
+
+  if (action === 'getPublishedVersion') {
+    return handleGetPublishedVersion(event);
   }
 
   if (action === 'createDraft') {

@@ -26,6 +26,10 @@ const {
   mergeLatePreviewMastery
 } = require('../../utils/learning-word-ids.js');
 const { extractDisplayWordFromReviewId } = require('../../utils/review-word-resolver.js');
+const {
+  buildRecordSnapshotFields,
+  RECORD_KINDS
+} = require('../../utils/record-export-contract.js');
 
 const ENABLE_VERBOSE_LOG = false;
 const debugLog = (...args) => {
@@ -632,7 +636,12 @@ Page({
           }
           preloadedWords = loadedBook.words;
           this._teacherCustomSourceWords = preloadedWords.slice();
+          this._recordWordbookSnapshotSource = {
+            ...loadedBook,
+            title: loadedBook.title || this.data.currentWordbook.title
+          };
         } else if (cloudWordbookLoader.isCloudWordbook(requestedWordbookId)) {
+          this._recordWordbookSnapshotSource = null;
           this.setData({ loadingMessage: '正在下载完整词书…' });
           const loadedWords = await cloudWordbookLoader.ensureWordsLoaded(requestedWordbookId);
 
@@ -660,6 +669,7 @@ Page({
           }
         } else {
           this._teacherCustomSourceWords = null;
+          this._recordWordbookSnapshotSource = null;
         }
 
         // 只有在复习模式、网格复习模式或未设置学习模式时，才初始化预习模式
@@ -3180,7 +3190,23 @@ Page({
       // 计算学习时长（秒）
       const studyDuration = this.data.studyDuration;
       
+      const completedAt = new Date().toISOString();
+      const loadedSnapshotWordbook = this._recordWordbookSnapshotSource;
+      const snapshotWordbook = loadedSnapshotWordbook
+        && String(loadedSnapshotWordbook.id || loadedSnapshotWordbook.wordbookId || '')
+          === String(this.data.currentWordbook.id || '')
+        ? loadedSnapshotWordbook
+        : this.data.currentWordbook;
+      const snapshotFields = buildRecordSnapshotFields({
+        recordKind: RECORD_KINDS.LEARNING,
+        completedAt,
+        student: this.data.currentStudent,
+        wordbook: snapshotWordbook,
+        words: learnedWordsDetailed
+      });
+
       const record = {
+        ...snapshotFields,
         id: Date.now().toString(),
         studentId: this.data.currentStudent.id,
         userId: this.data.currentStudent.id, // 添加userId字段以兼容records页面
@@ -3198,7 +3224,7 @@ Page({
         studyWordsDetailed: learnedWordsDetailed,
         learningDate: new Date().toLocaleDateString(),
         learningTime: new Date().toLocaleTimeString(),
-        studyDate: new Date().toISOString(), // 添加studyDate字段以兼容records页面
+        studyDate: completedAt, // 添加studyDate字段以兼容records页面
         learnedWordIds: learnedWordIds, // 记录本次学习的单词ID列表
         learnedWordTexts: learnedWordTexts,
         masteredWordIds: masteredWordIds,
