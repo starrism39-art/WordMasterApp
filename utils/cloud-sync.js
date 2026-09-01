@@ -739,7 +739,7 @@ const resolveUpdatedAt = (obj) => {
 
 const stripSystemFields = (value) => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-  const { _id, _openid, ...clean } = value;
+  const { _id, _openid, _createTime, _updateTime, ...clean } = value;
   return clean;
 };
 
@@ -749,6 +749,139 @@ const withUpdatedAt = (obj) => {
   // 剥离系统保留字段，避免 _id 被带入 .set() 导致 E11000 主键冲突
   const clean = stripSystemFields(base);
   return { ...clean, updatedAt };
+};
+
+const isPlainRecordObject = (value) => (
+  value !== null &&
+  typeof value === 'object' &&
+  !Array.isArray(value) &&
+  Object.prototype.toString.call(value) === '[object Object]'
+);
+
+const isNonEmptyRecordValue = (value) => {
+  if (value === undefined || value === null) return false;
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (Array.isArray(value)) return value.length > 0;
+  if (isPlainRecordObject(value)) {
+    return Object.keys(value).some((key) => isNonEmptyRecordValue(value[key]));
+  }
+  return true;
+};
+
+const cloneRecordValue = (value) => {
+  if (Array.isArray(value)) return value.map((item) => cloneRecordValue(item));
+  if (!isPlainRecordObject(value)) return value;
+  const cloned = {};
+  Object.keys(value).forEach((key) => {
+    const item = cloneRecordValue(value[key]);
+    if (item !== undefined) cloned[key] = item;
+  });
+  return cloned;
+};
+
+// 历史记录默认以云端已有非空字段为准；只有调用方已经带有可靠版本证据时，
+// 才允许指定的版本化历史字段用非空新值更新。空值永远不能擦除已有值。
+const mergeRecordObjectValues = (cloudValue, incomingValue, incomingWins) => {
+  const cloudObject = isPlainRecordObject(cloudValue) ? cloudValue : {};
+  const incomingObject = isPlainRecordObject(incomingValue) ? incomingValue : {};
+  const merged = {};
+  const keys = new Set(Object.keys(cloudObject).concat(Object.keys(incomingObject)));
+  keys.forEach((key) => {
+    const cloudItem = cloudObject[key];
+    const incomingItem = incomingObject[key];
+    let value;
+    if (isPlainRecordObject(cloudItem) || isPlainRecordObject(incomingItem)) {
+      value = mergeRecordObjectValues(cloudItem, incomingItem, incomingWins);
+    } else if (incomingWins) {
+      value = isNonEmptyRecordValue(incomingItem)
+        ? cloneRecordValue(incomingItem)
+        : cloneRecordValue(cloudItem);
+    } else {
+      value = isNonEmptyRecordValue(cloudItem)
+        ? cloneRecordValue(cloudItem)
+        : cloneRecordValue(incomingItem);
+    }
+    if (value !== undefined) merged[key] = value;
+  });
+  return merged;
+};
+
+const getWordSnapshotIdentity = (word, index) => {
+  if (!word || typeof word !== 'object') return `value:${index}:${String(word)}`;
+  const identity = word.wordId || word.sourceWordId || word.id || word.word;
+  return identity ? `word:${String(identity)}` : `value:${index}:${JSON.stringify(word)}`;
+};
+
+const mergeWordSnapshots = (cloudWords, incomingWords, incomingWins) => {
+  const merged = [];
+  const positions = new Map();
+  (Array.isArray(cloudWords) ? cloudWords : []).forEach((word, index) => {
+    const key = getWordSnapshotIdentity(word, index);
+    positions.set(key, merged.length);
+    merged.push(cloneRecordValue(word));
+  });
+  (Array.isArray(incomingWords) ? incomingWords : []).forEach((word, index) => {
+    const key = getWordSnapshotIdentity(word, index);
+    const existingIndex = positions.get(key);
+    if (existingIndex === undefined) {
+      positions.set(key, merged.length);
+      merged.push(cloneRecordValue(word));
+      return;
+    }
+    merged[existingIndex] = mergeRecordObjectValues(merged[existingIndex], word, incomingWins);
+  });
+  return merged;
+};
+
+const resolveRecordSchemaVersion = (record) => {
+  const value = Number(record && record.recordSchemaVersion);
+  return Number.isFinite(value) && value > 0 ? value : 0;
+};
+
+const mergeLearningRecordForWrite = (cloudRecord, incomingRecord, options = {}) => {
+  const cloud = stripSystemFields(cloudRecord);
+  const incoming = stripSystemFields(incomingRecord);
+  const cloudSchemaVersion = resolveRecordSchemaVersion(cloud);
+  const incomingSchemaVersion = resolveRecordSchemaVersion(incoming);
+  const cloudUpdatedAt = resolveUpdatedAt(cloud);
+  const incomingUpdatedAt = resolveUpdatedAt(incoming);
+  // recordSchemaVersion 描述数据格式，不是同一事件的修改序号；它只能单调提升并安全补字段，
+  // 不能单独作为覆盖云端非空历史值的依据。
+  const newerByTime = options.incomingHadReliableUpdatedAt === true &&
+    cloudUpdatedAt > 0 &&
+    incomingUpdatedAt > cloudUpdatedAt &&
+    incomingSchemaVersion >= cloudSchemaVersion;
+  const incomingHistoryWins = newerByTime;
+  const merged = mergeRecordObjectValues(cloud, incoming, false);
+
+  ['recordKind', 'completedAt', 'studentSnapshot', 'wordbookSnapshot'].forEach((field) => {
+    if (!Object.prototype.hasOwnProperty.call(cloud, field) &&
+      !Object.prototype.hasOwnProperty.call(incoming, field)) return;
+    if (isPlainRecordObject(cloud[field]) || isPlainRecordObject(incoming[field])) {
+      merged[field] = mergeRecordObjectValues(cloud[field], incoming[field], incomingHistoryWins);
+      return;
+    }
+    merged[field] = incomingHistoryWins && isNonEmptyRecordValue(incoming[field])
+      ? cloneRecordValue(incoming[field])
+      : (isNonEmptyRecordValue(cloud[field])
+        ? cloneRecordValue(cloud[field])
+        : cloneRecordValue(incoming[field]));
+  });
+
+  if (Array.isArray(cloud.wordsSnapshot) || Array.isArray(incoming.wordsSnapshot)) {
+    merged.wordsSnapshot = mergeWordSnapshots(
+      cloud.wordsSnapshot,
+      incoming.wordsSnapshot,
+      incomingHistoryWins
+    );
+  }
+
+  const schemaVersion = Math.max(cloudSchemaVersion, incomingSchemaVersion);
+  if (schemaVersion > 0) merged.recordSchemaVersion = schemaVersion;
+  const updatedAt = Math.max(cloudUpdatedAt, incomingUpdatedAt);
+  if (updatedAt > 0) merged.updatedAt = updatedAt;
+  return stripSystemFields(merged);
 };
 
 const ensureLearningRecordId = (record) => {
@@ -897,6 +1030,7 @@ const syncLearningRecord = (record, options = {}) => {
     return Promise.resolve({ skipped: true, reason: 'precondition_failed' });
   }
 
+  const incomingHadReliableUpdatedAt = resolveUpdatedAt(record) > 0;
   const cleanRecord = withUpdatedAt({ ...record });
   const stableRecordId = ensureLearningRecordId(cleanRecord);
   cleanRecord.id = stableRecordId;
@@ -909,6 +1043,13 @@ const syncLearningRecord = (record, options = {}) => {
   delete cleanRecord._id;
 
   const docId = buildScopedDocId(openid, 'record', stableRecordId);
+  const incomingWriteData = {
+    ...cleanRecord,
+    ...(displayNames.studentName ? { student_name: displayNames.studentName } : {}),
+    ...(displayNames.teacherName ? { teacher_name: displayNames.teacherName } : {}),
+    teacher_id: openid,
+    id: stableRecordId
+  };
 
   // 先读云端，保留未知字段，防止不同版本互相覆盖
   return db.collection('learning_records')
@@ -916,16 +1057,16 @@ const syncLearningRecord = (record, options = {}) => {
     .get()
     .then((res) => {
       const cloudData = (res && res.data) ? res.data : {};
+      const mergedRecord = mergeLearningRecordForWrite(cloudData, incomingWriteData, {
+        incomingHadReliableUpdatedAt
+      });
       return db.collection('learning_records')
         .doc(docId)
         .set({
           data: {
-            ...cloudData,
+            ...mergedRecord,
             teacher_id: openid,
-            id: stableRecordId,
-            ...(displayNames.studentName ? { student_name: displayNames.studentName } : {}),
-            ...(displayNames.teacherName ? { teacher_name: displayNames.teacherName } : {}),
-            ...cleanRecord
+            id: stableRecordId
           }
         });
     })
@@ -935,13 +1076,7 @@ const syncLearningRecord = (record, options = {}) => {
         return db.collection('learning_records')
           .doc(docId)
           .set({
-            data: {
-              teacher_id: openid,
-              id: stableRecordId,
-              ...(displayNames.studentName ? { student_name: displayNames.studentName } : {}),
-              ...(displayNames.teacherName ? { teacher_name: displayNames.teacherName } : {}),
-              ...cleanRecord
-            }
+            data: stripSystemFields(incomingWriteData)
           });
       }
       throw getError;
