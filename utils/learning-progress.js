@@ -1,6 +1,7 @@
 'use strict';
 
 const PROGRESS_CALCULATION_VERSION = 2;
+const { toTimestamp } = require('./sync-merge.js');
 
 const isPlainObject = (value) => (
   value && typeof value === 'object' && !Array.isArray(value)
@@ -167,6 +168,222 @@ const resolveKnownWordbookTotal = (wordbookId) => {
 const resolveCurrentWordbookTotal = (currentTotal, storedTotal) => (
   toCount(currentTotal) || toCount(storedTotal)
 );
+
+const getProgressUpdatedTime = (progress) => {
+  if (!isPlainObject(progress)) return 0;
+  return Math.max(
+    toTimestamp(progress.updatedAt),
+    toTimestamp(progress.updated_at),
+    toTimestamp(progress.lastUpdated),
+    toTimestamp(progress.lastUpdatedAt),
+    toTimestamp(progress.updateTime)
+  );
+};
+
+const getProgressStudyTime = (progress) => {
+  if (!isPlainObject(progress)) return 0;
+  return Math.max(
+    toTimestamp(progress.lastStudyTime),
+    toTimestamp(progress.lastStudied)
+  );
+};
+
+const getProgressVersionTime = (progress) => Math.max(
+  getProgressUpdatedTime(progress),
+  getProgressStudyTime(progress)
+);
+
+const mergePlainProgressMetadata = (olderValue, newerValue) => {
+  const older = isPlainObject(olderValue) ? olderValue : {};
+  const newer = isPlainObject(newerValue) ? newerValue : {};
+  const result = { ...older };
+  Object.keys(newer).forEach((key) => {
+    const olderItem = result[key];
+    const newerItem = newer[key];
+    if (isPlainObject(olderItem) && isPlainObject(newerItem)) {
+      result[key] = mergePlainProgressMetadata(olderItem, newerItem);
+    } else if (newerItem !== undefined) {
+      result[key] = newerItem;
+    }
+  });
+  return result;
+};
+
+const selectLatestProgressValue = (currentValue, incomingValue) => {
+  const currentTime = toTimestamp(currentValue);
+  const incomingTime = toTimestamp(incomingValue);
+  if (incomingTime > currentTime) return incomingValue;
+  if (currentTime > 0) return currentValue;
+  if (incomingValue !== undefined && incomingValue !== null && incomingValue !== '') {
+    return incomingValue;
+  }
+  return currentValue;
+};
+
+const getBookCompletedCount = (bookProgress) => Math.max(
+  toCount(bookProgress && bookProgress.completedCount),
+  toCount(bookProgress && bookProgress.learnedWords)
+);
+
+/**
+ * Merge one wordbook's derived progress cache without allowing a stale snapshot
+ * to regress learned counts or recent activity. totalCount is not permanently
+ * monotonic: current catalog metadata wins when supplied; otherwise the newer
+ * wordbook snapshot wins and the existing positive value is the safe fallback.
+ */
+const mergeLearningProgressBook = (
+  currentBookProgress,
+  incomingBookProgress,
+  options = {}
+) => {
+  const current = isPlainObject(currentBookProgress) ? currentBookProgress : {};
+  const incoming = isPlainObject(incomingBookProgress) ? incomingBookProgress : {};
+  const currentCompleted = getBookCompletedCount(current);
+  const incomingCompleted = getBookCompletedCount(incoming);
+  const completedCount = Math.max(currentCompleted, incomingCompleted);
+  const currentTime = getProgressVersionTime(current);
+  const incomingTime = getProgressVersionTime(incoming);
+  const incomingWins = incomingTime > currentTime || (
+    incomingTime === currentTime && incomingCompleted > currentCompleted
+  );
+  const winner = incomingWins ? incoming : current;
+  const loser = incomingWins ? current : incoming;
+  const result = mergePlainProgressMetadata(loser, winner);
+
+  const wordbookId = String(options.wordbookId || '');
+  const bookTotals = isPlainObject(options.bookTotals) ? options.bookTotals : {};
+  const hasExplicitTotal = wordbookId && Object.prototype.hasOwnProperty.call(bookTotals, wordbookId);
+  const explicitTotal = hasExplicitTotal ? toCount(bookTotals[wordbookId]) : 0;
+  const catalogTotal = !hasExplicitTotal && options.useKnownWordbookTotals !== false
+    ? resolveKnownWordbookTotal(wordbookId)
+    : 0;
+  const authoritativeTotal = explicitTotal || catalogTotal;
+  const winnerTotal = toCount(winner.totalCount);
+  const loserTotal = toCount(loser.totalCount);
+  const fallbackTotal = winnerTotal || loserTotal;
+
+  result.completedCount = completedCount;
+  result.learnedWords = completedCount;
+  result.totalCount = Math.max(authoritativeTotal || fallbackTotal, completedCount);
+
+  const lastStudyTime = selectLatestProgressValue(
+    current.lastStudyTime || current.lastStudied,
+    incoming.lastStudyTime || incoming.lastStudied
+  );
+  if (lastStudyTime) {
+    result.lastStudyTime = lastStudyTime;
+    result.lastStudied = lastStudyTime;
+  }
+
+  const updatedAt = selectLatestProgressValue(
+    current.updatedAt || current.updated_at || current.lastUpdated,
+    incoming.updatedAt || incoming.updated_at || incoming.lastUpdated
+  );
+  if (updatedAt) result.updatedAt = updatedAt;
+
+  const calculationVersion = Math.max(
+    toCount(current.progressCalculationVersion),
+    toCount(incoming.progressCalculationVersion)
+  );
+  if (calculationVersion > 0) result.progressCalculationVersion = calculationVersion;
+  const legacyCompletedCount = Math.max(
+    toCount(current.legacyCompletedCount),
+    toCount(incoming.legacyCompletedCount)
+  );
+  if (legacyCompletedCount > 0) result.legacyCompletedCount = legacyCompletedCount;
+  const legacyTotalCount = Math.max(
+    toCount(current.legacyTotalCount),
+    toCount(incoming.legacyTotalCount)
+  );
+  if (legacyTotalCount > 0) result.legacyTotalCount = legacyTotalCount;
+
+  return result;
+};
+
+/**
+ * Merge a student's progress document per wordbook. The student-level counters
+ * are recomputed from the merged wordbooks because they are derived cache fields.
+ * The first argument is the currently persisted state; the second is an incoming
+ * snapshot. With no reliable version evidence, current metadata remains the
+ * fallback while monotonic learned counts are still protected.
+ */
+const mergeLearningProgress = (currentProgress, incomingProgress, options = {}) => {
+  const current = isPlainObject(currentProgress) ? currentProgress : {};
+  const incoming = isPlainObject(incomingProgress) ? incomingProgress : {};
+  const currentTime = getProgressVersionTime(current);
+  const incomingTime = getProgressVersionTime(incoming);
+  const incomingWins = incomingTime > currentTime;
+  const winner = incomingWins ? incoming : current;
+  const loser = incomingWins ? current : incoming;
+  const result = mergePlainProgressMetadata(loser, winner);
+  const currentWordbooks = isPlainObject(current.wordbooks) ? current.wordbooks : {};
+  const incomingWordbooks = isPlainObject(incoming.wordbooks) ? incoming.wordbooks : {};
+  const wordbookIds = new Set([
+    ...Object.keys(currentWordbooks),
+    ...Object.keys(incomingWordbooks)
+  ]);
+  const mergedWordbooks = {};
+
+  wordbookIds.forEach((wordbookId) => {
+    mergedWordbooks[wordbookId] = mergeLearningProgressBook(
+      currentWordbooks[wordbookId],
+      incomingWordbooks[wordbookId],
+      {
+        ...options,
+        wordbookId
+      }
+    );
+  });
+
+  result.wordbooks = mergedWordbooks;
+  if (wordbookIds.size > 0) {
+    result.learnedWords = Object.keys(mergedWordbooks).reduce((sum, wordbookId) => (
+      sum + getBookCompletedCount(mergedWordbooks[wordbookId])
+    ), 0);
+    result.totalWords = Object.keys(mergedWordbooks).reduce((sum, wordbookId) => (
+      sum + toCount(mergedWordbooks[wordbookId] && mergedWordbooks[wordbookId].totalCount)
+    ), 0);
+  } else {
+    result.learnedWords = Math.max(
+      toCount(current.learnedWords),
+      toCount(incoming.learnedWords)
+    );
+    const winnerTotal = toCount(winner.totalWords);
+    result.totalWords = winnerTotal || toCount(loser.totalWords);
+  }
+
+  const updatedAt = selectLatestProgressValue(
+    current.updatedAt || current.updated_at || current.lastUpdated,
+    incoming.updatedAt || incoming.updated_at || incoming.lastUpdated
+  );
+  if (updatedAt) result.updatedAt = updatedAt;
+  const calculationVersion = Math.max(
+    toCount(current.progressCalculationVersion),
+    toCount(incoming.progressCalculationVersion)
+  );
+  if (calculationVersion > 0) result.progressCalculationVersion = calculationVersion;
+
+  return result;
+};
+
+const mergeLearningProgressMap = (currentProgressMap, incomingProgressMap, options = {}) => {
+  const current = isPlainObject(currentProgressMap) ? currentProgressMap : {};
+  const incoming = isPlainObject(incomingProgressMap) ? incomingProgressMap : {};
+  const result = {};
+  const studentIds = new Set([...Object.keys(current), ...Object.keys(incoming)]);
+  studentIds.forEach((studentId) => {
+    const bookTotalsByStudent = isPlainObject(options.bookTotalsByStudent)
+      ? options.bookTotalsByStudent
+      : {};
+    result[studentId] = mergeLearningProgress(current[studentId], incoming[studentId], {
+      ...options,
+      bookTotals: isPlainObject(bookTotalsByStudent[studentId])
+        ? bookTotalsByStudent[studentId]
+        : options.bookTotals
+    });
+  });
+  return result;
+};
 
 const refreshStudentLearningProgressTotals = (options = {}) => {
   const sourceProgress = isPlainObject(options.progressData) ? options.progressData : {};
@@ -350,6 +567,9 @@ module.exports = {
   getRecordLearnedWordIds,
   resolveKnownWordbookTotal,
   resolveCurrentWordbookTotal,
+  mergeLearningProgressBook,
+  mergeLearningProgress,
+  mergeLearningProgressMap,
   refreshStudentLearningProgressTotals,
   reconcileStudentLearningProgress,
   reconcileLearningProgressMap

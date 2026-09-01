@@ -36,7 +36,12 @@ const {
   syncWordMasteryBatch,
   syncLearningProgress
 } = require('./cloud-sync.js');
-const { reconcileLearningProgressMap } = require('./learning-progress.js');
+const {
+  mergeLearningProgress,
+  mergeLearningProgressBook,
+  mergeLearningProgressMap,
+  reconcileLearningProgressMap
+} = require('./learning-progress.js');
 const { createCloudReadOnlyResult, isCloudReadOnlyMode } = require('./cloud-mode.js');
 const { restoreCurrentContextFromSyncedData } = require('./learning-context.js');
 const {
@@ -312,48 +317,9 @@ const buildProgressMap = (docs) => {
     }
 
     duplicateCount++;
-    const existing = map[studentId];
-    const existingWordbooks = normalizeObject(existing.wordbooks);
-    const candidateWordbooks = normalizeObject(normalized.wordbooks);
-    const mergedWordbooks = {};
-    const wordbookIds = new Set([
-      ...Object.keys(existingWordbooks),
-      ...Object.keys(candidateWordbooks)
-    ]);
-    wordbookIds.forEach((wordbookId) => {
-      const existingBook = existingWordbooks[wordbookId];
-      const candidateBook = candidateWordbooks[wordbookId];
-      if (existingBook && candidateBook) {
-        mergedWordbooks[wordbookId] = mergeLearningProgressRecord(
-          existingBook,
-          candidateBook
-        );
-      } else {
-        mergedWordbooks[wordbookId] = existingBook || candidateBook;
-      }
+    map[studentId] = mergeLearningProgress(map[studentId], normalized, {
+      useKnownWordbookTotals: false
     });
-
-    const existingTime = toTimestamp(existing.updatedAt)
-      || toTimestamp(existing.lastUpdated)
-      || 0;
-    const candidateTime = toTimestamp(normalized.updatedAt)
-      || toTimestamp(normalized.lastUpdated)
-      || 0;
-    const winner = candidateTime >= existingTime ? normalized : existing;
-    const loser = candidateTime >= existingTime ? existing : normalized;
-    map[studentId] = {
-      ...loser,
-      ...winner,
-      learnedWords: Math.max(
-        Number(existing.learnedWords || 0) || 0,
-        Number(normalized.learnedWords || 0) || 0
-      ),
-      totalWords: Math.max(
-        Number(existing.totalWords || 0) || 0,
-        Number(normalized.totalWords || 0) || 0
-      ),
-      wordbooks: mergedWordbooks
-    };
   });
   if (duplicateCount > 0) {
     console.warn('[cloud-sync] merged duplicate learning_progress documents:', duplicateCount);
@@ -422,37 +388,14 @@ const isLearningProgressRecord = (obj) => {
 };
 
 /**
- * 语义合并学习进度记录（wordbook-level）：累计值取最大
+ * 语义合并学习进度记录（wordbook-level）：已学数防回退，词书总量遵循当前元数据
  */
-const mergeLearningProgressRecord = (localRecord, cloudRecord) => {
-  const local = localRecord || {};
-  const cloud = cloudRecord || {};
-
-  // 以双方所有字段为基底，再覆盖语义合并的关键字段
-  const result = { ...cloud, ...local };
-
-  result.completedCount = Math.max(
-    typeof local.completedCount === 'number' ? local.completedCount : 0,
-    typeof cloud.completedCount === 'number' ? cloud.completedCount : 0,
-    typeof local.learnedWords === 'number' ? local.learnedWords : 0,
-    typeof cloud.learnedWords === 'number' ? cloud.learnedWords : 0
-  );
-  result.learnedWords = result.completedCount;
-
-  result.totalCount = Math.max(
-    typeof local.totalCount === 'number' ? local.totalCount : 0,
-    typeof cloud.totalCount === 'number' ? cloud.totalCount : 0
-  );
-
-  // lastStudyTime: 取字典序最大值（ISO日期字符串）
-  result.lastStudyTime = [local.lastStudyTime, local.lastStudied, cloud.lastStudyTime, cloud.lastStudied]
-    .filter(Boolean)
-    .sort()
-    .pop() || '';
-  result.lastStudied = result.lastStudyTime;
-
-  return result;
-};
+const mergeLearningProgressRecord = (localRecord, cloudRecord, options = {}) => (
+  mergeLearningProgressBook(localRecord, cloudRecord, {
+    ...options,
+    useKnownWordbookTotals: options.useKnownWordbookTotals === true
+  })
+);
 
 /**
  * 智能深度合并（语义级）：根据数据层级自动选择合并策略
@@ -663,7 +606,7 @@ const performFullPull = async (openid, requestSession) => {
 
     let mergedProgress, mergedMastery;
     try {
-      mergedProgress = mergeObjectAtWordLevel(localProgress, cloudProgress);
+      mergedProgress = mergeLearningProgressMap(localProgress, cloudProgress);
     } catch (e) {
       console.error('[cloud-sync] mergeProgress 失败:', e);
       mergedProgress = localProgress;

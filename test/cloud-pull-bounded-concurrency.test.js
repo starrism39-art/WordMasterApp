@@ -6,6 +6,7 @@ const ACCOUNT_A = 'account-concurrency-A';
 const ACCOUNT_B = 'account-concurrency-B';
 const STUDENT_ID = 'student-concurrency';
 const WORDBOOK_ID = 'book-concurrency';
+const LOCAL_WORDBOOK_ID = 'book-local-before-full-pull';
 const COLLECTIONS = [
   'students',
   'learning_records',
@@ -171,7 +172,20 @@ const createHarness = ({
     currentUser: { id: ACCOUNT_A, username: ACCOUNT_A },
     students: [],
     learningRecords: [],
-    learningProgress: {},
+    learningProgress: {
+      [STUDENT_ID]: {
+        learnedWords: 2,
+        totalWords: 50,
+        wordbooks: {
+          [LOCAL_WORDBOOK_ID]: {
+            completedCount: 2,
+            learnedWords: 2,
+            totalCount: 50,
+            lastStudyTime: '2026-08-13T00:00:00.000Z'
+          }
+        }
+      }
+    },
     wordMastery: {}
   };
   const emitted = [];
@@ -362,6 +376,16 @@ const assertSuccessfulMapping = (harness, result, masteryCount = 1) => {
   assert.ok(harness.storage.students.some((student) => student.student_id === STUDENT_ID));
   assert.ok(harness.storage.learningRecords.some((record) => record.id === 'record-concurrency'));
   assert.ok(harness.storage.learningProgress[STUDENT_ID]);
+  assert.strictEqual(
+    harness.storage.learningProgress[STUDENT_ID].wordbooks[LOCAL_WORDBOOK_ID].completedCount,
+    2,
+    'Full Pull must retain a local wordbook that is absent from the cloud snapshot'
+  );
+  assert.strictEqual(
+    harness.storage.learningProgress[STUDENT_ID].wordbooks[WORDBOOK_ID].completedCount,
+    masteryCount,
+    'Full Pull must add the cloud wordbook without replacing the local wordbook map'
+  );
   assert.strictEqual(
     Object.keys(harness.storage.wordMastery[STUDENT_ID][WORDBOOK_ID]).length,
     masteryCount

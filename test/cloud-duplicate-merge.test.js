@@ -117,8 +117,8 @@ assert.deepStrictEqual(
   'duplicate progress merge must not depend on CloudBase return order'
 );
 const mergedProgress = forwardProgress.student456;
-assert.strictEqual(mergedProgress.learnedWords, 301);
-assert.strictEqual(mergedProgress.totalWords, 4292);
+assert.strictEqual(mergedProgress.learnedWords, 321);
+assert.strictEqual(mergedProgress.totalWords, 4979);
 assert.strictEqual(mergedProgress.legacyOnly, 'preserve');
 assert.strictEqual(mergedProgress.currentOnly, 'preserve');
 assert.strictEqual(

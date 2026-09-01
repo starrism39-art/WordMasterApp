@@ -6,7 +6,10 @@
 
 const DEFAULT_ENV = 'cloudbase-4gafzdch60ad597b';
 const { syncStudentStatsToCloud } = require('./stats-engine.js');
-const { reconcileStudentLearningProgress } = require('./learning-progress.js');
+const {
+  mergeLearningProgress,
+  reconcileStudentLearningProgress
+} = require('./learning-progress.js');
 const { createCloudReadOnlyResult, isCloudReadOnlyMode } = require('./cloud-mode.js');
 const {
   compareWordMasteryVersions,
@@ -75,10 +78,20 @@ const queuePendingLearningProgress = (studentId, progressData, accountId) => {
       ? { [String(currentPending.studentId)]: currentPending }
       : currentPending;
     const pendingKey = selectPendingStorageKey(pendingProgressMap, String(studentId), accountId);
+    const existingPending = pendingProgressMap[pendingKey];
+    const sameAccountPending = existingPending &&
+      String(existingPending.studentId || '') === String(studentId) &&
+      getPendingAccountId(existingPending) === normalizeAccountId(accountId);
+    const mergedProgressData = sameAccountPending
+      ? mergeLearningProgress(existingPending.progressData, progressData)
+      : progressData;
     pendingProgressMap[pendingKey] = {
       studentId: String(studentId),
-      progressData,
+      progressData: mergedProgressData,
       failedAt: Date.now(),
+      pendingVersion: sameAccountPending
+        ? (Number(existingPending.pendingVersion || 0) || 0) + 1
+        : 1,
       ...(accountId ? { accountId: String(accountId) } : {})
     };
     wx.setStorageSync('pendingLearningProgressSync', pendingProgressMap);
@@ -87,6 +100,19 @@ const queuePendingLearningProgress = (studentId, progressData, accountId) => {
     console.warn('[cloud-sync] failed to persist pending learning progress:', e);
     return false;
   }
+};
+
+const isSamePendingLearningProgress = (currentPending, retrySnapshot) => {
+  if (!currentPending || !retrySnapshot) return false;
+  if (String(currentPending.studentId || '') !== String(retrySnapshot.studentId || '')) return false;
+  if (getPendingAccountId(currentPending) !== getPendingAccountId(retrySnapshot)) return false;
+  const currentVersion = Number(currentPending.pendingVersion || 0) || 0;
+  const retryVersion = Number(retrySnapshot.pendingVersion || 0) || 0;
+  if (currentVersion > 0 || retryVersion > 0) {
+    return currentVersion === retryVersion;
+  }
+  return Number(currentPending.failedAt || 0) === Number(retrySnapshot.failedAt || 0) &&
+    JSON.stringify(currentPending.progressData || {}) === JSON.stringify(retrySnapshot.progressData || {});
 };
 
 const selectWordMasteryRecords = (wordRecordsMap, wordIds) => {
@@ -642,23 +668,14 @@ const retryPendingSyncs = async (options = {}) => {
         if (!result || !result.ok) return;
         const currentRaw = wx.getStorageSync('pendingLearningProgressSync') || {};
         if (currentRaw.studentId && currentRaw.progressData) {
-          if (
-            String(currentRaw.studentId) === String(pendingProgress.studentId) &&
-            pendingBelongsToAccount(currentRaw, openid)
-          ) {
+          if (isSamePendingLearningProgress(currentRaw, pendingProgress)) {
             wx.removeStorageSync('pendingLearningProgressSync');
           }
           return;
         }
-        Object.keys(currentRaw).forEach((key) => {
-          const item = currentRaw[key];
-          if (
-            String(item && item.studentId || '') === String(pendingProgress.studentId) &&
-            pendingBelongsToAccount(item, openid)
-          ) {
-            delete currentRaw[key];
-          }
-        });
+        if (isSamePendingLearningProgress(currentRaw[pendingStudentId], pendingProgress)) {
+          delete currentRaw[pendingStudentId];
+        }
         if (Object.keys(currentRaw).length === 0) {
           wx.removeStorageSync('pendingLearningProgressSync');
         } else {
@@ -1308,6 +1325,7 @@ const syncWordMasteryBatch = async (studentId, wordbookId, wordRecordsMap, optio
 
 const syncLearningProgress = (studentId, progressData, options = {}) => {
   let correctedProgress = progressData;
+  let mergedProgressForWrite = progressData;
   try {
     const wordMastery = wx.getStorageSync('wordMastery') || {};
     const learningRecords = wx.getStorageSync('learningRecords') || [];
@@ -1352,49 +1370,46 @@ const syncLearningProgress = (studentId, progressData, options = {}) => {
   const displayNames = getDisplayNames(studentId);
   const docId = buildScopedDocId(openid, 'progress', studentId);
 
-  // 云端旧值更大时先保留云端，避免尚未拉取完整明细的设备覆盖其他设备数据。
-  // 本地页面始终使用上面根据原始明细重算后的结果。
+  // 学生级 learning_progress 是派生缓存；云端写入必须按 wordbookId 逐本合并，
+  // 避免两台设备基于旧快照分别学习不同词书时互相整块覆盖。
   return db.collection('learning_progress')
     .doc(docId)
     .get()
     .then((res) => {
       const cloudData = (res && res.data) ? res.data : null;
-      if (cloudData) {
-        const localLearned = typeof correctedProgress.learnedWords === 'number' ? correctedProgress.learnedWords : 0;
-        const cloudLearned = typeof cloudData.learnedWords === 'number' ? cloudData.learnedWords : 0;
-        if (cloudLearned > localLearned) {
-          console.log('[cloud-sync] 跳过 learningProgress 写入（云端更新）: cloud learnedWords=', cloudLearned, 'local=', localLearned);
-          return { ok: true, skipped: true, reason: 'cloud_fresher' };
-        }
-      }
+      mergedProgressForWrite = mergeLearningProgress(cloudData, correctedProgress, {
+        bookTotals: options.bookTotals
+      });
 
       // 剔除系统保留字段，避免 _openid 等只读字段导致写入失败
-      const { _id, _openid, ...safeCloudData } = cloudData || {};
+      const { _id, _openid, ...safeMergedProgress } = mergedProgressForWrite || {};
       return db.collection('learning_progress')
         .doc(docId)
         .set({
           data: {
-            ...safeCloudData,
+            ...withUpdatedAt(safeMergedProgress),
             teacher_id: openid,
             student_id: String(studentId),
             ...(displayNames.studentName ? { student_name: displayNames.studentName } : {}),
-            ...(displayNames.teacherName ? { teacher_name: displayNames.teacherName } : {}),
-            ...withUpdatedAt(correctedProgress)
+            ...(displayNames.teacherName ? { teacher_name: displayNames.teacherName } : {})
           }
         });
     })
     .catch((getError) => {
       // 读取失败（可能文档不存在），正常写入
       if (getError && getError.errCode === -1) {
+        mergedProgressForWrite = mergeLearningProgress({}, correctedProgress, {
+          bookTotals: options.bookTotals
+        });
         return db.collection('learning_progress')
           .doc(docId)
           .set({
             data: {
+              ...withUpdatedAt(mergedProgressForWrite),
               teacher_id: openid,
               student_id: String(studentId),
               ...(displayNames.studentName ? { student_name: displayNames.studentName } : {}),
-              ...(displayNames.teacherName ? { teacher_name: displayNames.teacherName } : {}),
-              ...withUpdatedAt(correctedProgress)
+              ...(displayNames.teacherName ? { teacher_name: displayNames.teacherName } : {})
             }
           });
       }
@@ -1402,24 +1417,15 @@ const syncLearningProgress = (studentId, progressData, options = {}) => {
     })
     .then(() => {
       console.log('[cloud-sync] learning progress synced, studentId:', studentId);
-      return { ok: true };
+      return { ok: true, progress: mergedProgressForWrite };
     })
     .catch((error) => {
       console.warn('[cloud-sync] failed to sync learning progress:', error);
       // 失败时保存待重试记录
       try {
-        const currentPending = wx.getStorageSync('pendingLearningProgressSync') || {};
-        const pendingProgressMap = currentPending.studentId && currentPending.progressData
-          ? { [String(currentPending.studentId)]: currentPending }
-          : currentPending;
-        const pendingKey = selectPendingStorageKey(pendingProgressMap, String(studentId), openid);
-        pendingProgressMap[pendingKey] = {
-          studentId: String(studentId),
-          progressData: correctedProgress,
-          failedAt: Date.now(),
-          accountId: openid
-        };
-        wx.setStorageSync('pendingLearningProgressSync', pendingProgressMap);
+        if (!queuePendingLearningProgress(studentId, correctedProgress, openid)) {
+          throw new Error('failed_to_queue_learning_progress');
+        }
         if (accountSideEffectsAreCurrent(operationOptions)) markPendingSync();
       } catch (e) {
         _updateSyncStatus({ lastFail: Date.now() });
