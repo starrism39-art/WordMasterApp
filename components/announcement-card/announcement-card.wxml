@@ -1,0 +1,27 @@
+<view
+  class="announcement-card announcement-card--{{view.placement}} announcement-card--{{view.priority}} {{view.read ? 'is-read' : 'is-unread'}}"
+  bindtap="onDetailTap"
+  role="button"
+  aria-label="查看公告：{{view.title}}"
+>
+  <view class="announcement-card__accent" wx:if="{{view.priority !== 'normal'}}"></view>
+  <view class="announcement-card__body">
+    <view class="announcement-card__meta-row">
+      <view class="announcement-card__type announcement-card__type--{{view.typeClass}}">{{view.typeLabel}}</view>
+      <view class="announcement-card__priority" wx:if="{{view.priorityLabel}}">{{view.priorityLabel}}</view>
+      <view class="announcement-card__new" wx:if="{{view.showNew}}">NEW</view>
+    </view>
+
+    <view class="announcement-card__title-row">
+      <text class="announcement-card__title">{{view.title}}</text>
+      <view class="announcement-card__dot" wx:if="{{view.showUnreadDot}}"></view>
+    </view>
+
+    <text class="announcement-card__summary" wx:if="{{view.summary}}">{{view.summary}}</text>
+
+    <view class="announcement-card__footer">
+      <text class="announcement-card__date">{{view.publishDate}}</text>
+      <text class="announcement-card__link" wx:if="{{view.placement === 'home'}}">查看详情 ›</text>
+    </view>
+  </view>
+</view>

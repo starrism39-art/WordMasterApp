@@ -156,6 +156,15 @@
         </view>
       </view>
 
+      <view class="home-announcement-section" wx:if="{{homeAnnouncementEntry}}">
+        <announcement-card
+          id="home-announcement-card"
+          entry="{{homeAnnouncementEntry}}"
+          placement="home"
+          bind:detail="onHomeAnnouncementDetail"
+        />
+      </view>
+
       <view class="records-section">
         <view class="section-header">
           <view class="section-title">最近学习记录</view>
@@ -189,6 +198,13 @@
         </view>
       </view>
     </view>
+
+    <announcement-popup
+      visible="{{majorAnnouncementVisible}}"
+      announcement="{{majorAnnouncement}}"
+      bind:detail="onMajorAnnouncementDetail"
+      bind:acknowledge="onMajorAnnouncementAcknowledge"
+    />
 
 <view class="page-bottom-spacer"></view>
   </view>

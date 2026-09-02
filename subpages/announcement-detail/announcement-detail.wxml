@@ -1,0 +1,34 @@
+<view class="announcement-detail {{actionView ? 'has-action' : ''}}">
+  <view class="announcement-detail__state" wx:if="{{loading}}">
+    <view class="announcement-detail__spinner"></view>
+    <text>正在加载公告</text>
+  </view>
+
+  <view class="announcement-detail__state" wx:elif="{{error}}">
+    <text class="announcement-detail__state-title">公告暂时无法查看</text>
+    <text class="announcement-detail__state-copy">{{error}}</text>
+    <button class="announcement-detail__retry" bindtap="onRetry">重新加载</button>
+  </view>
+
+  <block wx:else>
+    <view class="announcement-detail__header">
+      <view class="announcement-detail__type announcement-detail__type--{{detailView.typeClass}}">{{detailView.typeLabel}}</view>
+      <text class="announcement-detail__title">{{detailView.title}}</text>
+      <text class="announcement-detail__date">{{detailView.publishDate}}</text>
+      <text class="announcement-detail__summary" wx:if="{{detailView.summary}}">{{detailView.summary}}</text>
+    </view>
+
+    <view class="announcement-detail__divider"></view>
+
+    <view class="announcement-detail__body">
+      <view class="announcement-detail__block" wx:for="{{detailView.blocks}}" wx:key="index">
+        <text class="announcement-detail__block-title" wx:if="{{item.title}}">{{item.title}}</text>
+        <text class="announcement-detail__paragraph" user-select>{{item.body}}</text>
+      </view>
+    </view>
+  </block>
+
+  <view class="announcement-detail__action-wrap" wx:if="{{actionView}}">
+    <button class="announcement-detail__action" bindtap="onActionTap">{{actionView.label}}</button>
+  </view>
+</view>

@@ -1,0 +1,27 @@
+<view class="announcement-popup" wx:if="{{visible}}" catchtap="stopPropagation">
+  <view class="announcement-popup__mask"></view>
+  <view class="announcement-popup__panel" catchtap="stopPropagation" role="dialog" aria-label="重大更新公告">
+    <scroll-view class="announcement-popup__scroll" scroll-y enhanced show-scrollbar="{{false}}">
+      <view class="announcement-popup__content">
+        <view class="announcement-popup__eyebrow">{{view.eyebrow}}</view>
+        <text class="announcement-popup__title">{{view.title}}</text>
+        <text class="announcement-popup__summary" wx:if="{{view.summary}}">{{view.summary}}</text>
+
+        <view class="announcement-popup__highlights" wx:if="{{view.highlights.length}}">
+          <view class="announcement-popup__highlight" wx:for="{{view.highlights}}" wx:key="index">
+            <view class="announcement-popup__icon">{{item.icon}}</view>
+            <view class="announcement-popup__highlight-copy">
+              <text class="announcement-popup__highlight-title">{{item.title}}</text>
+              <text class="announcement-popup__highlight-description" wx:if="{{item.description}}">{{item.description}}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </scroll-view>
+
+    <view class="announcement-popup__actions">
+      <button class="announcement-popup__detail" bindtap="onDetailTap">查看详情</button>
+      <button class="announcement-popup__acknowledge" bindtap="onAcknowledgeTap">知道了</button>
+    </view>
+  </view>
+</view>

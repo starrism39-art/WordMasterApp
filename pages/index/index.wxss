@@ -1430,6 +1430,12 @@ page {
   background: #FFFFFF;
 }
 
+.home-announcement-section {
+  position: relative;
+  z-index: 2;
+  margin-top: 22rpx;
+}
+
 .quick-btn-inner {
   display: flex;
   align-items: center;

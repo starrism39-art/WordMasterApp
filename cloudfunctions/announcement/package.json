@@ -1,0 +1,9 @@
+{
+  "name": "announcement",
+  "version": "1.0.0",
+  "description": "WordMaster 公告中心服务端契约",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "^2.7.2"
+  }
+}

@@ -48,7 +48,9 @@
         "grid-review/grid-review",
         "data-backup/data-backup",
         "data-repair/data-repair",
-        "ui-test/ui-test"
+        "ui-test/ui-test",
+        "announcement-center/announcement-center",
+        "announcement-detail/announcement-detail"
       ],
       "independent": false
     },

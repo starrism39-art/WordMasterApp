@@ -1,0 +1,11 @@
+{
+  "navigationBarTitleText": "公告中心",
+  "navigationBarBackgroundColor": "#F5F7FA",
+  "navigationBarTextStyle": "black",
+  "backgroundColor": "#F5F7FA",
+  "enablePullDownRefresh": true,
+  "usingComponents": {
+    "announcement-card": "/components/announcement-card/announcement-card",
+    "announcement-popup": "/components/announcement-popup/announcement-popup"
+  }
+}

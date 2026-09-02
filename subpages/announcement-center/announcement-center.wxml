@@ -1,0 +1,54 @@
+<view class="announcement-center">
+  <view class="announcement-center__segments" role="tablist" aria-label="公告筛选">
+    <view
+      class="announcement-center__segment {{activeTab === 'all' ? 'is-active' : ''}}"
+      data-tab="all"
+      bindtap="onTabTap"
+      role="tab"
+      aria-selected="{{activeTab === 'all'}}"
+    >全部</view>
+    <view
+      class="announcement-center__segment {{activeTab === 'unread' ? 'is-active' : ''}}"
+      data-tab="unread"
+      bindtap="onTabTap"
+      role="tab"
+      aria-selected="{{activeTab === 'unread'}}"
+    >未读</view>
+  </view>
+
+  <view class="announcement-center__state" wx:if="{{loading && !visibleItems.length}}">
+    <view class="announcement-center__spinner"></view>
+    <text>正在加载公告</text>
+  </view>
+
+  <view class="announcement-center__state announcement-center__state--error" wx:elif="{{error && !visibleItems.length}}">
+    <text class="announcement-center__state-title">加载遇到一点问题</text>
+    <text class="announcement-center__state-copy">{{error}}</text>
+    <button class="announcement-center__retry" bindtap="onRetry">重新加载</button>
+  </view>
+
+  <view class="announcement-center__state" wx:elif="{{!visibleItems.length}}">
+    <view class="announcement-center__empty-icon">✓</view>
+    <text class="announcement-center__state-title">{{activeTab === 'unread' ? '没有未读公告' : '暂时没有公告'}}</text>
+    <text class="announcement-center__state-copy">{{activeTab === 'unread' ? '所有公告都已读完' : '新消息会在这里第一时间告诉你'}}</text>
+  </view>
+
+  <view class="announcement-center__list" wx:else>
+    <announcement-card
+      wx:for="{{visibleItems}}"
+      wx:key="index"
+      id="announcement-card-{{index}}"
+      entry="{{item}}"
+      placement="list"
+      bind:detail="onAnnouncementDetail"
+    />
+    <view class="announcement-center__loading-more" wx:if="{{loadingMore}}">正在加载更多</view>
+    <view class="announcement-center__end" wx:elif="{{!hasMore}}">已经到底了</view>
+    <view class="announcement-center__inline-error" wx:if="{{error}}">{{error}}</view>
+  </view>
+
+  <announcement-popup
+    visible="{{popupPreviewVisible}}"
+    announcement="{{popupPreviewAnnouncement}}"
+  />
+</view>

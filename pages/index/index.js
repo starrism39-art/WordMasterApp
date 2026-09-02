@@ -6,6 +6,26 @@ const {
 } = require('../../utils/learning-progress.js');
 const { resolveCurrentWordbook, setCurrentWordbook } = require('../../utils/learning-context.js');
 const { getWordbookStats } = require('../../utils/stats-engine.js');
+const {
+  bootstrapAnnouncements,
+  claimMajorPopup,
+  markRead,
+  acknowledgePopup
+} = require('../../utils/announcement-service.js');
+
+const createHomeAnnouncementEntry = (bootstrapResult = {}) => {
+  const announcement = bootstrapResult.latestAnnouncement;
+  if (!announcement || typeof announcement !== 'object') return null;
+  return {
+    announcement,
+    readState: bootstrapResult.latestReadState || null,
+    isNew: bootstrapResult.latestIsNew === true || announcement.isNew === true
+  };
+};
+
+const getAnnouncementId = (announcement) => String(
+  announcement && (announcement._id || announcement.id) || ''
+);
 
 Page({
   data: {
@@ -25,7 +45,11 @@ Page({
     showWordbookModal: false,
     loading: true,
     antiForgotTime: '无抗遗忘', // 抗遗忘时间信息
-    isLoggedIn: false
+    isLoggedIn: false,
+    homeAnnouncementEntry: null,
+    majorAnnouncementVisible: false,
+    majorAnnouncement: null,
+    majorAnnouncementReadState: null
   },
 
   onLoad: function() {
@@ -140,6 +164,11 @@ Page({
       app.on('wordMasteryUpdated', this.wordMasteryUpdateHandler);
       console.log('已注册学习记录更新和删除事件监听器，以及单词掌握状态更新事件监听器');
     }
+
+    // 公告初始化独立且不阻塞首页学习/同步生命周期。
+    this._announcementActive = true;
+    this._skipNextAnnouncementOnShow = true;
+    this.refreshHomepageAnnouncements();
   },
 
   consumeStartupSyncNotice: function(app) {
@@ -310,6 +339,7 @@ Page({
 
   onUnload: function() {
     this._homepageRefreshActive = false;
+    this._announcementActive = false;
     this.cancelPendingHomepageRefresh();
     this.cancelScheduledHomepageRefresh();
 
@@ -568,10 +598,139 @@ Page({
         loading: false
       });
     }
+
+    if (this._skipNextAnnouncementOnShow) {
+      this._skipNextAnnouncementOnShow = false;
+    } else if (this._announcementActive) {
+      this.refreshHomepageAnnouncements();
+    }
   },
 
   onHide: function() {
     this.cancelScheduledHomepageRefresh();
+  },
+
+  refreshHomepageAnnouncements: function() {
+    if (this._announcementBootstrapPromise) return this._announcementBootstrapPromise;
+
+    const promise = this.loadHomepageAnnouncements();
+    this._announcementBootstrapPromise = promise;
+    const clearFlight = () => {
+      if (this._announcementBootstrapPromise === promise) {
+        this._announcementBootstrapPromise = null;
+      }
+    };
+    promise.then(clearFlight, clearFlight);
+    return promise;
+  },
+
+  loadHomepageAnnouncements: async function() {
+    let result;
+    try {
+      result = await bootstrapAnnouncements();
+    } catch (error) {
+      return;
+    }
+    if (this._announcementActive === false || !result) return;
+
+    // 空降级结果表示网络和缓存均不可用，保留当前 UI，避免首页闪空。
+    if (!(result.degraded === true && result.source === 'empty')) {
+      this.setData({ homeAnnouncementEntry: createHomeAnnouncementEntry(result) });
+    }
+
+    const major = result.majorPopupCandidate;
+    const majorId = getAnnouncementId(major);
+    if (!majorId || this.data.majorAnnouncementVisible) return;
+
+    let claim;
+    try {
+      claim = await claimMajorPopup(majorId);
+    } catch (error) {
+      return;
+    }
+    if (this._announcementActive === false || !claim || claim.claimed !== true) return;
+
+    this.setData({
+      majorAnnouncementVisible: true,
+      majorAnnouncement: major,
+      majorAnnouncementReadState: claim.readState || null
+    });
+  },
+
+  navigateToAnnouncementDetail: function(announcementId, options = {}) {
+    const normalizedId = String(announcementId || '');
+    if (!normalizedId) return;
+    wx.navigateTo({
+      url: `/subpages/announcement-detail/announcement-detail?id=${encodeURIComponent(normalizedId)}`,
+      fail: () => {
+        if (
+          options.restoreMajorPopup === true
+          && this._announcementActive !== false
+          && getAnnouncementId(this.data.majorAnnouncement) === normalizedId
+        ) {
+          this.setData({ majorAnnouncementVisible: true });
+        }
+      }
+    });
+  },
+
+  onHomeAnnouncementDetail: async function(event) {
+    if (this._homeAnnouncementReadPending) return;
+    const announcementId = String(event.detail && event.detail.announcementId || '');
+    if (!announcementId) return;
+
+    this._homeAnnouncementReadPending = true;
+    try {
+      const result = await markRead(announcementId);
+      if (this._announcementActive === false) return;
+      const entry = this.data.homeAnnouncementEntry;
+      if (entry && getAnnouncementId(entry.announcement) === announcementId) {
+        this.setData({
+          homeAnnouncementEntry: {
+            ...entry,
+            readState: result.readState || null
+          }
+        });
+      }
+      this.navigateToAnnouncementDetail(announcementId);
+    } catch (error) {
+      // 公告失败静默降级，不影响首页，也不伪造已读状态。
+    } finally {
+      this._homeAnnouncementReadPending = false;
+    }
+  },
+
+  onMajorAnnouncementAcknowledge: async function(event) {
+    if (this._majorAnnouncementAcknowledgePending) return;
+    const announcementId = String(event.detail && event.detail.announcementId || '');
+    if (!announcementId) return;
+
+    this._majorAnnouncementAcknowledgePending = true;
+    try {
+      const result = await acknowledgePopup(announcementId);
+      if (this._announcementActive === false) return;
+      const readState = result.readState || null;
+      const entry = this.data.homeAnnouncementEntry;
+      const updates = {
+        majorAnnouncementVisible: false,
+        majorAnnouncementReadState: readState
+      };
+      if (entry && getAnnouncementId(entry.announcement) === announcementId) {
+        updates.homeAnnouncementEntry = { ...entry, readState };
+      }
+      this.setData(updates);
+    } catch (error) {
+      // 服务端未确认时保持弹窗，不伪造 acknowledge/read 成功。
+    } finally {
+      this._majorAnnouncementAcknowledgePending = false;
+    }
+  },
+
+  onMajorAnnouncementDetail: function(event) {
+    const announcementId = String(event.detail && event.detail.announcementId || '');
+    if (!announcementId) return;
+    this.setData({ majorAnnouncementVisible: false });
+    this.navigateToAnnouncementDetail(announcementId, { restoreMajorPopup: true });
   },
   
   // 根据学生名字生成头像文本
@@ -1969,3 +2128,8 @@ Page({
 
 
 });
+
+module.exports = {
+  createHomeAnnouncementEntry,
+  getAnnouncementId
+};

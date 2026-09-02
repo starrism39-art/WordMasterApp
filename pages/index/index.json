@@ -1,3 +1,6 @@
 {
-  "usingComponents": {}
+  "usingComponents": {
+    "announcement-card": "/components/announcement-card/announcement-card",
+    "announcement-popup": "/components/announcement-popup/announcement-popup"
+  }
 }
