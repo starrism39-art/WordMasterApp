@@ -231,7 +231,11 @@ const createHarness = ({
   };
 
   global.wx = {
-    cloud: { init: () => {}, database: () => db },
+    cloud: {
+      init: () => {},
+      database: () => db,
+      callFunction: async () => ({ result: { success: true, tombstones: [] } })
+    },
     getDeviceInfo: () => ({ platform: 'devtools' }),
     getLaunchOptionsSync: () => ({ query: {} }),
     getStorageSync: (key) => storage[key],

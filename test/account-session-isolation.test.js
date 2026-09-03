@@ -80,7 +80,16 @@ async function testStaleFullPullCommitBarrier() {
     }
   };
   global.wx = {
-    cloud: { init: () => {}, database: () => db },
+    cloud: {
+      init: () => {},
+      database: () => db,
+      callFunction: async ({ name }) => {
+        if (name === 'syncTombstoneAuthority') {
+          return { result: { success: true, tombstones: [] } };
+        }
+        return { result: { success: false } };
+      }
+    },
     getDeviceInfo: () => ({ platform: 'devtools' }),
     getLaunchOptionsSync: () => ({ query: {} }),
     getStorageSync: (key) => storage[key],
@@ -154,7 +163,16 @@ async function testStaleTeacherReadCannotWriteCurrentUser() {
     }
   };
   global.wx = {
-    cloud: { init: () => {}, database: () => db },
+    cloud: {
+      init: () => {},
+      database: () => db,
+      callFunction: async ({ name }) => {
+        if (name === 'syncTombstoneAuthority') {
+          return { result: { success: true, tombstones: [] } };
+        }
+        return { result: { success: false } };
+      }
+    },
     getDeviceInfo: () => ({ platform: 'devtools' }),
     getLaunchOptionsSync: () => ({ query: {} }),
     getStorageSync: (key) => storage[key],
@@ -376,7 +394,15 @@ async function testPendingAccountIsolation() {
     }
   };
   global.wx = {
-    cloud: { database: () => db },
+    cloud: {
+      database: () => db,
+      callFunction: async ({ name }) => {
+        if (name === 'syncTombstoneAuthority') {
+          return { result: { success: true, tombstones: [] } };
+        }
+        return { result: { success: false } };
+      }
+    },
     getStorageSync: (key) => storage[key],
     setStorageSync: (key, value) => { storage[key] = value; },
     removeStorageSync: (key) => { delete storage[key]; }

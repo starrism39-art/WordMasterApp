@@ -134,7 +134,11 @@ const db = {
 global.wx = {
   cloud: {
     init: () => {},
-    database: () => db
+    database: () => db,
+    callFunction: async ({ name }) => {
+      assert.strictEqual(name, 'syncTombstoneAuthority');
+      return { result: { success: true, tombstones: [] } };
+    }
   },
   getDeviceInfo: () => ({ platform: 'devtools' }),
   getLaunchOptionsSync: () => ({ query: {} }),

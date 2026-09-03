@@ -4,6 +4,13 @@ const { refreshStudentStats } = require('../../utils/stats-engine.js');
 const { createWordbookOptions, getWordbookTone, prepareRecordForDisplay } = require('../../utils/record-display.js');
 const { isCloudReadOnlyMode } = require('../../utils/cloud-mode.js');
 const {
+  discardLearningRecordAfterTombstone
+} = require('../../utils/cloud-sync.js');
+const {
+  ENTITY_TYPES,
+  deleteEntityWithTombstone
+} = require('../../utils/sync-tombstones.js');
+const {
   createLearningContextKey,
   resolveCurrentStudent,
   resolveCurrentWordbook
@@ -1904,6 +1911,48 @@ Page({
     return Date.now();
   },
   
+  resolveDeleteTargets: function(recordId, allRecords) {
+    const normalizeId = (record) => String(
+      record && (record.id || record.recordId || record.record_id || record._id) || ''
+    ).trim();
+    const requestedId = String(recordId || '').trim();
+    const displayPools = [
+      this.data.displayedRecords,
+      this.data.filteredRecords,
+      this._cache && this._cache.processedRecords
+    ];
+    let displayRecord = null;
+
+    for (const pool of displayPools) {
+      if (!Array.isArray(pool)) continue;
+      displayRecord = pool.find((record) => normalizeId(record) === requestedId);
+      if (displayRecord) break;
+    }
+
+    const sourceRecords = displayRecord && displayRecord.isMerged && Array.isArray(displayRecord.originalRecords)
+      ? displayRecord.originalRecords
+      : [
+          (Array.isArray(allRecords) ? allRecords : []).find((record) => normalizeId(record) === requestedId) ||
+          (Array.isArray(this.data.studyRecords) ? this.data.studyRecords : []).find((record) => normalizeId(record) === requestedId) ||
+          displayRecord
+        ];
+    const uniqueTargets = new Map();
+
+    sourceRecords.forEach((record) => {
+      const stableId = normalizeId(record);
+      if (!record || !stableId || stableId.startsWith('merged_')) return;
+      if (!uniqueTargets.has(stableId)) uniqueTargets.set(stableId, record);
+    });
+
+    if (uniqueTargets.size === 0) {
+      const invalidTarget = new Error('未找到可删除的原始学习记录');
+      invalidTarget.code = 'stable_record_id_required';
+      throw invalidTarget;
+    }
+
+    return Array.from(uniqueTargets.entries()).map(([id, record]) => ({ id, record }));
+  },
+
   // 优化的删除记录函数（V1.0.2 云端双向斩首）
   deleteRecord: function(e) {
     const recordId = e.currentTarget.dataset.id;
@@ -1921,75 +1970,61 @@ Page({
         wx.showLoading({ title: '删除中...', mask: true });
         
         try {
-          // ★ V1.0.2 第一步：尝试云端删除
+          const allRecords = wx.getStorageSync('learningRecords') || [];
+          const deletionTargets = this.resolveDeleteTargets(recordId, allRecords);
+          const affectedStudentId = deletionTargets
+            .map(({ record }) => record.studentId || record.student_id)
+            .find(Boolean) ||
+            (this.data.currentStudent?.id || null);
+
+          // 永久删除必须先由服务器以可信 OPENID 建立 tombstone。
           let cloudRemoved = 0;
-          const hasCloud = !!(
-            wx.cloud &&
-            wx.getStorageSync('openid') &&
-            !isCloudReadOnlyMode()
-          );
-          if (wx.cloud && wx.getStorageSync('openid') && !hasCloud) {
-            console.warn('[cloud-read-only] skip learning record cloud delete:', recordId);
+          const openid = wx.getStorageSync('openid');
+          if (!wx.cloud || !openid || isCloudReadOnlyMode()) {
+            const unavailable = new Error('永久删除服务当前不可用');
+            unavailable.code = 'tombstone_authority_unavailable';
+            throw unavailable;
           }
-          
-          if (hasCloud) {
-            try {
-              wx.cloud.init({ env: 'cloudbase-4gafzdch60ad597b', traceUser: true });
-              const db = wx.cloud.database({ env: 'cloudbase-4gafzdch60ad597b' });
-              
-              // 按 id 字段匹配删除（本地 id 可能等于云 _id，也可能等于云文档的 id 字段）
-              const cloudRes = await db.collection('learning_records')
-                .where({ id: recordId })
-                .remove();
-              
-              cloudRemoved = (cloudRes && cloudRes.stats && cloudRes.stats.removed) || 0;
-              console.log('[deleteRecord] 云端删除结果: removed=' + cloudRemoved + ', recordId=' + recordId);
-              
-              if (cloudRemoved === 0) {
-                // 备选方案：直接用 doc(recordId) 尝试（某些记录 id 就是 _id）
-                try {
-                  const docRes = await db.collection('learning_records').doc(recordId).remove();
-                  cloudRemoved = (docRes && docRes.stats && docRes.stats.removed) || 0;
-                  console.log('[deleteRecord] 备选 doc() 删除结果: removed=' + cloudRemoved);
-                } catch (docErr) {
-                  // doc() 失败通常是 ID 不存在，属于正常情况
-                  console.log('[deleteRecord] doc() 删除未命中（记录可能未同步到云端）:', docErr.errCode || docErr.message);
-                }
-              }
-            } catch (cloudErr) {
-              console.warn('[deleteRecord] 云端删除异常（非阻塞，将继续本地清理）:', cloudErr.errCode || cloudErr.message);
-            }
+          for (const { id: targetId, record: deletedRecord } of deletionTargets) {
+            const deletionResult = await deleteEntityWithTombstone({
+              entityType: ENTITY_TYPES.LEARNING_RECORD,
+              entityId: targetId,
+              studentId: deletedRecord.studentId || deletedRecord.student_id,
+              wordbookId: deletedRecord.wordbookId || deletedRecord.wordbook_id
+            });
+            cloudRemoved += Number(deletionResult.removed) || 0;
+            discardLearningRecordAfterTombstone(deletedRecord, openid);
+            console.log('[deleteRecord] tombstone 已确认:', {
+              recordId: targetId,
+              removed: Number(deletionResult.removed) || 0,
+              cleanupPending: deletionResult.cleanupPending
+            });
           }
-          
-          // ★ V1.0.2 第二步：无论云端结果如何，执行本地彻底清理
-          // （若 cloudRemoved===0，说明记录从未同步到云端或已不存在，本地清理即可）
+          const deletedRecordIds = new Set(deletionTargets.map(({ id }) => id));
           
           // 关闭滑动状态
           const currentMovedX = { ...this.data.movedX };
           delete currentMovedX[recordId];
+          deletedRecordIds.forEach((targetId) => delete currentMovedX[targetId]);
           this.setData({ movedX: currentMovedX });
           this._openedItemId = null;
           
           // 更新页面 UI
-          const updatedRecords = this.data.studyRecords.filter(record => record.id !== recordId);
+          const getStableId = (record) => String(
+            record && (record.id || record.recordId || record.record_id || record._id) || ''
+          ).trim();
+          const updatedRecords = this.data.studyRecords.filter(
+            (record) => !deletedRecordIds.has(getStableId(record))
+          );
           
-          // 更新缓存
-          if (this._cache.processedRecords) {
-            this._cache.processedRecords = this._cache.processedRecords.filter(
-              record => record.id !== recordId
-            );
-          }
-          if (this._cache.filteredRecords) {
-            this._cache.filteredRecords = this._cache.filteredRecords.filter(
-              record => record.id !== recordId
-            );
-          }
+          // 合并卡使用临时 merged_* ID；删除原始记录后必须从剩余原始数据重建。
+          this._cache.processedRecords = this.mergeRecordsByDay(updatedRecords).map(prepareRecordForDisplay);
+          this._cache.filteredRecords = null;
           
           // ★ V1.0.2 同步清理本地持久化缓存（同时匹配 _id 和 id）
-          const allRecords = wx.getStorageSync('learningRecords') || [];
-          const deletedRecord = allRecords.find(record => record._id === recordId || record.id === recordId);
-          const affectedStudentId = deletedRecord ? deletedRecord.studentId : (this.data.currentStudent?.id || null);
-          const updatedAllRecords = allRecords.filter(record => record._id !== recordId && record.id !== recordId);
+          const updatedAllRecords = allRecords.filter(
+            (record) => !deletedRecordIds.has(getStableId(record))
+          );
           wx.setStorageSync('learningRecords', updatedAllRecords);
           
           console.log('[deleteRecord] 本地缓存已清理 | 删除前: ' + allRecords.length + ' → 删除后: ' + updatedAllRecords.length);
@@ -1997,7 +2032,7 @@ Page({
           // 批量更新 UI
           this.setData({
             studyRecords: updatedRecords,
-            totalRecords: Math.max(0, this.data.totalRecords - 1)
+            totalRecords: Math.max(0, this.data.totalRecords - deletionTargets.length)
           });
           
           // 重新过滤数据
@@ -2006,7 +2041,9 @@ Page({
           // 事件通知
           const app = getApp();
           if (app && app.emit) {
-            app.emit('learningRecordDeleted', { recordId });
+            deletionTargets.forEach(({ id: targetId }) => {
+              app.emit('learningRecordDeleted', { recordId: targetId });
+            });
           }
 
           // ★ V1.0.2 删除后刷新核心统计
@@ -2021,7 +2058,7 @@ Page({
           wx.hideLoading();
           
           // 根据云端删除结果给出不同提示
-          const toastTitle = cloudRemoved > 0 ? '云端+本地已删除' : '本地已删除（未同步云端）';
+          const toastTitle = cloudRemoved > 0 ? '已永久删除' : '删除已生效';
           wx.showToast({
             title: toastTitle,
             icon: 'success',

@@ -2,6 +2,10 @@
 const { syncDataFromCloud } = require('../../utils/cloud-migration.js');
 const { setCurrentStudent } = require('../../utils/learning-context.js');
 const { isCloudReadOnlyMode } = require('../../utils/cloud-mode.js');
+const {
+  ENTITY_TYPES,
+  deleteEntityWithTombstone
+} = require('../../utils/sync-tombstones.js');
 
 const ACTION_BUTTON_WIDTH_RPX = 140;
 const ACTION_TOTAL_RPX = ACTION_BUTTON_WIDTH_RPX * 2;
@@ -395,34 +399,22 @@ Page({
         try {
           const openid = wx.getStorageSync('openid');
 
-          // ★ 第一步：先删除云端（阻塞等待结果）
-          if (openid && wx.cloud && !isCloudReadOnlyMode()) {
-            const db = wx.cloud.database({ env: 'cloudbase-4gafzdch60ad597b' });
-
-            // 尝试按 _id（即 student.id）删除
-            try {
-              await db.collection('students').doc(studentId).remove();
-              console.log('[Delete] 云端学生已删除 (by _id):', studentId);
-            } catch (docRemoveError) {
-              // 兜底：按 student_id 字段查询后删除
-              console.warn('[Delete] 按 _id 删除失败，尝试按 student_id 字段删除:', docRemoveError);
-              const queryRes = await db.collection('students')
-                .where({ student_id: studentId, teacher_id: openid })
-                .limit(1)
-                .get();
-
-              if (queryRes && Array.isArray(queryRes.data) && queryRes.data.length > 0) {
-                await db.collection('students').doc(queryRes.data[0]._id).remove();
-                console.log('[Delete] 云端学生已删除 (by student_id query):', studentId);
-              } else {
-                console.warn('[Delete] 云端未找到对应学生，可能已被删除:', studentId);
-              }
-            }
-          } else if (openid && wx.cloud) {
-            console.warn('[cloud-read-only] skip student cloud delete:', studentId);
-          } else if (!openid) {
-            console.warn('[Delete] 缺少 openid，跳过云端删除');
+          // 永久删除必须先由服务器以可信 OPENID 建立 tombstone。
+          if (!openid || !wx.cloud || isCloudReadOnlyMode()) {
+            const unavailable = new Error('永久删除服务当前不可用');
+            unavailable.code = 'tombstone_authority_unavailable';
+            throw unavailable;
           }
+          const deletionResult = await deleteEntityWithTombstone({
+            entityType: ENTITY_TYPES.STUDENT,
+            entityId: studentId,
+            studentId
+          });
+          console.log('[Delete] 学生 tombstone 已确认:', {
+            studentId,
+            removed: deletionResult.removed,
+            cleanupPending: deletionResult.cleanupPending
+          });
 
           // ★ 第二步：云端删除确认成功后，再更新本地存储
           const allStudents = wx.getStorageSync('students') || [];
@@ -447,6 +439,10 @@ Page({
           if (app.globalData.currentStudent && app.globalData.currentStudent.id === studentId) {
             app.globalData.currentStudent = null;
             wx.removeStorageSync('currentStudent');
+          }
+          const selectedStudent = wx.getStorageSync('selectedStudent');
+          if (selectedStudent && String(selectedStudent.id || selectedStudent.student_id) === String(studentId)) {
+            wx.removeStorageSync('selectedStudent');
           }
 
           wx.hideLoading();

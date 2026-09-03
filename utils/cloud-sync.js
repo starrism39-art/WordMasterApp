@@ -12,6 +12,11 @@ const {
 } = require('./learning-progress.js');
 const { createCloudReadOnlyResult, isCloudReadOnlyMode } = require('./cloud-mode.js');
 const {
+  descriptorForLearningRecord,
+  hasTombstone,
+  loadTombstoneMap
+} = require('./sync-tombstones.js');
+const {
   compareWordMasteryVersions,
   mergeWordMasteryRecord
 } = require('./sync-merge.js');
@@ -460,6 +465,7 @@ const normalizePendingLearningRecord = (record) => {
   delete normalized.emit;
   delete normalized._openid;
   delete normalized._id;
+  delete normalized._pendingVersion;
   return normalized;
 };
 
@@ -486,9 +492,13 @@ const queuePendingLearningRecord = (record, accountId) => {
     const pendingRecords = readPendingLearningRecords();
     const storageKey = selectPendingStorageKey(pendingRecords, pendingKey, accountId);
     const added = !Object.prototype.hasOwnProperty.call(pendingRecords, storageKey);
+    const existingVersion = Number(
+      pendingRecords[storageKey] && pendingRecords[storageKey]._pendingVersion
+    ) || 0;
     pendingRecords[storageKey] = {
       ...normalized,
-      ...(accountId ? { accountId: String(accountId) } : {})
+      ...(accountId ? { accountId: String(accountId) } : {}),
+      _pendingVersion: existingVersion + 1
     };
     wx.setStorageSync(PENDING_LEARNING_RECORDS_KEY, pendingRecords);
     return { added, pendingKey };
@@ -507,14 +517,49 @@ const markLearningRecordPending = (record, accountId) => {
   _updateSyncStatus({ lastFail: Date.now() });
 };
 
-const removePendingLearningRecord = (record, accountId) => {
+const isSamePendingLearningRecord = (currentPending, retrySnapshot) => {
+  if (!currentPending || !retrySnapshot) return false;
+  const currentOwner = resolvePendingAccount(currentPending);
+  const retryOwner = resolvePendingAccount(retrySnapshot);
+  if (
+    currentOwner.known &&
+    retryOwner.known &&
+    currentOwner.accountId !== retryOwner.accountId
+  ) return false;
+  const currentVersion = Number(currentPending._pendingVersion || 0) || 0;
+  const retryVersion = Number(retrySnapshot._pendingVersion || 0) || 0;
+  if (currentVersion > 0 || retryVersion > 0) return currentVersion === retryVersion;
+  return JSON.stringify(currentPending) === JSON.stringify(retrySnapshot);
+};
+
+const findPendingLearningRecordSnapshot = (record, accountId) => {
+  const pendingKey = buildPendingLearningRecordKey(record);
+  if (!pendingKey) return null;
+  const pendingRecords = readPendingLearningRecords();
+  const key = Object.keys(pendingRecords).find((candidateKey) => (
+    (candidateKey === pendingKey || candidateKey.indexOf(pendingKey + '__account__') === 0) &&
+    pendingBelongsToAccount(pendingRecords[candidateKey], accountId)
+  ));
+  return key ? { key, value: { ...pendingRecords[key] } } : null;
+};
+
+const removePendingLearningRecord = (record, accountId, expectedPending) => {
   const pendingKey = buildPendingLearningRecordKey(record);
   if (!pendingKey) {
     return false;
   }
   try {
     const pendingRecords = readPendingLearningRecords();
-    const removed = removePendingEntriesForAccount(pendingRecords, pendingKey, accountId);
+    let removed = false;
+    Object.keys(pendingRecords).forEach((key) => {
+      if (key !== pendingKey && key.indexOf(pendingKey + '__account__') !== 0) return;
+      if (!pendingBelongsToAccount(pendingRecords[key], accountId)) return;
+      if (expectedPending !== undefined) {
+        if (!expectedPending || !isSamePendingLearningRecord(pendingRecords[key], expectedPending)) return;
+      }
+      delete pendingRecords[key];
+      removed = true;
+    });
     if (!removed) return false;
     if (Object.keys(pendingRecords).length === 0) {
       wx.removeStorageSync(PENDING_LEARNING_RECORDS_KEY);
@@ -526,6 +571,44 @@ const removePendingLearningRecord = (record, accountId) => {
     console.warn('[cloud-sync] failed to clear pending learning record:', e);
     return false;
   }
+};
+
+const learningRecordBelongsToAccount = (record, accountId) => {
+  const explicitOwner = normalizeAccountId(record && (
+    record.accountId || record.teacher_id || record.teacherId || record.ownerId || record.ownerUsername
+  ));
+  if (explicitOwner) return explicitOwner === normalizeAccountId(accountId);
+  const studentOwner = getStudentOwnerForPending(record);
+  return !studentOwner || studentOwner === normalizeAccountId(accountId);
+};
+
+const discardLearningRecordAfterTombstone = (record, accountId, expectedPending) => {
+  const recordId = String(record && (
+    record.id || record.recordId || record.record_id || record._id
+  ) || '').trim();
+  if (!recordId) return { localRemoved: 0, pendingRemoved: false };
+  let localRemoved = 0;
+  try {
+    const localRecords = wx.getStorageSync('learningRecords');
+    if (Array.isArray(localRecords)) {
+      const filtered = localRecords.filter((localRecord) => {
+        const localId = String(localRecord && (
+          localRecord.id || localRecord.recordId || localRecord.record_id || localRecord._id
+        ) || '').trim();
+        const shouldRemove = localId === recordId && learningRecordBelongsToAccount(localRecord, accountId);
+        if (shouldRemove) localRemoved += 1;
+        return !shouldRemove;
+      });
+      if (localRemoved > 0) wx.setStorageSync('learningRecords', filtered);
+    }
+  } catch (error) {
+    console.warn('[cloud-sync] failed to discard tombstoned local record:', error);
+  }
+  const pendingRemoved = expectedPending !== undefined
+    ? removePendingLearningRecord(record, accountId, expectedPending)
+    : removePendingLearningRecord(record, accountId);
+  if (pendingRemoved) refreshPendingSyncStatus();
+  return { localRemoved, pendingRemoved };
 };
 
 const retryPendingSyncs = async (options = {}) => {
@@ -550,20 +633,47 @@ const retryPendingSyncs = async (options = {}) => {
   }
 
   const promises = [];
+  let tombstonedLearningRecords = 0;
 
   // 学习记录使用稳定记录 ID 重试，确保重复尝试仍写入同一个云端文档。
   try {
     const pendingRecords = readPendingLearningRecords();
-    Object.keys(pendingRecords).forEach((pendingKey) => {
-      const pendingRecord = pendingRecords[pendingKey];
+    const retryEntries = Object.keys(pendingRecords).map((pendingKey) => ({
+      pendingKey,
+      pendingRecord: pendingRecords[pendingKey]
+    })).filter(({ pendingRecord }) => (
+      pendingRecord &&
+      typeof pendingRecord === 'object' &&
+      pendingBelongsToAccount(pendingRecord, openid)
+    ));
+    let tombstoneMap = null;
+    try {
+      tombstoneMap = await loadTombstoneMap(
+        retryEntries.map(({ pendingRecord }) => descriptorForLearningRecord(pendingRecord))
+      );
+    } catch (tombstoneError) {
+      console.warn('[cloud-sync] tombstone lookup failed; record pending retained:', tombstoneError);
+    }
+    retryEntries.forEach(({ pendingRecord }) => {
       if (!pendingRecord || typeof pendingRecord !== 'object') {
-        console.warn('[cloud-sync] invalid pending learning record retained:', pendingKey);
         return;
       }
-      if (!pendingBelongsToAccount(pendingRecord, openid)) return;
+      const descriptor = descriptorForLearningRecord(pendingRecord);
+      if (
+        tombstoneMap &&
+        descriptor &&
+        hasTombstone(tombstoneMap, descriptor.entityType, descriptor.entityId)
+      ) {
+        discardLearningRecordAfterTombstone(pendingRecord, openid, pendingRecord);
+        tombstonedLearningRecords += 1;
+        return;
+      }
+      if (!tombstoneMap) return;
       promises.push(syncLearningRecord(pendingRecord, {
         accountId: openid,
-        accountSession
+        accountSession,
+        pendingSnapshot: pendingRecord,
+        tombstoneMap
       }));
     });
   } catch (e) {
@@ -740,6 +850,9 @@ const retryPendingSyncs = async (options = {}) => {
   const retryResult = { ok: true, pending: actionablePending };
   const retained = realPending - actionablePending;
   if (retained > 0) retryResult.retained = retained;
+  if (tombstonedLearningRecords > 0) {
+    retryResult.tombstonedDiscarded = tombstonedLearningRecords;
+  }
   return retryResult;
 };
 
@@ -1029,9 +1142,9 @@ const syncWordMasteryViaAtom = async (
   return allResults;
 };
 
-const syncLearningRecord = (record, options = {}) => {
+const syncLearningRecord = async (record, options = {}) => {
   if (isCloudReadOnlyMode()) {
-    return Promise.resolve(createCloudReadOnlyResult('syncLearningRecord'));
+    return createCloudReadOnlyResult('syncLearningRecord');
   }
 
   const db = ensureDb();
@@ -1044,7 +1157,7 @@ const syncLearningRecord = (record, options = {}) => {
     } else {
       markPendingSync();
     }
-    return Promise.resolve({ skipped: true, reason: 'precondition_failed' });
+    return { skipped: true, reason: 'precondition_failed' };
   }
 
   const incomingHadReliableUpdatedAt = resolveUpdatedAt(record) > 0;
@@ -1058,26 +1171,65 @@ const syncLearningRecord = (record, options = {}) => {
   delete cleanRecord.accountId;
   delete cleanRecord._openid;
   delete cleanRecord._id;
+  delete cleanRecord._pendingVersion;
 
-  const docId = buildScopedDocId(openid, 'record', stableRecordId);
-  const incomingWriteData = {
-    ...cleanRecord,
-    ...(displayNames.studentName ? { student_name: displayNames.studentName } : {}),
-    ...(displayNames.teacherName ? { teacher_name: displayNames.teacherName } : {}),
-    teacher_id: openid,
-    id: stableRecordId
-  };
+  const pendingAtStart = options.pendingSnapshot
+    ? { ...options.pendingSnapshot }
+    : findPendingLearningRecordSnapshot(cleanRecord, openid);
+  const expectedPending = options.pendingSnapshot || (
+    pendingAtStart && pendingAtStart.value ? pendingAtStart.value : false
+  );
 
-  // 先读云端，保留未知字段，防止不同版本互相覆盖
-  return db.collection('learning_records')
-    .doc(docId)
-    .get()
-    .then((res) => {
-      const cloudData = (res && res.data) ? res.data : {};
+  try {
+    const tombstoneMap = options.tombstoneMap instanceof Map
+      ? options.tombstoneMap
+      : await loadTombstoneMap([descriptorForLearningRecord(cleanRecord)]);
+    const tombstoneDescriptor = descriptorForLearningRecord(cleanRecord);
+    if (
+      tombstoneDescriptor &&
+      hasTombstone(tombstoneMap, tombstoneDescriptor.entityType, tombstoneDescriptor.entityId)
+    ) {
+      discardLearningRecordAfterTombstone(cleanRecord, openid, expectedPending);
+      console.log('[cloud-sync] learning record suppressed by tombstone:', stableRecordId);
+      return {
+        ok: true,
+        skipped: true,
+        reason: 'tombstoned',
+        tombstoned: true
+      };
+    }
+
+    if (!accountSideEffectsAreCurrent(operationOptions)) {
+      return { skipped: true, reason: 'account_session_changed' };
+    }
+
+    const docId = buildScopedDocId(openid, 'record', stableRecordId);
+    const incomingWriteData = {
+      ...cleanRecord,
+      ...(displayNames.studentName ? { student_name: displayNames.studentName } : {}),
+      ...(displayNames.teacherName ? { teacher_name: displayNames.teacherName } : {}),
+      teacher_id: openid,
+      id: stableRecordId
+    };
+
+    let cloudData = {};
+    let exists = true;
+    try {
+      const res = await db.collection('learning_records').doc(docId).get();
+      cloudData = (res && res.data) ? res.data : {};
+    } catch (getError) {
+      if (getError && getError.errCode === -1) {
+        exists = false;
+      } else {
+        throw getError;
+      }
+    }
+
+    if (exists) {
       const mergedRecord = mergeLearningRecordForWrite(cloudData, incomingWriteData, {
         incomingHadReliableUpdatedAt
       });
-      return db.collection('learning_records')
+      await db.collection('learning_records')
         .doc(docId)
         .set({
           data: {
@@ -1086,37 +1238,29 @@ const syncLearningRecord = (record, options = {}) => {
             id: stableRecordId
           }
         });
-    })
-    .catch((getError) => {
-      // 文档不存在（首次写入），直接写
-      if (getError && getError.errCode === -1) {
-        return db.collection('learning_records')
-          .doc(docId)
-          .set({
-            data: stripSystemFields(incomingWriteData)
-          });
-      }
-      throw getError;
-    })
-    .then(() => {
-      console.log('[cloud-sync] learning record synced:', stableRecordId);
-      const removedPendingRecord = removePendingLearningRecord(cleanRecord, openid);
-      if (removedPendingRecord) {
-        if (accountSideEffectsAreCurrent(operationOptions)) markSyncSuccess(1);
-      } else if (accountSideEffectsAreCurrent(operationOptions)) {
-        _updateSyncStatus({ lastOk: Date.now() });
-      }
-      return { ok: true };
-    })
-    .catch((error) => {
-      console.warn('[cloud-sync] failed to sync learning record:', error);
-      const queued = queuePendingLearningRecord(cleanRecord, openid);
-      if (accountSideEffectsAreCurrent(operationOptions)) {
-        if (!queued || queued.added) markPendingSync();
-        else _updateSyncStatus({ lastFail: Date.now() });
-      }
-      return { ok: false, error };
-    });
+    } else {
+      await db.collection('learning_records')
+        .doc(docId)
+        .set({ data: stripSystemFields(incomingWriteData) });
+    }
+
+    console.log('[cloud-sync] learning record synced:', stableRecordId);
+    const removedPendingRecord = removePendingLearningRecord(cleanRecord, openid, expectedPending);
+    if (removedPendingRecord) {
+      if (accountSideEffectsAreCurrent(operationOptions)) markSyncSuccess(1);
+    } else if (accountSideEffectsAreCurrent(operationOptions)) {
+      _updateSyncStatus({ lastOk: Date.now() });
+    }
+    return { ok: true };
+  } catch (error) {
+    console.warn('[cloud-sync] failed to sync learning record:', error);
+    const queued = queuePendingLearningRecord(cleanRecord, openid);
+    if (accountSideEffectsAreCurrent(operationOptions)) {
+      if (!queued || queued.added) markPendingSync();
+      else _updateSyncStatus({ lastFail: Date.now() });
+    }
+    return { ok: false, error };
+  }
 };
 
 const syncWordMasteryRecord = (studentId, wordbookId, wordId, wordRecord) => {
@@ -1633,36 +1777,41 @@ const loadPreviewStateFromCloud = (studentId, wordbookId) => {
 };
 
 // 批量补推所有本地学习记录到云端（一次性，用于历史数据恢复）
-const syncAllLocalLearningRecords = () => {
+const syncAllLocalLearningRecords = async () => {
   if (isCloudReadOnlyMode()) {
-    return Promise.resolve(createCloudReadOnlyResult('syncAllLocalLearningRecords'));
+    return createCloudReadOnlyResult('syncAllLocalLearningRecords');
   }
 
   const db = ensureDb();
   const openid = getOpenId();
   if (!db || !openid) {
     console.warn('[cloud-sync] syncAllLocalLearningRecords: db或openid不可用');
-    return Promise.resolve({ skipped: true, reason: 'precondition_failed' });
+    return { skipped: true, reason: 'precondition_failed' };
   }
 
   try {
     const learningRecords = wx.getStorageSync('learningRecords') || [];
     if (!Array.isArray(learningRecords) || learningRecords.length === 0) {
       console.log('[cloud-sync] syncAllLocalLearningRecords: 本地无学习记录');
-      return Promise.resolve({ skipped: true, reason: 'empty' });
+      return { skipped: true, reason: 'empty' };
     }
 
     console.log('[cloud-sync] 开始批量补推学习记录, 数量:', learningRecords.length);
-    const promises = learningRecords.map(record => syncLearningRecord(record));
-
-    return Promise.all(promises).then(results => {
-      const succeeded = results.filter(r => r && r.ok).length;
-      console.log('[cloud-sync] 学习记录补推完成:', succeeded, '/', learningRecords.length);
-      return { succeeded, total: learningRecords.length };
-    });
+    const tombstoneMap = await loadTombstoneMap(
+      learningRecords.map(descriptorForLearningRecord)
+    );
+    const results = await Promise.all(learningRecords.map((record) => syncLearningRecord(record, {
+      accountId: openid,
+      tombstoneMap
+    })));
+    const succeeded = results.filter((result) => result && result.ok && !result.skipped).length;
+    const tombstoned = results.filter((result) => result && result.tombstoned).length;
+    console.log('[cloud-sync] 学习记录补推完成:', succeeded, '/', learningRecords.length,
+      '| tombstoned skipped=', tombstoned);
+    return { succeeded, tombstoned, total: learningRecords.length };
   } catch (e) {
     console.warn('[cloud-sync] syncAllLocalLearningRecords 异常:', e);
-    return Promise.resolve({ error: e && e.message ? e.message : 'unknown' });
+    return { error: e && e.message ? e.message : 'unknown' };
   }
 };
 
@@ -1676,6 +1825,7 @@ module.exports = {
   syncLearningProgress,
   syncAllLocalLearningProgress,
   syncAllLocalLearningRecords,
+  discardLearningRecordAfterTombstone,
   syncStudentStatistics,
   retryPendingSyncs,
   markPendingSync,

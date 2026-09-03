@@ -75,8 +75,24 @@ const app = {
 
 let modalSuccess = null;
 let stopPullDownRefreshCalls = 0;
+let tombstoneDeleteRequests = [];
 global.getApp = () => app;
 global.wx = {
+  cloud: {
+    callFunction: async ({ name, data }) => {
+      assert.strictEqual(name, 'syncTombstoneAuthority');
+      assert.strictEqual(data.action, 'deleteEntity');
+      tombstoneDeleteRequests.push({ ...data });
+      return {
+        result: {
+          success: true,
+          tombstoneCreated: true,
+          removed: 1,
+          cleanupPending: false
+        }
+      };
+    }
+  },
   getStorageSync(key) {
     return storage[key];
   },
@@ -146,6 +162,7 @@ function resetRuntime(records) {
     selectedWordbook: wordbook,
     currentWordbookStudentId: student.id
   };
+  storage.openid = 'teacher-records-5d';
   storage.currentUser = app.globalData.currentUser;
   storage.students = [student];
   storage.currentStudent = student;
@@ -162,6 +179,7 @@ function resetRuntime(records) {
   stopPullDownRefreshCalls = 0;
   refreshStudentStatsCalls = 0;
   reloadWordMapCalls = 0;
+  tombstoneDeleteRequests = [];
   fakeTimers.reset();
 }
 
@@ -319,7 +337,59 @@ async function flushPromises() {
     assert.strictEqual(refreshStudentStatsCalls, 1);
     assert.strictEqual(app.emitted.filter(({ eventName }) => eventName === 'learningRecordDeleted').length, 1);
 
-    // 8. Manual pull refresh still schedules and completes one fresh load.
+    // 8. A same-day merged card must tombstone its original stable record IDs,
+    // never the synthetic merged_* display ID.
+    const secondRecord = {
+      ...populatedRecords[0],
+      id: 'record-5d-2',
+      timestamp: Date.parse('2026-08-13T11:00:00+08:00'),
+      studyDate: '2026-08-13T11:00:00+08:00',
+      completedAt: '2026-08-13T11:00:00+08:00',
+      wordsSnapshot: [
+        { wordId: 'records_word_3', word: 'student', meaning: '学生', phonetic: '/\u02c8stju\u02d0.d\u0259nt/', masteryStatus: 'notMastered' }
+      ],
+      learnedWordIds: ['records_word_3'],
+      masteredWordIds: [],
+      notMasteredWordIds: ['records_word_3'],
+      totalWords: 1,
+      masteredCount: 0,
+      notMasteredCount: 1
+    };
+    resetRuntime([...populatedRecords, secondRecord]);
+    const mergedDeletion = createPage();
+    mergedDeletion.page._isRecordsPageActive = true;
+    mergedDeletion.page.data.currentStudent = student;
+    mergedDeletion.page.data.studyRecords = [...populatedRecords, secondRecord].map((record) => ({ ...record }));
+    const mergedCards = mergedDeletion.page.mergeRecordsByDay(mergedDeletion.page.data.studyRecords);
+    assert.strictEqual(mergedCards.length, 1);
+    assert.strictEqual(mergedCards[0].isMerged, true);
+    mergedDeletion.page.data.filteredRecords = mergedCards;
+    mergedDeletion.page.data.displayedRecords = mergedCards;
+    mergedDeletion.page.data.totalRecords = 2;
+    mergedDeletion.page._cache.processedRecords = mergedCards;
+    mergedDeletion.page._cache.filteredRecords = mergedCards;
+    mergedDeletion.page.deleteRecord({ currentTarget: { dataset: { id: mergedCards[0].id } } });
+    assert.strictEqual(typeof modalSuccess, 'function');
+    await modalSuccess({ confirm: true });
+    await flushPromises();
+    assert.deepStrictEqual(
+      tombstoneDeleteRequests.map((request) => request.entityId).sort(),
+      ['record-5d-1', 'record-5d-2'],
+      'merged card deletion must target original record IDs'
+    );
+    assert.strictEqual(
+      tombstoneDeleteRequests.some((request) => String(request.entityId).startsWith('merged_')),
+      false,
+      'synthetic merged ID must never reach tombstone authority'
+    );
+    assert.deepStrictEqual(storage.learningRecords, []);
+    assert.deepStrictEqual(mergedDeletion.page.data.studyRecords, []);
+    assert.deepStrictEqual(mergedDeletion.page.data.displayedRecords, []);
+    assert.strictEqual(mergedDeletion.page.data.totalRecords, 0);
+    assert.strictEqual(refreshStudentStatsCalls, 1);
+    assert.strictEqual(app.emitted.filter(({ eventName }) => eventName === 'learningRecordDeleted').length, 2);
+
+    // 9. Manual pull refresh still schedules and completes one fresh load.
     const manual = enterPage(populatedRecords);
     const manualLoadsBefore = manual.counters.loadData;
     manual.page.onPullDownRefresh();
@@ -330,7 +400,7 @@ async function flushPromises() {
     assert.strictEqual(stopPullDownRefreshCalls, 1);
     manual.page.onUnload();
 
-    // 9. Unload before timer flush prevents old-page preprocessing and setData.
+    // 10. Unload before timer flush prevents old-page preprocessing and setData.
     resetRuntime(populatedRecords);
     const fastLeave = createPage();
     fastLeave.page.onLoad();

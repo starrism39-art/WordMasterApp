@@ -180,7 +180,8 @@ const createHarness = ({
   global.wx = {
     cloud: {
       init: () => {},
-      database: () => db
+      database: () => db,
+      callFunction: async () => ({ result: { success: true, tombstones: [] } })
     },
     getDeviceInfo: () => ({ platform: 'devtools' }),
     getLaunchOptionsSync: () => ({ query: {} }),

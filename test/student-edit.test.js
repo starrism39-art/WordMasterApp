@@ -72,6 +72,10 @@ global.wx = {
       return {
         collection: makeCollection
       };
+    },
+    callFunction: async ({ name }) => {
+      assert.strictEqual(name, 'syncTombstoneAuthority');
+      return { result: { success: true, tombstones: [] } };
     }
   },
   getStorageSync(key) {

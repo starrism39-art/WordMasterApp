@@ -133,7 +133,12 @@ function loadRealMigration(storage, counters) {
   };
   installStorage(storage, {
     init: () => {},
-    database: () => db
+    database: () => db,
+    callFunction: async ({ name, data }) => {
+      assert.strictEqual(name, 'syncTombstoneAuthority');
+      assert.strictEqual(data.action, 'list');
+      return { result: { success: true, tombstones: [] } };
+    }
   });
   return require(migrationPath).migrateLocalDataToCloud;
 }

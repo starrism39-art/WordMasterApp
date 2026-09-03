@@ -45,6 +45,13 @@ const {
 const { createCloudReadOnlyResult, isCloudReadOnlyMode } = require('./cloud-mode.js');
 const { restoreCurrentContextFromSyncedData } = require('./learning-context.js');
 const {
+  ENTITY_TYPES,
+  descriptorForLearningRecord,
+  descriptorForStudent,
+  hasTombstone,
+  loadTombstoneMap
+} = require('./sync-tombstones.js');
+const {
   mergeById,
   mergeWordMasteryRecord,
   toTimestamp
@@ -518,6 +525,7 @@ const performFullPull = async (openid, requestSession) => {
       { key: 'records', required: true, read: () => fetchAllByTeacher(db, 'learning_records', openid) },
       { key: 'progress', required: true, read: () => fetchAllByTeacher(db, 'learning_progress', openid) },
       { key: 'mastery', required: true, read: () => fetchAllByTeacher(db, 'word_mastery', openid) },
+      { key: 'tombstones', required: true, read: () => loadTombstoneMap(null) },
       { key: 'studentStats', read: () => fetchAllByTeacher(db, 'student_statistics', openid) },
       { key: 'wordbookStats', read: () => fetchAllByTeacher(db, 'wordbook_statistics', openid) }
     ]);
@@ -534,6 +542,7 @@ const performFullPull = async (openid, requestSession) => {
     const recordDocs = requireCoreRead('records');
     const progressDocs = requireCoreRead('progress');
     const masteryDocs = requireCoreRead('mastery');
+    const tombstoneMap = requireCoreRead('tombstones');
 
     // ★ 拉取云端手动修正的统计数据（管理员可覆盖）
     const statsResult = readResults.studentStats;
@@ -566,7 +575,11 @@ const performFullPull = async (openid, requestSession) => {
       cleaned.ownerId = String(openid);
       cleaned.ownerUsername = String(openid);
       return cleaned;
-    });
+    }).filter((student) => !hasTombstone(
+      tombstoneMap,
+      ENTITY_TYPES.STUDENT,
+      student.student_id || student.id
+    ));
 
     const cloudRecords = (recordDocs || []).map((doc) => {
       const cleaned = stripMeta(doc);
@@ -574,7 +587,11 @@ const performFullPull = async (openid, requestSession) => {
         cleaned.id = String(doc._id);
       }
       return cleaned;
-    });
+    }).filter((record) => !hasTombstone(
+      tombstoneMap,
+      ENTITY_TYPES.LEARNING_RECORD,
+      record.id
+    ));
 
     const cloudProgress = buildProgressMap(progressDocs);
     const cloudMastery = buildWordMasteryMap(masteryDocs);
@@ -593,16 +610,51 @@ const performFullPull = async (openid, requestSession) => {
     const localMastery = wx.getStorageSync('wordMastery') || {};
 
     // 【V2.1 状态安全合并】按整条记录版本选择状态，避免逐字段 max/or 拼出不存在的组合
-    const normalizedLocalStudents = (localStudents || []).map(normalizeStudentForMerge);
+    const currentAccountStudentIds = new Set((localStudents || [])
+      .filter((student) => {
+        const ownerId = getLocalOwnerId(student);
+        return !ownerId || ownerId === String(openid);
+      })
+      .map(getLocalStudentId)
+      .filter(Boolean));
+    const activeLocalStudents = (localStudents || []).filter((student) => {
+      const ownerId = getLocalOwnerId(student);
+      if (ownerId && ownerId !== String(openid)) return true;
+      return !hasTombstone(
+        tombstoneMap,
+        ENTITY_TYPES.STUDENT,
+        getLocalStudentId(student)
+      );
+    });
+    const activeLocalRecords = (localRecords || []).filter((record) => {
+      const ownerId = getLocalOwnerId(record);
+      const belongsToCurrentAccount = ownerId
+        ? ownerId === String(openid)
+        : currentAccountStudentIds.has(getLocalStudentId(record));
+      if (!belongsToCurrentAccount) return true;
+      return !hasTombstone(
+        tombstoneMap,
+        ENTITY_TYPES.LEARNING_RECORD,
+        record && (record.id || record.recordId || record.record_id || record._id)
+      );
+    });
+    const normalizedLocalStudents = activeLocalStudents.map(normalizeStudentForMerge);
     const normalizedCloudStudents = (cloudStudents || []).map(normalizeStudentForMerge);
 
     const mergedStudents = mergeById(normalizedLocalStudents, normalizedCloudStudents, 'student_id');
-    const mergedRecords = mergeById(localRecords, cloudRecords, 'id');
+    const mergedRecords = mergeById(activeLocalRecords, cloudRecords, 'id');
 
     console.log('[cloud-sync] 拉取详情: students 云端=' + cloudStudents.length + ' 本地=' + localStudents.length +
       ' | learning_records 云端=' + cloudRecords.length + ' 本地=' + localRecords.length +
       ' | progress 云端=' + Object.keys(cloudProgress).length + ' 本地=' + Object.keys(localProgress).length +
       ' | mastery 云端=' + Object.keys(cloudMastery).length + ' 本地=' + Object.keys(localMastery).length);
+    const suppressedStudentCount = localStudents.length - activeLocalStudents.length;
+    const suppressedRecordCount = localRecords.length - activeLocalRecords.length +
+      (recordDocs || []).length - cloudRecords.length;
+    if (suppressedStudentCount > 0 || suppressedRecordCount > 0) {
+      console.log('[cloud-sync] tombstone filtered | students=', suppressedStudentCount,
+        '| learning_records=', suppressedRecordCount);
+    }
 
     let mergedProgress, mergedMastery;
     try {
@@ -1067,8 +1119,20 @@ const migrateLocalDataToCloud = async (options = {}) => {
       learningProgress: wx.getStorageSync('learningProgress'),
       wordMastery: wx.getStorageSync('wordMastery')
     });
-    const students = selectedLocalData.students;
-    const learningRecords = selectedLocalData.learningRecords;
+    const migrationTombstoneMap = await loadTombstoneMap([
+      ...selectedLocalData.students.map(descriptorForStudent),
+      ...selectedLocalData.learningRecords.map(descriptorForLearningRecord)
+    ]);
+    const students = selectedLocalData.students.filter((student) => !hasTombstone(
+      migrationTombstoneMap,
+      ENTITY_TYPES.STUDENT,
+      getLocalStudentId(student)
+    ));
+    const learningRecords = selectedLocalData.learningRecords.filter((record) => !hasTombstone(
+      migrationTombstoneMap,
+      ENTITY_TYPES.LEARNING_RECORD,
+      record && (record.id || record.recordId || record.record_id || record._id)
+    ));
     const learningProgress = selectedLocalData.learningProgress;
     const wordMastery = selectedLocalData.wordMastery;
     if (selectedLocalData.skippedForeignStudents > 0) {
@@ -1116,9 +1180,15 @@ const migrateLocalDataToCloud = async (options = {}) => {
     for (let i = 0; i < learningRecords.length; i++) {
       try {
         if (!workflowIsCurrent()) return { skipped: true, reason: 'account_session_changed' };
-        const result = await syncLearningRecord(learningRecords[i], { accountId: openid, accountSession });
-        if (result && result.ok === true && !result.error) {
+        const result = await syncLearningRecord(learningRecords[i], {
+          accountId: openid,
+          accountSession,
+          tombstoneMap: migrationTombstoneMap
+        });
+        if (result && result.ok === true && !result.error && !result.skipped) {
           recordSynced++;
+        } else if (result && result.tombstoned) {
+          console.log('[cloud-migration] learning_record tombstoned, skipped:', i);
         } else {
           recordFailed++;
           console.warn('[cloud-migration] learning_record 返回未成功:', i, result);

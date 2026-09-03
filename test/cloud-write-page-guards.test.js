@@ -60,14 +60,14 @@ assert(
 
 const recordsSource = read('subpages/records/records.js');
 assert(
-  /const hasCloud = !!\([\s\S]*?!isCloudReadOnlyMode\(\)[\s\S]*?\);[\s\S]*?if \(hasCloud\)[\s\S]*?\.remove\(/.test(recordsSource),
-  'learning record deletion must gate cloud remove behind writable mode'
+  /if \(!wx\.cloud \|\| !openid \|\| isCloudReadOnlyMode\(\)\)[\s\S]*?throw unavailable;[\s\S]*?deleteEntityWithTombstone\(/.test(recordsSource),
+  'learning record deletion must fail closed before the tombstone authority call'
 );
 
 const studentListSource = read('subpages/student-list/student-list.js');
 assert(
-  /if \(openid && wx\.cloud && !isCloudReadOnlyMode\(\)\)[\s\S]*?\.remove\(/.test(studentListSource),
-  'student deletion must gate cloud remove behind writable mode'
+  /if \(!openid \|\| !wx\.cloud \|\| isCloudReadOnlyMode\(\)\)[\s\S]*?throw unavailable;[\s\S]*?deleteEntityWithTombstone\(/.test(studentListSource),
+  'student deletion must fail closed before the tombstone authority call'
 );
 
 process.stdout.write('cloud-write-page-guards: PASS\n');

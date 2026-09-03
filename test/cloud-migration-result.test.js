@@ -87,7 +87,12 @@ const createDb = () => ({
 global.wx = {
   cloud: {
     init: () => {},
-    database: () => createDb()
+    database: () => createDb(),
+    callFunction: async ({ name, data }) => {
+      assert.strictEqual(name, 'syncTombstoneAuthority');
+      assert.strictEqual(data.action, 'list');
+      return { result: { success: true, tombstones: [] } };
+    }
   },
   getStorageSync: (key) => storage[key],
   setStorageSync: (key, value) => { storage[key] = value; },

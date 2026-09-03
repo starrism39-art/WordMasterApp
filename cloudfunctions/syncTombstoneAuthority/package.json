@@ -1,0 +1,9 @@
+{
+  "name": "syncTombstoneAuthority",
+  "version": "1.0.0",
+  "description": "Authoritative owner-scoped tombstones for permanent sync deletion",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "^2.7.2"
+  }
+}

@@ -9,6 +9,10 @@ const STUDENT_NAME_CASCADE_COLLECTIONS = [
 ];
 const { isCloudReadOnlyMode } = require('../../utils/cloud-mode.js');
 const { establishAccountSession } = require('../../utils/account-session.js');
+const {
+  ENTITY_TYPES,
+  isEntityTombstoned
+} = require('../../utils/sync-tombstones.js');
 
 Page({
 
@@ -275,6 +279,16 @@ Page({
 
   updateCloudStudent: async function(db, openid, updatedStudent) {
     const studentId = this.getStudentId(updatedStudent);
+    const tombstoned = await isEntityTombstoned({
+      entityType: ENTITY_TYPES.STUDENT,
+      entityId: studentId,
+      studentId
+    });
+    if (tombstoned) {
+      const error = new Error('student was permanently deleted');
+      error.code = 'student_tombstoned';
+      throw error;
+    }
     const studentsRef = db.collection('students');
     const updateData = {
       name: updatedStudent.name,
