@@ -37,6 +37,7 @@ const tests = [
   'test/account-session-isolation.test.js',
   'test/login-sync-order.test.js',
   'test/stage1d-offline-pending-reconnect.test.js',
+  'test/stage1f-legacy-record-identity.test.js',
   'test/startup-navigation-coordination.test.js',
   'test/startup-splash-session.test.js',
   'test/startup-sync-notice.test.js',

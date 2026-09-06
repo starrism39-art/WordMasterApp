@@ -21,6 +21,8 @@ const {
   mergeWordMasteryRecord
 } = require('./sync-merge.js');
 const syncStudentStatistics = syncStudentStatsToCloud;
+const { prepareLegacyRecord, prepareStoredLegacyRecords, REF_FIELD, STATE_FIELD,
+  DOC_FIELD, getLegacyCloudDocumentId } = require('./legacy-record-identity.js');
 const MASTERY_ATOM_FUNCTION_NAME = 'syncMasteryAtom';
 const MASTERY_ATOM_PROTOCOL_VERSION = 2;
 const MASTERY_ATOM_CAPABILITY_TTL_MS = 5 * 60 * 1000;
@@ -599,7 +601,8 @@ const normalizePendingLearningRecord = (record) => {
     return null;
   }
   const normalized = withUpdatedAt({ ...record });
-  const stableRecordId = ensureLearningRecordId(normalized);
+  const descriptor = descriptorForLearningRecord(record);
+  const stableRecordId = descriptor ? descriptor.entityId : '';
   if (!stableRecordId) {
     return null;
   }
@@ -735,9 +738,13 @@ const discardLearningRecordAfterTombstone = (record, accountId, expectedPending)
     const localRecords = wx.getStorageSync('learningRecords');
     if (Array.isArray(localRecords)) {
       const filtered = localRecords.filter((localRecord) => {
-        const localId = String(localRecord && (
+        let localId = String(localRecord && (
           localRecord.id || localRecord.recordId || localRecord.record_id || localRecord._id
         ) || '').trim();
+        if (!localId && localRecord && localRecord[REF_FIELD]) {
+          const prepared = prepareLegacyRecord(localRecord, { accountId });
+          if (prepared.ready) localId = descriptorForLearningRecord(prepared.record).entityId;
+        }
         const shouldRemove = localId === recordId && learningRecordBelongsToAccount(localRecord, accountId);
         if (shouldRemove) localRemoved += 1;
         return !shouldRemove;
@@ -788,7 +795,25 @@ const retryPendingSyncs = async (options = {}) => {
       pendingRecord &&
       typeof pendingRecord === 'object' &&
       pendingBelongsToAccount(pendingRecord, openid)
-    ));
+    )).map((entry) => {
+      if (descriptorForLearningRecord(entry.pendingRecord)) return entry;
+      const source = { ...entry.pendingRecord };
+      const prepared = prepareLegacyRecord(source, { accountId: openid, pendingKey: entry.pendingKey });
+      if (!prepared.ready && source[REF_FIELD] && !entry.pendingRecord[REF_FIELD]) {
+        try {
+          const latest = readPendingLearningRecords();
+          if (latest[entry.pendingKey] && pendingBelongsToAccount(latest[entry.pendingKey], openid) &&
+              isSamePendingLearningRecord(latest[entry.pendingKey], entry.pendingRecord)) {
+            latest[entry.pendingKey] = source;
+            wx.setStorageSync(PENDING_LEARNING_RECORDS_KEY, latest);
+          }
+        } catch (error) {
+          console.warn('[cloud-sync] legacy pending quarantine reference deferred:', error.message);
+        }
+      }
+      return prepared.ready ? { ...entry, originalPending: entry.pendingRecord, pendingRecord: prepared.record }
+        : null;
+    }).filter(Boolean);
     let tombstoneMap = null;
     try {
       tombstoneMap = await loadTombstoneMap(
@@ -797,7 +822,7 @@ const retryPendingSyncs = async (options = {}) => {
     } catch (tombstoneError) {
       console.warn('[cloud-sync] tombstone lookup failed; record pending retained:', tombstoneError);
     }
-    retryEntries.forEach(({ pendingRecord }) => {
+    retryEntries.forEach(({ pendingRecord, originalPending }) => {
       if (!pendingRecord || typeof pendingRecord !== 'object') {
         return;
       }
@@ -807,7 +832,7 @@ const retryPendingSyncs = async (options = {}) => {
         descriptor &&
         hasTombstone(tombstoneMap, descriptor.entityType, descriptor.entityId)
       ) {
-        discardLearningRecordAfterTombstone(pendingRecord, openid, pendingRecord);
+        discardLearningRecordAfterTombstone(pendingRecord, openid, originalPending || pendingRecord);
         tombstonedLearningRecords += 1;
         return;
       }
@@ -815,7 +840,7 @@ const retryPendingSyncs = async (options = {}) => {
       promises.push(syncLearningRecord(pendingRecord, {
         accountId: openid,
         accountSession,
-        pendingSnapshot: pendingRecord,
+        pendingSnapshot: originalPending || pendingRecord,
         tombstoneMap
       }));
     });
@@ -1291,10 +1316,20 @@ const syncLearningRecord = async (record, options = {}) => {
   const db = ensureDb();
   const openid = normalizeAccountId(options.accountId || getOpenId());
   const operationOptions = captureOperationOptions(options, openid);
+  const legacyCloudDocId = getLegacyCloudDocumentId(record);
+  let legacyResolved = false;
+  if (record && !descriptorForLearningRecord(record)) {
+    if (!accountSideEffectsAreCurrent(operationOptions)) return { skipped: true, reason: 'account_session_changed' };
+    const prepared = prepareLegacyRecord(record, { accountId: openid });
+    if (!prepared.ready) return { skipped: true, quarantined: true, reason: prepared.reason };
+    record = prepared.record;
+    legacyResolved = true;
+  }
   if (!db || !openid || !record) {
     console.warn('[cloud-sync] syncLearningRecord 跳过: db=', !!db, 'openid=', !!openid, 'record=', !!record);
     if (record) {
-      markLearningRecordPending(record, openid || getStudentOwnerForPending(record));
+      markLearningRecordPending(legacyCloudDocId ? { ...record, [DOC_FIELD]: legacyCloudDocId } : record,
+        openid || getStudentOwnerForPending(record));
     } else {
       markPendingSync();
     }
@@ -1303,7 +1338,10 @@ const syncLearningRecord = async (record, options = {}) => {
 
   const incomingHadReliableUpdatedAt = resolveUpdatedAt(record) > 0;
   const cleanRecord = withUpdatedAt({ ...record });
-  const stableRecordId = ensureLearningRecordId(cleanRecord);
+  // Resolve historical identity before stripping CloudBase metadata. An old
+  // record's logical alias (or _id fallback) must also match its tombstone.
+  const descriptor = descriptorForLearningRecord(record);
+  const stableRecordId = descriptor ? descriptor.entityId : ensureLearningRecordId(cleanRecord);
   cleanRecord.id = stableRecordId;
   const recordStudentId = cleanRecord.studentId || cleanRecord.student_id || '';
   const displayNames = recordStudentId ? getDisplayNames(recordStudentId) : { studentName: '', teacherName: '' };
@@ -1313,6 +1351,9 @@ const syncLearningRecord = async (record, options = {}) => {
   delete cleanRecord._openid;
   delete cleanRecord._id;
   delete cleanRecord._pendingVersion;
+  delete cleanRecord[REF_FIELD];
+  delete cleanRecord[STATE_FIELD];
+  delete cleanRecord[DOC_FIELD];
 
   const pendingAtStart = options.pendingSnapshot
     ? { ...options.pendingSnapshot }
@@ -1322,7 +1363,7 @@ const syncLearningRecord = async (record, options = {}) => {
   );
 
   try {
-    const tombstoneMap = options.tombstoneMap instanceof Map
+    const tombstoneMap = !legacyResolved && options.tombstoneMap instanceof Map
       ? options.tombstoneMap
       : await loadTombstoneMap([descriptorForLearningRecord(cleanRecord)]);
     const tombstoneDescriptor = descriptorForLearningRecord(cleanRecord);
@@ -1344,7 +1385,7 @@ const syncLearningRecord = async (record, options = {}) => {
       return { skipped: true, reason: 'account_session_changed' };
     }
 
-    const docId = buildScopedDocId(openid, 'record', stableRecordId);
+    let docId = buildScopedDocId(openid, 'record', stableRecordId);
     const incomingWriteData = {
       ...cleanRecord,
       ...(displayNames.studentName ? { student_name: displayNames.studentName } : {}),
@@ -1353,11 +1394,32 @@ const syncLearningRecord = async (record, options = {}) => {
       id: stableRecordId
     };
 
-    let cloudData = {};
+    let cloudData = null;
     let exists = true;
+    if (legacyCloudDocId && legacyCloudDocId !== docId) {
+      try {
+        const legacyResult = await db.collection('learning_records').doc(legacyCloudDocId).get();
+        const legacyData = legacyResult && legacyResult.data;
+        const legacyDescriptor = descriptorForLearningRecord(legacyData);
+        const legacyOwner = String(legacyData && (legacyData.teacher_id || legacyData._openid) || '');
+        const sourceOwner = String(record.accountId || record.teacher_id || record._openid || '');
+        if (!legacyData || legacyOwner !== openid || (sourceOwner && sourceOwner !== openid) ||
+            !legacyDescriptor || legacyDescriptor.entityId !== stableRecordId ||
+            String(legacyData.studentId || legacyData.student_id || '') !== String(recordStudentId) ||
+            String(legacyData.wordbookId || legacyData.wordbook_id || '') !== String(cleanRecord.wordbookId || cleanRecord.wordbook_id || '')) {
+          return { skipped: true, quarantined: true, reason: 'legacy_cloud_document_identity_conflict' };
+        }
+        cloudData = legacyData;
+        docId = legacyCloudDocId;
+      } catch (legacyError) {
+        if (!legacyError || legacyError.errCode !== -1) throw legacyError;
+      }
+    }
     try {
-      const res = await db.collection('learning_records').doc(docId).get();
-      cloudData = (res && res.data) ? res.data : {};
+      if (!cloudData) {
+        const res = await db.collection('learning_records').doc(docId).get();
+        cloudData = (res && res.data) ? res.data : {};
+      }
     } catch (getError) {
       if (getError && getError.errCode === -1) {
         exists = false;
@@ -1366,19 +1428,25 @@ const syncLearningRecord = async (record, options = {}) => {
       }
     }
 
+    if (!exists && legacyCloudDocId) {
+      // A missing historical document is not proof that it was never uploaded.
+      // Preserve the source/pending rather than inventing another location.
+      return { skipped: true, quarantined: true, reason: 'legacy_cloud_document_missing' };
+    }
     if (exists) {
       const mergedRecord = mergeLearningRecordForWrite(cloudData, incomingWriteData, {
         incomingHadReliableUpdatedAt
       });
+      const writeData = { ...mergedRecord, teacher_id: openid, id: stableRecordId };
+      if (docId === legacyCloudDocId && !cloudData.id && !cloudData.recordId) {
+        // Keep a proven old physical-document layout recognizable on another
+        // device. Do not manufacture a normal-schema id field in that legacy
+        // document; its original record_id/_id remains the event authority.
+        delete writeData.id;
+      }
       await db.collection('learning_records')
         .doc(docId)
-        .set({
-          data: {
-            ...mergedRecord,
-            teacher_id: openid,
-            id: stableRecordId
-          }
-        });
+        .set({ data: writeData });
     } else {
       await db.collection('learning_records')
         .doc(docId)
@@ -1395,7 +1463,7 @@ const syncLearningRecord = async (record, options = {}) => {
     return { ok: true };
   } catch (error) {
     console.warn('[cloud-sync] failed to sync learning record:', error);
-    const queued = queuePendingLearningRecord(cleanRecord, openid);
+    const queued = queuePendingLearningRecord(legacyCloudDocId ? { ...cleanRecord, [DOC_FIELD]: legacyCloudDocId } : cleanRecord, openid);
     if (accountSideEffectsAreCurrent(operationOptions)) {
       if (!queued || queued.added) markPendingSync();
       else _updateSyncStatus({ lastFail: Date.now() });
@@ -1626,7 +1694,7 @@ const syncLearningProgress = (studentId, progressData, options = {}) => {
       studentId,
       progressData,
       studentMastery: wordMastery[studentId],
-      learningRecords
+      learningRecords: learningRecords.filter(record => descriptorForLearningRecord(record))
     });
 
     const lp = wx.getStorageSync('learningProgress') || {};
@@ -1950,7 +2018,7 @@ const syncAllLocalLearningRecords = async () => {
   }
 
   try {
-    const learningRecords = wx.getStorageSync('learningRecords') || [];
+    const learningRecords = prepareStoredLegacyRecords(openid);
     if (!Array.isArray(learningRecords) || learningRecords.length === 0) {
       console.log('[cloud-sync] syncAllLocalLearningRecords: 本地无学习记录');
       return { skipped: true, reason: 'empty' };

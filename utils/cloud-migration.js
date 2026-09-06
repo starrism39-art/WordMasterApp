@@ -44,6 +44,7 @@ const {
 } = require('./learning-progress.js');
 const { createCloudReadOnlyResult, isCloudReadOnlyMode } = require('./cloud-mode.js');
 const { restoreCurrentContextFromSyncedData } = require('./learning-context.js');
+const { prepareStoredLegacyRecords, DOC_FIELD, getLegacyCloudDocumentId } = require('./legacy-record-identity.js');
 const {
   ENTITY_TYPES,
   descriptorForLearningRecord,
@@ -583,9 +584,10 @@ const performFullPull = async (openid, requestSession) => {
 
     const cloudRecords = (recordDocs || []).map((doc) => {
       const cleaned = stripMeta(doc);
-      if (!cleaned.id && doc._id) {
-        cleaned.id = String(doc._id);
-      }
+      const descriptor = descriptorForLearningRecord(doc);
+      if (descriptor) cleaned.id = descriptor.entityId;
+      const legacyDocumentId = getLegacyCloudDocumentId(doc);
+      if (legacyDocumentId) cleaned[DOC_FIELD] = legacyDocumentId;
       return cleaned;
     }).filter((record) => !hasTombstone(
       tombstoneMap,
@@ -605,7 +607,7 @@ const performFullPull = async (openid, requestSession) => {
 
     // ---- 智能合并：本地数据 + 云端数据，本地未同步的条目不丢失 ----
     const localStudents = Array.isArray(wx.getStorageSync('students')) ? wx.getStorageSync('students') : [];
-    const localRecords = Array.isArray(wx.getStorageSync('learningRecords')) ? wx.getStorageSync('learningRecords') : [];
+    const localRecords = prepareStoredLegacyRecords(openid);
     const localProgress = wx.getStorageSync('learningProgress') || {};
     const localMastery = wx.getStorageSync('wordMastery') || {};
 
@@ -642,7 +644,18 @@ const performFullPull = async (openid, requestSession) => {
     const normalizedCloudStudents = (cloudStudents || []).map(normalizeStudentForMerge);
 
     const mergedStudents = mergeById(normalizedLocalStudents, normalizedCloudStudents, 'student_id');
-    const mergedRecords = mergeById(activeLocalRecords, cloudRecords, 'id');
+    const normalizedLocalRecords = activeLocalRecords.map((record) => {
+      const descriptor = descriptorForLearningRecord(record);
+      return descriptor ? { ...record, id: descriptor.entityId } : record;
+    });
+    const mergedRecords = mergeById(
+      normalizedLocalRecords.filter((record) => descriptorForLearningRecord(record)),
+      cloudRecords,
+      'id'
+    );
+    // No trustworthy identity means no trustworthy deduplication. Preserve
+    // these historical objects rather than silently dropping or guessing IDs.
+    mergedRecords.push(...normalizedLocalRecords.filter((record) => !descriptorForLearningRecord(record)));
 
     console.log('[cloud-sync] 拉取详情: students 云端=' + cloudStudents.length + ' 本地=' + localStudents.length +
       ' | learning_records 云端=' + cloudRecords.length + ' 本地=' + localRecords.length +
@@ -671,7 +684,8 @@ const performFullPull = async (openid, requestSession) => {
     }
 
     try {
-      mergedProgress = reconcileLearningProgressMap(mergedProgress, mergedMastery, mergedRecords);
+      mergedProgress = reconcileLearningProgressMap(mergedProgress, mergedMastery,
+        mergedRecords.filter(record => descriptorForLearningRecord(record)));
     } catch (e) {
       console.error('[cloud-sync] 根据原始明细重算学习进度失败，保留合并结果:', e);
     }
@@ -1115,7 +1129,7 @@ const migrateLocalDataToCloud = async (options = {}) => {
 
     const selectedLocalData = selectLocalDataForMigration(openid, {
       students: wx.getStorageSync('students'),
-      learningRecords: wx.getStorageSync('learningRecords'),
+      learningRecords: prepareStoredLegacyRecords(openid),
       learningProgress: wx.getStorageSync('learningProgress'),
       wordMastery: wx.getStorageSync('wordMastery')
     });
@@ -1189,6 +1203,8 @@ const migrateLocalDataToCloud = async (options = {}) => {
           recordSynced++;
         } else if (result && result.tombstoned) {
           console.log('[cloud-migration] learning_record tombstoned, skipped:', i);
+        } else if (result && result.quarantined) {
+          console.log('[cloud-migration] legacy learning_record retained locally; automatic upload deferred:', i, result.reason);
         } else {
           recordFailed++;
           console.warn('[cloud-migration] learning_record 返回未成功:', i, result);
