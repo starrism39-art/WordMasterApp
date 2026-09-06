@@ -9,7 +9,11 @@ const WordbookLoader = require('./data/wordbook-loader.js');
 const DataMigration = require('./utils/data-migration.js');
 
 // 引入云同步模块
-const { syncLearningRecord, syncLearningProgress } = require('./utils/cloud-sync.js');
+const {
+  registerNetworkReconnectSync,
+  syncLearningRecord,
+  syncLearningProgress
+} = require('./utils/cloud-sync.js');
 const {
   reconcileLearningProgressMap,
   reconcileStudentLearningProgress
@@ -94,6 +98,10 @@ App({
       this.normalizeStudentsStorage();
       // 初始化事件系统
       this.initEventSystem();
+      // 网络由离线恢复时复用完整登录同步链路：先 Full Pull，再安全重试 pending。
+      if (typeof registerNetworkReconnectSync === 'function') {
+        registerNetworkReconnectSync();
+      }
       // 初始化词书加载器
       this.initWordbookLoader();
       // 启动阶段做静默检查，避免真机启动期弹窗/重任务触发 timeout

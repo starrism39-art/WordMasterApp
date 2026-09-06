@@ -58,12 +58,16 @@ const queuePendingWordMasteryRecords = (studentId, wordbookId, wordRecordsMap, a
         buildPendingMasteryKey(studentId, wordbookId, wordId),
         accountId
       );
+      const existingVersion = Number(
+        pendingWords[pendingKey] && pendingWords[pendingKey]._pendingVersion
+      ) || 0;
       pendingWords[pendingKey] = {
         ...wordRecord,
         student_id: String(studentId),
         wordbook_id: String(wordbookId),
         word_id: String(wordId),
-        ...(accountId ? { accountId: String(accountId) } : {})
+        ...(accountId ? { accountId: String(accountId) } : {}),
+        _pendingVersion: existingVersion + 1
       };
       queued++;
     });
@@ -71,6 +75,71 @@ const queuePendingWordMasteryRecords = (studentId, wordbookId, wordRecordsMap, a
     return queued;
   } catch (e) {
     console.warn('[cloud-sync] failed to persist pending mastery records:', e);
+    return 0;
+  }
+};
+
+const clonePendingSnapshot = (value) => {
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch (error) {
+    return value && typeof value === 'object' ? { ...value } : value;
+  }
+};
+
+const isSamePendingWordMastery = (currentPending, retrySnapshot) => {
+  if (!currentPending || !retrySnapshot) return false;
+  if (getPendingAccountId(currentPending) !== getPendingAccountId(retrySnapshot)) return false;
+  if (String(currentPending.student_id || currentPending.studentId || '') !==
+    String(retrySnapshot.student_id || retrySnapshot.studentId || '')) return false;
+  if (String(currentPending.wordbook_id || currentPending.wordbookId || '') !==
+    String(retrySnapshot.wordbook_id || retrySnapshot.wordbookId || '')) return false;
+  if (String(currentPending.word_id || currentPending.wordId || '') !==
+    String(retrySnapshot.word_id || retrySnapshot.wordId || '')) return false;
+  const currentVersion = Number(currentPending._pendingVersion || 0) || 0;
+  const retryVersion = Number(retrySnapshot._pendingVersion || 0) || 0;
+  if (currentVersion > 0 || retryVersion > 0) return currentVersion === retryVersion;
+  return JSON.stringify(currentPending) === JSON.stringify(retrySnapshot);
+};
+
+const capturePendingWordMasterySnapshots = (studentId, wordbookId, wordIds, accountId) => {
+  try {
+    const pendingWords = wx.getStorageSync('pendingWordMasterySync') || {};
+    const baseKeys = new Set((wordIds || []).map((wordId) => (
+      buildPendingMasteryKey(studentId, wordbookId, wordId)
+    )));
+    return Object.keys(pendingWords).filter((pendingKey) => {
+      const matchesBaseKey = Array.from(baseKeys).some((baseKey) => (
+        pendingKey === baseKey || pendingKey.indexOf(baseKey + '__account__') === 0
+      ));
+      return matchesBaseKey && pendingBelongsToAccount(pendingWords[pendingKey], accountId);
+    }).map((pendingKey) => ({
+      pendingKey,
+      pendingSnapshot: clonePendingSnapshot(pendingWords[pendingKey])
+    }));
+  } catch (error) {
+    return [];
+  }
+};
+
+const removePendingWordMasterySnapshots = (pendingEntries) => {
+  if (!Array.isArray(pendingEntries) || pendingEntries.length === 0) return 0;
+  try {
+    const remaining = wx.getStorageSync('pendingWordMasterySync') || {};
+    let removed = 0;
+    pendingEntries.forEach(({ pendingKey, pendingSnapshot }) => {
+      if (!isSamePendingWordMastery(remaining[pendingKey], pendingSnapshot)) return;
+      delete remaining[pendingKey];
+      removed += 1;
+    });
+    if (removed === 0) return 0;
+    if (Object.keys(remaining).length === 0) {
+      wx.removeStorageSync('pendingWordMasterySync');
+    } else {
+      wx.setStorageSync('pendingWordMasterySync', remaining);
+    }
+    return removed;
+  } catch (error) {
     return 0;
   }
 };
@@ -242,7 +311,7 @@ const captureOperationOptions = (options, accountId) => {
   };
 };
 
-const getMasteryAtomCapability = async () => {
+const getMasteryAtomCapability = async (options = {}) => {
   if (!wx.cloud || typeof wx.cloud.callFunction !== 'function') {
     return { supported: false, reason: 'call_function_unavailable' };
   }
@@ -250,6 +319,7 @@ const getMasteryAtomCapability = async () => {
   const now = Date.now();
   if (
     masteryAtomCapabilityCache
+    && !(options.refreshFailed === true && masteryAtomCapabilityCache.supported !== true)
     && now - masteryAtomCapabilityCache.checkedAt
       < (masteryAtomCapabilityCache.supported
         ? MASTERY_ATOM_CAPABILITY_TTL_MS
@@ -366,6 +436,45 @@ const markSyncSuccess = (count) => {
   return refreshPendingSyncStatus('success');
 };
 
+let networkReconnectListenerRegistered = false;
+let networkReconnectFlight = null;
+
+const runNetworkReconnectSync = (options = {}) => {
+  if (networkReconnectFlight) return networkReconnectFlight;
+  const syncNow = typeof options.syncNow === 'function'
+    ? options.syncNow
+    : () => {
+        // Dynamic require avoids a module-initialization cycle: login-service
+        // already depends on this module for pending retry.
+        const loginService = require('./login-service.js');
+        return loginService.doSilentLogin();
+      };
+  const flight = Promise.resolve()
+    .then(() => syncNow())
+    .catch((error) => {
+      console.warn('[cloud-sync] reconnect sync failed; pending retained:', error);
+      return { ok: false, error };
+    })
+    .finally(() => {
+      if (networkReconnectFlight === flight) networkReconnectFlight = null;
+    });
+  networkReconnectFlight = flight;
+  return flight;
+};
+
+const registerNetworkReconnectSync = (options = {}) => {
+  if (networkReconnectListenerRegistered) return true;
+  if (typeof wx === 'undefined' || typeof wx.onNetworkStatusChange !== 'function') {
+    return false;
+  }
+  wx.onNetworkStatusChange((status) => {
+    if (!status || status.isConnected !== true) return;
+    runNetworkReconnectSync(options);
+  });
+  networkReconnectListenerRegistered = true;
+  return true;
+};
+
 const PENDING_LEARNING_RECORDS_KEY = 'pendingLearningRecordSync';
 const PENDING_PREVIEW_STATE_KEY = 'pendingPreviewStateSync';
 
@@ -391,6 +500,9 @@ const queuePendingPreviewState = (studentId, wordbookId, previewData, accountId)
     const pendingStates = readPendingPreviewStates();
     const storageKey = selectPendingStorageKey(pendingStates, pendingKey, accountId);
     const added = !Object.prototype.hasOwnProperty.call(pendingStates, storageKey);
+    const existingVersion = Number(
+      pendingStates[storageKey] && pendingStates[storageKey].pendingVersion
+    ) || 0;
     pendingStates[storageKey] = {
       studentId: String(studentId),
       wordbookId: String(wordbookId),
@@ -401,6 +513,7 @@ const queuePendingPreviewState = (studentId, wordbookId, previewData, accountId)
         reset: previewData.reset === true
       },
       failedAt: Date.now(),
+      pendingVersion: existingVersion + 1,
       ...(accountId ? { accountId: String(accountId) } : {})
     };
     wx.setStorageSync(PENDING_PREVIEW_STATE_KEY, pendingStates);
@@ -409,6 +522,28 @@ const queuePendingPreviewState = (studentId, wordbookId, previewData, accountId)
     console.warn('[cloud-sync] failed to persist pending preview state:', e);
     return null;
   }
+};
+
+const isSamePendingPreviewState = (currentPending, retrySnapshot) => {
+  if (!currentPending || !retrySnapshot) return false;
+  if (getPendingAccountId(currentPending) !== getPendingAccountId(retrySnapshot)) return false;
+  if (String(currentPending.studentId || '') !== String(retrySnapshot.studentId || '')) return false;
+  if (String(currentPending.wordbookId || '') !== String(retrySnapshot.wordbookId || '')) return false;
+  const currentVersion = Number(currentPending.pendingVersion || 0) || 0;
+  const retryVersion = Number(retrySnapshot.pendingVersion || 0) || 0;
+  if (currentVersion > 0 || retryVersion > 0) return currentVersion === retryVersion;
+  return JSON.stringify(currentPending) === JSON.stringify(retrySnapshot);
+};
+
+const findPendingPreviewStateSnapshot = (studentId, wordbookId, accountId) => {
+  const pendingKey = buildPendingPreviewStateKey(studentId, wordbookId);
+  if (!pendingKey) return null;
+  const pendingStates = readPendingPreviewStates();
+  const key = Object.keys(pendingStates).find((candidateKey) => (
+    (candidateKey === pendingKey || candidateKey.indexOf(pendingKey + '__account__') === 0) &&
+    pendingBelongsToAccount(pendingStates[candidateKey], accountId)
+  ));
+  return key ? { key, value: clonePendingSnapshot(pendingStates[key]) } : null;
 };
 
 const markPreviewStatePending = (studentId, wordbookId, previewData, accountId) => {
@@ -420,12 +555,20 @@ const markPreviewStatePending = (studentId, wordbookId, previewData, accountId) 
   }
 };
 
-const removePendingPreviewState = (studentId, wordbookId, accountId) => {
+const removePendingPreviewState = (studentId, wordbookId, accountId, expectedPending) => {
   const pendingKey = buildPendingPreviewStateKey(studentId, wordbookId);
   if (!pendingKey) return false;
   try {
     const pendingStates = readPendingPreviewStates();
-    const removed = removePendingEntriesForAccount(pendingStates, pendingKey, accountId);
+    let removed = false;
+    Object.keys(pendingStates).forEach((key) => {
+      if (key !== pendingKey && key.indexOf(pendingKey + '__account__') !== 0) return;
+      if (!pendingBelongsToAccount(pendingStates[key], accountId)) return;
+      if (expectedPending !== undefined &&
+        !isSamePendingPreviewState(pendingStates[key], expectedPending)) return;
+      delete pendingStates[key];
+      removed = true;
+    });
     if (!removed) return false;
     if (Object.keys(pendingStates).length === 0) {
       wx.removeStorageSync(PENDING_PREVIEW_STATE_KEY);
@@ -723,10 +866,13 @@ const retryPendingSyncs = async (options = {}) => {
         }
         const key = sid + '|' + wid;
         if (!byStudentWordbook[key]) {
-          byStudentWordbook[key] = { records: {}, pendingKeys: [] };
+          byStudentWordbook[key] = { records: {}, pendingEntries: [] };
         }
         byStudentWordbook[key].records[wordId] = record;
-        byStudentWordbook[key].pendingKeys.push(pendingKey);
+        byStudentWordbook[key].pendingEntries.push({
+          pendingKey,
+          pendingSnapshot: clonePendingSnapshot(record)
+        });
       });
 
       if (orphanCount > 0) {
@@ -739,18 +885,12 @@ const retryPendingSyncs = async (options = {}) => {
         promises.push(
           syncWordMasteryBatch(studentId, wordbookId, group.records, {
             accountId: openid,
-            accountSession
+            accountSession,
+            pendingSnapshots: group.pendingEntries,
+            refreshFailedCapability: true
           }).then((result) => {
             if (!result || result.failed !== 0 || result.skipped || result.error) return;
-            const remaining = wx.getStorageSync('pendingWordMasterySync') || {};
-            group.pendingKeys.forEach((pendingKey) => {
-              delete remaining[pendingKey];
-            });
-            if (Object.keys(remaining).length === 0) {
-              wx.removeStorageSync('pendingWordMasterySync');
-            } else {
-              wx.setStorageSync('pendingWordMasterySync', remaining);
-            }
+            removePendingWordMasterySnapshots(group.pendingEntries);
           })
         );
       });
@@ -805,7 +945,7 @@ const retryPendingSyncs = async (options = {}) => {
         pending.studentId,
         pending.wordbookId,
         pending.previewData,
-        { accountId: openid, accountSession }
+        { accountId: openid, accountSession, pendingSnapshot: pending }
       ));
     });
   } catch (e) {
@@ -1077,6 +1217,7 @@ const syncWordMasteryViaAtom = async (
       const cleanRecord = withUpdatedAt(stripSystemFields(wordRecordsMap[wordId]));
       [
         'accountId',
+        '_pendingVersion',
         'teacher_id', 'teacherId',
         'student_id', 'studentId',
         'wordbook_id', 'wordbookId',
@@ -1296,6 +1437,12 @@ const syncWordMasteryBatch = async (studentId, wordbookId, wordRecordsMap, optio
   if (wordIds.length === 0) {
     return { skipped: true, reason: 'empty_batch' };
   }
+  const pendingSnapshotsAtStart = Array.isArray(options.pendingSnapshots)
+    ? options.pendingSnapshots.map((entry) => ({
+        pendingKey: entry.pendingKey,
+        pendingSnapshot: clonePendingSnapshot(entry.pendingSnapshot)
+      }))
+    : capturePendingWordMasterySnapshots(studentId, wordbookId, wordIds, openid);
 
   const collection = db.collection('word_mastery');
   const displayNames = getDisplayNames(studentId);
@@ -1332,6 +1479,7 @@ const syncWordMasteryBatch = async (studentId, wordbookId, wordRecordsMap, optio
           ...displayNames
         };
         delete data.accountId;
+        delete data._pendingVersion;
 
         return collection.doc(docId).set({ data })
           .then(() => ({ wordId, ok: true }))
@@ -1354,6 +1502,7 @@ const syncWordMasteryBatch = async (studentId, wordbookId, wordRecordsMap, optio
             ...withUpdatedAt(wordRecord)
           };
           delete data.accountId;
+          delete data._pendingVersion;
           return collection.doc(docId).set({ data })
             .then(() => ({ wordId, ok: true }))
             .catch((error) => {
@@ -1372,7 +1521,9 @@ const syncWordMasteryBatch = async (studentId, wordbookId, wordRecordsMap, optio
   const BATCH_SIZE = 5;
   const allResults = [];
 
-  const masteryAtomCapability = await getMasteryAtomCapability();
+  const masteryAtomCapability = await getMasteryAtomCapability({
+    refreshFailed: options.refreshFailedCapability === true
+  });
   if (masteryAtomCapability.supported) {
     const atomResults = await syncWordMasteryViaAtom(
       studentId,
@@ -1415,28 +1566,26 @@ const syncWordMasteryBatch = async (studentId, wordbookId, wordRecordsMap, optio
   if (succeeded.length > 0) {
     if (accountSideEffectsAreCurrent(operationOptions)) markSyncSuccess(succeeded.length);
   }
-  // 清理 pendingWordMasterySync 中已跳过（云端更新/已存在）的记录
+  // 仅清理本次开始时看到的同一 pending 版本。若上传期间用户又产生了
+  // 同 key 新状态，旧回调不得把新 pending 一并删掉。
   if (totalSkipped > 0) {
     try {
-      const pendingWords = wx.getStorageSync('pendingWordMasterySync') || {};
+      const skippedWordIds = new Set(
+        [...skippedCloudFresher, ...skippedAlreadyExists]
+          .filter((item) => item && item.wordId)
+          .map((item) => String(item.wordId))
+      );
+      const skippedSnapshots = pendingSnapshotsAtStart.filter(({ pendingSnapshot }) => (
+        skippedWordIds.has(String(
+          pendingSnapshot && (pendingSnapshot.word_id || pendingSnapshot.wordId) || ''
+        ))
+      ));
+      removePendingWordMasterySnapshots(skippedSnapshots);
+      /* Legacy unversioned entries are covered by exact snapshot equality above. */
       [...skippedCloudFresher, ...skippedAlreadyExists].forEach((f) => {
         if (!f || !f.wordId) return;
-        const baseKey = buildPendingMasteryKey(studentId, wordbookId, f.wordId);
-        removePendingEntriesForAccount(pendingWords, baseKey, openid);
-        const legacyRecord = pendingWords[f.wordId];
-        const legacyStudentId = legacyRecord && (legacyRecord.student_id || legacyRecord.studentId);
-        const legacyWordbookId = legacyRecord && (legacyRecord.wordbook_id || legacyRecord.wordbookId);
-        if (legacyRecord && pendingBelongsToAccount(legacyRecord, openid) &&
-          ((!legacyStudentId || String(legacyStudentId) === String(studentId)) &&
-            (!legacyWordbookId || String(legacyWordbookId) === String(wordbookId)))) {
-          delete pendingWords[f.wordId];
-        }
+        console.log('[cloud-sync] mastery pending safely resolved:', f.wordId);
       });
-      if (Object.keys(pendingWords).length === 0) {
-        wx.removeStorageSync('pendingWordMasterySync');
-      } else {
-        wx.setStorageSync('pendingWordMasterySync', pendingWords);
-      }
       if (accountSideEffectsAreCurrent(operationOptions)) markSyncSuccess(totalSkipped);
     } catch (e) { /* ignore */ }
   }
@@ -1653,6 +1802,12 @@ const syncPreviewState = (studentId, wordbookId, previewData, options = {}) => {
   }
 
   const docId = buildScopedDocId(openid, 'preview', studentId, wordbookId);
+  const pendingAtStart = options.pendingSnapshot
+    ? { value: clonePendingSnapshot(options.pendingSnapshot) }
+    : findPendingPreviewStateSnapshot(studentId, wordbookId, openid);
+  const expectedPending = options.pendingSnapshot || (
+    pendingAtStart && pendingAtStart.value ? pendingAtStart.value : false
+  );
   const displayNames = getDisplayNames(studentId);
   const incomingOrder = previewData.order || [];
   const incomingExcluded = previewData.excluded || [];
@@ -1717,7 +1872,12 @@ const syncPreviewState = (studentId, wordbookId, previewData, options = {}) => {
         'mastery=', Object.keys(incomingMastery).length,
         'order=', incomingOrder.length,
         'excluded=', incomingExcluded.length);
-      const removedPendingState = removePendingPreviewState(studentId, wordbookId, openid);
+      const removedPendingState = removePendingPreviewState(
+        studentId,
+        wordbookId,
+        openid,
+        expectedPending
+      );
       if (removedPendingState) {
         if (accountSideEffectsAreCurrent(operationOptions)) markSyncSuccess(1);
       } else if (accountSideEffectsAreCurrent(operationOptions)) {
@@ -1828,6 +1988,7 @@ module.exports = {
   discardLearningRecordAfterTombstone,
   syncStudentStatistics,
   retryPendingSyncs,
+  registerNetworkReconnectSync,
   markPendingSync,
   getSyncStatus,
   markSyncSuccess,
