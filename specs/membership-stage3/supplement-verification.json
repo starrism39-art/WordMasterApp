@@ -1,0 +1,217 @@
+{
+  "checkedAt": "2026-09-08T12:58:07.119Z",
+  "workspace": "D:\\WordMasterApp-Membership-Stage2-20260908",
+  "branch": "codex/membership-stage2-20260908",
+  "head": "14129f96d8581968e4fdad8551cc1a47d7a4aa55",
+  "backup": "D:/WordMasterApp-Membership-Stage3-Checkpoint-20260908-204957",
+  "stage2": {
+    "tests": 72,
+    "pass": 72,
+    "fail": 0,
+    "todo": 0
+  },
+  "stage3": {
+    "tests": 87,
+    "pass": 86,
+    "fail": 0,
+    "todo": 1
+  },
+  "syntaxFiles": 15,
+  "preservedStage2": [
+    {
+      "file": "cloudfunctions/membership-core/access.js",
+      "sha256": "d40176ecf79ffc5d75d1d0413518ced3c31be04222cf6d046ea2010d7d41239f",
+      "unchanged": true
+    },
+    {
+      "file": "cloudfunctions/membership-core/constants.js",
+      "sha256": "1bdc69b38776180176adb86125e172659c4551845cdb4b7c3873e813aa74c2da",
+      "unchanged": true
+    },
+    {
+      "file": "cloudfunctions/membership-core/ledger.js",
+      "sha256": "2dec26c89da042d8fb7f66c2e7257715a549b1d3be3c285fc5974da02a9c6817",
+      "unchanged": true
+    },
+    {
+      "file": "cloudfunctions/membership-core/model.js",
+      "sha256": "7e8d11c068df19592566a06880a06e096f4868556c9f954e34eee74be344e535",
+      "unchanged": true
+    },
+    {
+      "file": "cloudfunctions/membership-core/orders.js",
+      "sha256": "7723887259f5e080b55e5cab55f835cb92539af8ded24d4a4bb5ee0c999045a9",
+      "unchanged": true
+    },
+    {
+      "file": "cloudfunctions/membership-core/repository.js",
+      "sha256": "dd59aa675abb115d2c5701118ba88c81be4ffcefec3fd96b1f522eb169a6c0ef",
+      "unchanged": true
+    },
+    {
+      "file": "cloudfunctions/membership-core/service.js",
+      "sha256": "12b7378d3a1cbb7d83b03f09929bf05fe2a58f4c858c05500f5970f82721907f",
+      "unchanged": true
+    },
+    {
+      "file": "cloudfunctions/membership-core/time.js",
+      "sha256": "1c974b9da285dd03dc482ae1284e93b0649c93df0cb1aa65b7d40ba80d51e568",
+      "unchanged": true
+    },
+    {
+      "file": "specs/membership-stage2/README.md",
+      "sha256": "b331b9c00f92ab9453dd9c23a79f42c08ad9671bdc5fe461f63ed1ceb0ceff44",
+      "unchanged": true
+    },
+    {
+      "file": "specs/membership-stage2/verification.json",
+      "sha256": "2e7c60cc6b089c8269d6d90f6d76abfc66e2302934fea29b293b61a3dd05d0da",
+      "unchanged": true
+    },
+    {
+      "file": "test/membership-stage2/boundaries.test.js",
+      "sha256": "6a5fd7e19d7cbbf8a47fc5db0f6bdd77790511db2888012c30ef4a9d575f1389",
+      "unchanged": true
+    },
+    {
+      "file": "test/membership-stage2/fixtures.js",
+      "sha256": "91f19a011e67dcd040291e4e70fa3eddd3654f271b9b9976c06001c36e8bacec",
+      "unchanged": true
+    },
+    {
+      "file": "test/membership-stage2/ledger.test.js",
+      "sha256": "21cb5231f2c6459f2c4c30a212b5d5ff5c5208646df6739b23bb300f1b554149",
+      "unchanged": true
+    },
+    {
+      "file": "test/membership-stage2/orders.test.js",
+      "sha256": "b86d8aec4e0306129755f64e1bad566705bc8d0db0dffae6eb98fcd2e550ddae",
+      "unchanged": true
+    },
+    {
+      "file": "test/membership-stage2/service.test.js",
+      "sha256": "09a9abf4ba69321bc0451e6d1b8a10d8c9bb041972864c1a8a7e0b22b8edac75",
+      "unchanged": true
+    }
+  ],
+  "files": [
+    {
+      "file": "cloudfunctions/membership-payment/config.example.js",
+      "sha256": "6126fb737d9298d897b48608d0c2e5c294cfb014db0d0566c2db0e35836d8078",
+      "change": "modified"
+    },
+    {
+      "file": "cloudfunctions/membership-payment/crypto.js",
+      "sha256": "60b6de064557424d41b69a4b985048a60903e567d78bc9e9edeaf211d42b38c1",
+      "change": "unchanged"
+    },
+    {
+      "file": "cloudfunctions/membership-payment/engine.js",
+      "sha256": "fc181f34d14e7fef1fa3ea3ec5f6ed014fb7197327353ccfa28586a2c0e2d131",
+      "change": "modified"
+    },
+    {
+      "file": "cloudfunctions/membership-payment/handlers.js",
+      "sha256": "e33975fa4a79e00e340d42e5a5915dac98a0bb673155aaf4cedc3f12d5fb98cb",
+      "change": "modified"
+    },
+    {
+      "file": "cloudfunctions/membership-payment/identity.js",
+      "sha256": "a894cd68a27c93a2778c808fb9df0f7bbff070c79b4710b5a649d6eb91039af2",
+      "change": "unchanged"
+    },
+    {
+      "file": "cloudfunctions/membership-payment/protocol.js",
+      "sha256": "46078e8b2e288b2ac3327e6ca71afad1a056aa9229269bf431608b2d1213f923",
+      "change": "modified"
+    },
+    {
+      "file": "cloudfunctions/membership-payment/repository.js",
+      "sha256": "4b7549bca609e2cf02a99d76d10d0260154070c86bb5e6a45810cad5b14a78bc",
+      "change": "unchanged"
+    },
+    {
+      "file": "cloudfunctions/membership-payment/runtime.js",
+      "sha256": "2a36ed06894bddab9e7090d921dda15f5b1421c96dba6cccf5aa133c57dca2ab",
+      "change": "added"
+    },
+    {
+      "file": "cloudfunctions/membership-payment/wechat-api.js",
+      "sha256": "07d42b1b4217c65a3149614b6520482dbef6d7c3156ed4842049287e99cb2a7d",
+      "change": "unchanged"
+    },
+    {
+      "file": "test/membership-stage3/adapters.test.js",
+      "sha256": "4f62f73a7dc93f2f7d8b7f9579952b021f3fda3ddddde165be518cf311dd4b6c",
+      "change": "unchanged"
+    },
+    {
+      "file": "test/membership-stage3/client.test.js",
+      "sha256": "3a2dfbb63194f9b914736f8e4bc9c171ddce4fefd60587992f616b0c56a50a4f",
+      "change": "unchanged"
+    },
+    {
+      "file": "test/membership-stage3/fixtures.js",
+      "sha256": "a7f8238748decd618bfcfab1629cd6c9e5873f41451bd2d3a96e31f5ca2215dc",
+      "change": "modified"
+    },
+    {
+      "file": "test/membership-stage3/payment.test.js",
+      "sha256": "a5d5af5745d9d2ddef7369c525d4af40c186eb776c7832819eefc5beca8d82ca",
+      "change": "modified"
+    },
+    {
+      "file": "test/membership-stage3/supplement.test.js",
+      "sha256": "11e16879b99c9aa50031e8b18984a281653a0e07e0b016ed9b2b3faeb048aa6a",
+      "change": "added"
+    },
+    {
+      "file": "specs/membership-stage3/README.md",
+      "sha256": "8f70728036e929ede7709e925b95e17569cc44586fa7762f9645681848d511c7",
+      "change": "modified"
+    },
+    {
+      "file": "specs/membership-stage3/supplement-stage2.tap",
+      "sha256": "19be62ae98914089f77faac5c9575f49d7b1faf93972c9bdcea87de2caf09eed",
+      "change": "added"
+    },
+    {
+      "file": "specs/membership-stage3/supplement-stage3.tap",
+      "sha256": "5e21668a5bef5704a8f988dc83d69cebec7e5f8c2bded7e72cda81b7adc512f6",
+      "change": "added"
+    },
+    {
+      "file": "specs/membership-stage3/supplement.md",
+      "sha256": "98d46edd810adb541f1281c6d9fadeda83103f21b99330261cda218acd8e76c1",
+      "change": "added"
+    },
+    {
+      "file": "specs/membership-stage3/test-results.tap",
+      "sha256": "3dffca552f4912c8ddf3dac1f1781ad1c8a1f3dcb20ba0d92a22306cc26c3d7b",
+      "change": "unchanged"
+    },
+    {
+      "file": "specs/membership-stage3/verification.json",
+      "sha256": "16e2d6c4622da1b0a975ea3edb4cd2ddef03f1bdd89ccf4627053c019d45995f",
+      "change": "unchanged"
+    },
+    {
+      "file": "utils/membership-payment-service.js",
+      "sha256": "e82750bc42d785136cc8e815e84f793d686f7a12745b11ddd88f5c596617fb4c",
+      "change": "unchanged"
+    }
+  ],
+  "status": "PARTIAL_LOCAL_CONTRACT_PASS_ONE_BINDING_TODO",
+  "realCloudTests": false,
+  "platformOrders": 0,
+  "realPayments": 0,
+  "deployments": 0,
+  "commits": 0,
+  "remaining": [
+    "actual account/mode binding",
+    "independent query-only grant disabled",
+    "deployment bootstrap, credential rotation and scheduler integration",
+    "refund final-fact recovery and candidate scanning",
+    "isolated SDK transaction and permissions verification"
+  ]
+}

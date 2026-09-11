@@ -22,8 +22,13 @@ const {
 // 引入云端词书加载器
 const cloudWordbookLoader = require('./utils/cloud-wordbook-loader.js');
 const { resolveCloudReadOnlyMode } = require('./utils/cloud-mode.js');
+const { createStage5PaymentClient } = require('./utils/membership-stage5-client.js');
 
 App({
+  // Construct on demand; no purchase or cloud call occurs during app startup.
+  getStage5MembershipPaymentClient() {
+    return createStage5PaymentClient();
+  },
   onLaunch: function () {
     // 启动导航由 App 和 Splash 共用同一份一次性状态。
     // pending -> claimed -> completed；离开 Splash 或重试失去资格时直接失效。

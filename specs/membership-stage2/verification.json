@@ -1,0 +1,47 @@
+{
+  "recordedAt": "2026-09-08T08:40:09.784Z",
+  "branch": "codex/membership-stage2-20260908",
+  "base": "14129f96d8581968e4fdad8551cc1a47d7a4aa55",
+  "scope": "Stage2 local core only; no cloud SDK, network, UI integration, deployment, real payment, order creation, commit or push",
+  "latestTestRun": {
+    "command": "node --test test/membership-stage2/ledger.test.js test/membership-stage2/service.test.js test/membership-stage2/orders.test.js test/membership-stage2/boundaries.test.js",
+    "node": "v24.15.0",
+    "total": 72,
+    "pass": 72,
+    "fail": 0,
+    "skipped": 0,
+    "exitCode": 0,
+    "evidence": "Observed execution in current task; suite output is in conversation tool result. No saved full stdout log claimed."
+  },
+  "syntaxChecks": {
+    "files": 13,
+    "failed": 0
+  },
+  "staticBoundaryChecks": {
+    "failed": 0
+  },
+  "trackedChanges": "",
+  "stagedChanges": "",
+  "sourceSha256": {
+    "cloudfunctions/membership-core/access.js": "d40176ecf79ffc5d75d1d0413518ced3c31be04222cf6d046ea2010d7d41239f",
+    "cloudfunctions/membership-core/constants.js": "1bdc69b38776180176adb86125e172659c4551845cdb4b7c3873e813aa74c2da",
+    "cloudfunctions/membership-core/ledger.js": "2dec26c89da042d8fb7f66c2e7257715a549b1d3be3c285fc5974da02a9c6817",
+    "cloudfunctions/membership-core/model.js": "7e8d11c068df19592566a06880a06e096f4868556c9f954e34eee74be344e535",
+    "cloudfunctions/membership-core/orders.js": "7723887259f5e080b55e5cab55f835cb92539af8ded24d4a4bb5ee0c999045a9",
+    "cloudfunctions/membership-core/repository.js": "dd59aa675abb115d2c5701118ba88c81be4ffcefec3fd96b1f522eb169a6c0ef",
+    "cloudfunctions/membership-core/service.js": "12b7378d3a1cbb7d83b03f09929bf05fe2a58f4c858c05500f5970f82721907f",
+    "cloudfunctions/membership-core/time.js": "1c974b9da285dd03dc482ae1284e93b0649c93df0cb1aa65b7d40ba80d51e568",
+    "test/membership-stage2/boundaries.test.js": "6a5fd7e19d7cbbf8a47fc5db0f6bdd77790511db2888012c30ef4a9d575f1389",
+    "test/membership-stage2/fixtures.js": "91f19a011e67dcd040291e4e70fa3eddd3654f271b9b9976c06001c36e8bacec",
+    "test/membership-stage2/ledger.test.js": "21cb5231f2c6459f2c4c30a212b5d5ff5c5208646df6739b23bb300f1b554149",
+    "test/membership-stage2/orders.test.js": "b86d8aec4e0306129755f64e1bad566705bc8d0db0dffae6eb98fcd2e550ddae",
+    "test/membership-stage2/service.test.js": "09a9abf4ba69321bc0451e6d1b8a10d8c9bb041972864c1a8a7e0b22b8edac75"
+  },
+  "notVerified": [
+    "CloudBase actual transactions and database permissions",
+    "platform signatures and trusted receipt adapter",
+    "real teacher records / payments / orders",
+    "shared pages / in-flight sessions / offline client enforcement",
+    "production runtime compatibility"
+  ]
+}

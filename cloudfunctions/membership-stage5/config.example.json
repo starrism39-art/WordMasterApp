@@ -1,0 +1,16 @@
+{
+  "appId": "wx930eccb9442dc8f3",
+  "cloudEnvId": "cloudbase-4gafzdch60ad597b",
+  "offerId": "",
+  "originalId": "",
+  "env": 0,
+  "batchId": "",
+  "source": "real_payment",
+  "processingTeachers": [],
+  "purchaseTeachers": [],
+  "administrators": [],
+  "enabledChannels": [],
+  "purchaseEnabled": false,
+  "batchClosed": false,
+  "launchAt": 0
+}

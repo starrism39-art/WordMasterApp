@@ -36,3 +36,14 @@ storage/
 *.tgz
 *.zip
 test-results/
+
+# Membership local evidence and protected credential containers (not source)
+/specs/membership-stage3/*.tap
+/specs/membership-stage4/*.tap
+/specs/membership-stage5/stage5b-*.txt
+/specs/membership-stage5/TEST-membership-icon-200-v1.png
+*.dpapi
+*.pfx
+*.p12
+*.key
+*.pem

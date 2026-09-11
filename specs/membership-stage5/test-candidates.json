@@ -1,0 +1,35 @@
+{
+  "contractVersion": "stage5a-two-teachers-20260908-v2",
+  "appId": "wx930eccb9442dc8f3",
+  "proposedCloudEnvId": "cloudbase-4gafzdch60ad597b",
+  "isolation": "shared_environment_preferred_pending_safety_gate",
+  "predeploymentGate": "BLOCKED",
+  "managementAuthentication": "READY",
+  "deploymentAuthorized": false,
+  "purchaseEnabled": false,
+  "candidates": [
+    {
+      "candidateId": "stage5_android",
+      "displayName": "张张张123",
+      "primaryDevice": "Android",
+      "crossDevice": "Windows",
+      "identityStatus": "AWAITING_REAL_LOGIN",
+      "openIdFingerprint": null,
+      "teacherIdFingerprint": null,
+      "membershipStatus": null,
+      "studentBaseline": null
+    },
+    {
+      "candidateId": "stage5_ios",
+      "displayName": "教师1111",
+      "primaryDevice": "iPhone",
+      "crossDevice": "Windows",
+      "identityStatus": "AWAITING_REAL_LOGIN",
+      "openIdFingerprint": null,
+      "teacherIdFingerprint": null,
+      "membershipStatus": null,
+      "studentBaseline": null
+    }
+  ],
+  "notes": "候选登记不是可信身份绑定或部署/付款授权。昵称和candidateId不能用于服务端授权。实际OPENID/teacherId仅保存在受保护配置，仓库只记录脱敏指纹。"
+}

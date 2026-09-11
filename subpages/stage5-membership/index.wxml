@@ -1,0 +1,18 @@
+<view class="test-page">
+  <view class="test-label">Stage5 TEST · 受限验收</view>
+  <view class="title">教师会员测试</view>
+  <view class="account">当前账号：{{accountLabel}}</view>
+  <view class="product">
+    <view class="product-name">TEST_teacher_12m_a</view>
+    <view class="price">0.01<text class="unit"> 元</text></view>
+    <view class="duration">购买后 12 个月会员</view>
+    <view class="hint">仅测试白名单可购买。商品、价格与时长由服务端固定配置校验，不关联正式 399 元商品。</view>
+  </view>
+  <view class="status" aria-live="polite">{{message}}</view>
+  <view wx:if="{{membershipStatus}}" class="hint">会员状态：{{membershipStatus}}</view>
+  <view wx:if="{{expiresText}}" class="hint">到期时间：{{expiresText}}（北京时间）</view>
+  <button class="buy" bindtap="buy" loading="{{busy || restoring}}" disabled="{{!loggedIn || busy || locked || restoring}}">{{membershipStatus === 'active' || membershipStatus === 'long_term' ? '会员已生效' : '立即购买'}}</button>
+  <button class="refresh" wx:if="{{loggedIn}}" bindtap="restoreMembership" disabled="{{busy || restoring}}">刷新会员状态</button>
+  <button class="refresh" wx:if="{{orderId}}" bindtap="refreshOrder" disabled="{{busy}}">刷新订单状态</button>
+  <view class="hint">点击后走微信官方支付流程，最终付款确认请由本人完成。结果不明时请勿重复付款。</view>
+</view>

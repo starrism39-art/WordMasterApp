@@ -50,7 +50,8 @@
         "data-repair/data-repair",
         "ui-test/ui-test",
         "announcement-center/announcement-center",
-        "announcement-detail/announcement-detail"
+        "announcement-detail/announcement-detail",
+        "stage5-membership/index"
       ],
       "independent": false
     },
