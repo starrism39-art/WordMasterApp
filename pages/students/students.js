@@ -1,3 +1,4 @@
+const membershipBusiness = require('../../utils/membership-business-client');
 ﻿﻿// pages/students/students.js
 const app = getApp();
 const loginService = require('../../utils/login-service.js');
@@ -130,9 +131,7 @@ Page({
             for (const batch of batches) {
               const nowTs = Date.now();
               await Promise.all(batch.map((studentDoc) =>
-                studentsRef.doc(studentDoc._id).update({
-                  data: { teacher_name: newName, updatedAt: nowTs }
-                })
+                membershipBusiness.call('updateStudentDisplay', { studentId: String(studentDoc.student_id || studentDoc.id), documentId: studentDoc._id, teacherName: newName })
               ));
             }
 

@@ -1,5 +1,6 @@
 // pages/splash/splash.js
 const loginService = require('../../utils/login-service.js');
+const membershipBusiness = require('../../utils/membership-business-client');
 
 Page({
   data: {
@@ -17,7 +18,10 @@ Page({
     const startTime = Date.now();
 
     // 启动静默登录（拉取云端数据）
-    const syncPromise = loginService.doSilentLogin().catch(function(err) {
+    const syncPromise = loginService.doSilentLogin().then(function(result) {
+      if(result && result.ok && !result.blocked) membershipBusiness.openVersion();
+      return result;
+    }).catch(function(err) {
       console.warn('[splash] doSilentLogin 失败（非阻塞）:', err);
       return { ok: false, error: err };
     });

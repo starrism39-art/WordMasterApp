@@ -1,3 +1,4 @@
+const membershipBusiness = require('../../utils/membership-business-client');
 // pages/learning/learning.js
 // 导入词书数据生成函数
 const wordbooksModule = require('../../data/wordbooks.js');
@@ -615,6 +616,7 @@ Page({
     
     // 检查是否成功获取到学生和词书信息
     if (this.data.currentStudent && this.data.currentWordbook) {
+      if (!await membershipBusiness.authorizePage(this, 'learning')) return;
       console.log('成功获取学生和词书信息，开始初始化学习模式:', this.data.learningMode);
       this.setData({
         loading: true,
@@ -1289,7 +1291,8 @@ Page({
   },
 
   // 加载更多单词批次
-  loadMoreWordsBatch: function() {
+  loadMoreWordsBatch: async function() {
+    if (!await membershipBusiness.authorizePage(this, 'learning')) return;
     try {
       const nextBatchIndex = this.data.currentBatchIndex + 1;
       const batchSize = 15; // 与初始化时的batchSize保持一致
@@ -1928,7 +1931,8 @@ Page({
   },
 
   // 下一批
-  nextBatch: function() {
+  nextBatch: async function() {
+    if (!await membershipBusiness.authorizePage(this, 'learning')) return;
     if (this.data.hasMoreWords) {
       this.loadMoreWordsBatch();
     } else {
@@ -1974,7 +1978,8 @@ Page({
   },
 
   // 加载更多单词
-  loadMoreWords: function() {
+  loadMoreWords: async function() {
+    if (!await membershipBusiness.authorizePage(this, 'learning')) return;
     if (!this.data.hasMoreWords || this.data.loading) {
       console.log('没有更多单词或正在加载中');
       return;
@@ -2144,7 +2149,7 @@ Page({
   },
 
   // 开始学习
-  startNewLearning: function() {
+  startNewLearning: async function() {
     try {
       this.syncFromGlobalData();
       this.checkSelectedStudentAndWordbook();
@@ -2156,6 +2161,7 @@ Page({
 
       const studentId = this.data.currentStudent.id;
       const wordbookId = this.data.currentWordbook.id;
+      if (!await membershipBusiness.authorizePage(this, 'learning')) return;
       const previewMastery = this._previewSessionMastery || {};
       const decision = this._buildPreviewStartDecision(previewMastery);
 

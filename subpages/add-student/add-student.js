@@ -1,5 +1,6 @@
 // pages/add-student/add-student.js
-const MAX_STUDENT_LIMIT = 30;
+const membershipBusiness = require('../../utils/membership-business-client');
+const { captureAccountSession, isAccountSessionCurrent } = require('../../utils/account-session');
 const CLOUD_ENV_ID = 'cloudbase-4gafzdch60ad597b';
 const STUDENT_NAME_CASCADE_COLLECTIONS = [
   'word_mastery',
@@ -8,7 +9,6 @@ const STUDENT_NAME_CASCADE_COLLECTIONS = [
   'student_statistics'
 ];
 const { isCloudReadOnlyMode } = require('../../utils/cloud-mode.js');
-const { establishAccountSession } = require('../../utils/account-session.js');
 const {
   ENTITY_TYPES,
   isEntityTombstoned
@@ -277,56 +277,6 @@ Page({
     }
   },
 
-  updateCloudStudent: async function(db, openid, updatedStudent) {
-    const studentId = this.getStudentId(updatedStudent);
-    const tombstoned = await isEntityTombstoned({
-      entityType: ENTITY_TYPES.STUDENT,
-      entityId: studentId,
-      studentId
-    });
-    if (tombstoned) {
-      const error = new Error('student was permanently deleted');
-      error.code = 'student_tombstoned';
-      throw error;
-    }
-    const studentsRef = db.collection('students');
-    const updateData = {
-      name: updatedStudent.name,
-      grade: updatedStudent.grade,
-      joinDate: updatedStudent.joinDate,
-      teacher_id: openid,
-      student_id: studentId,
-      updatedAt: updatedStudent.updatedAt
-    };
-
-    try {
-      const result = await studentsRef.doc(studentId).update({ data: updateData });
-      if (!result || result.updated === 0) {
-        throw new Error('student document not updated by id');
-      }
-      return;
-    } catch (docUpdateError) {
-      console.warn('[StudentEdit] 按 _id 更新失败，尝试按 student_id 查询:', docUpdateError);
-      const queryRes = await studentsRef
-        .where({ student_id: studentId, teacher_id: openid })
-        .limit(1)
-        .get();
-
-      if (queryRes && Array.isArray(queryRes.data) && queryRes.data.length > 0) {
-        await studentsRef.doc(queryRes.data[0]._id).update({ data: updateData });
-        return;
-      }
-
-      await studentsRef.doc(studentId).set({
-        data: {
-          ...updatedStudent,
-          teacher_id: openid,
-          student_id: studentId
-        }
-      });
-    }
-  },
-
   cascadeStudentNameToCloud: async function(db, openid, studentId, studentName, updatedAt) {
     if (!studentId || !studentName) return;
     for (const collectionName of STUDENT_NAME_CASCADE_COLLECTIONS) {
@@ -366,6 +316,7 @@ Page({
 
   updateStudent: async function() {
     if (this.data.isSubmitting) return;
+    const accountSession = captureAccountSession();
 
     const studentId = this.data.editingStudentId;
     const originalStudent = this.data.originalStudent || this.findLocalStudentById(studentId);
@@ -394,24 +345,25 @@ Page({
     this.setData({ isSubmitting: true });
 
     try {
-      if (wx.cloud && !isCloudReadOnlyMode()) {
+      const profile = { studentId: String(studentId), name: this.data.name, grade: this.data.grade, joinDate: this.data.joinDate,
+        reason: 'Teacher submitted profile correction', intent: 'correction' };
+      const fingerprint = JSON.stringify(profile);
+      if (!this._profileRequest || this._profileRequest.fingerprint !== fingerprint) {
+        this._profileRequest = { fingerprint, requestId: membershipBusiness.requestId() };
+      }
+      const result = await membershipBusiness.call('correctProfile', { ...profile, requestId: this._profileRequest.requestId });
+      if (result.reviewRequired || !result.studentId) {
+        throw new Error(result.reasonCode || 'PROFILE_REVIEW_REQUIRED');
+      }
+      updatedStudent.name = result.name;
+      updatedStudent.grade = result.grade;
+      updatedStudent.joinDate = result.joinDate || originalStudent.joinDate;
+      if (String(originalStudent.name || '') !== String(updatedStudent.name || '')) {
         const db = wx.cloud.database({ env: CLOUD_ENV_ID });
-        await this.updateCloudStudent(db, openid, updatedStudent);
-        if (String(originalStudent.name || '') !== String(updatedStudent.name || '')) {
-          await this.cascadeStudentNameToCloud(
-            db,
-            openid,
-            this.getStudentId(updatedStudent),
-            updatedStudent.name,
-            updatedStudent.updatedAt
-          );
-        }
-      } else if (wx.cloud) {
-        console.warn('[cloud-read-only] skip student cloud update:', studentId);
-      } else {
-        console.warn('[StudentEdit] 当前基础库不支持 wx.cloud，跳过云端更新:', studentId);
+        await this.cascadeStudentNameToCloud(db, openid, this.getStudentId(updatedStudent), updatedStudent.name, updatedStudent.updatedAt);
       }
 
+      if (!isAccountSessionCurrent(accountSession)) throw new Error('ACCOUNT_SESSION_CHANGED');
       this.updateLocalStudentCaches(updatedStudent);
       this.setData({
         originalStudent: updatedStudent,
@@ -426,14 +378,14 @@ Page({
       });
 
       setTimeout(() => {
-        wx.navigateBack({ delta: 1 });
+        if (isAccountSessionCurrent(accountSession)) wx.navigateBack({ delta: 1 });
       }, 1200);
     } catch (error) {
       console.error('[StudentEdit] 保存学生信息失败:', error);
       wx.hideLoading();
       this.setData({ isSubmitting: false });
       wx.showToast({
-        title: '保存失败，请重试',
+        title: membershipBusiness.message(error),
         icon: 'none',
         duration: 1800
       });
@@ -468,144 +420,29 @@ Page({
       return;
     }
 
+    if (this.data.isSubmitting) return;
+    const accountSession = captureAccountSession();
+    this.setData({ isSubmitting: true });
     try {
-      // 获取现有学生列表
+      const profile = { name: this.data.name, grade: this.data.grade, joinDate: this.data.joinDate };
+      const fingerprint = JSON.stringify(profile);
+      // Retain the request after transport failure: a committed creation must
+      // never consume a second slot when the user retries.
+      if (!this._addRequest || this._addRequest.fingerprint !== fingerprint) {
+        this._addRequest = { fingerprint, requestId: membershipBusiness.requestId() };
+      }
+      const result = await membershipBusiness.call('addStudent', { ...profile, requestId: this._addRequest.requestId });
       const students = wx.getStorageSync('students') || [];
-      const app = getApp();
-      const openid = wx.getStorageSync('openid');
-
-      if (!openid) {
-        wx.showToast({
-          title: '请先登录',
-          icon: 'none',
-          duration: 1500
-        });
-        return;
-      }
-
-      // 【权限基座】等待热刷新完成（若仍在进行中），确保拿到最新云端权限
-      if (this._permissionRefreshPromise) {
-        try {
-          await this._permissionRefreshPromise;
-        } catch (e) {
-          // 刷新失败不阻塞，继续用本地缓存
-        }
-      }
-
-      // 【权限基座】读取当前用户权限，决定是否执行学生上限检查
-      const currentUser = app.getCurrentUserWithPermissions
-        ? app.getCurrentUserWithPermissions()
-        : (wx.getStorageSync('currentUser') || app.globalData.currentUser || {});
-      const userRole = currentUser.userRole || 'external';
-
-      if (userRole === 'internal') {
-        console.log('[Permission] 内部人员，跳过学生上限检查');
-      } else {
-        // external / 默认：执行 30 人上限拦截
-        const ownedStudents = students.filter(s => s && (s.ownerId || s.teacher_id) === openid);
-        if (ownedStudents.length >= MAX_STUDENT_LIMIT) {
-          console.warn('[Permission] 外部用户已达学生上限, current:', ownedStudents.length, 'limit:', MAX_STUDENT_LIMIT);
-          wx.showToast({
-            title: '学生数量已达上限(' + MAX_STUDENT_LIMIT + '人)',
-            icon: 'none',
-            duration: 2000
-          });
-          return;
-        }
-        console.log('[Permission] 外部用户，学生数量检查通过, current:', ownedStudents.length, 'limit:', MAX_STUDENT_LIMIT);
-      }
-
-      // 创建新学生对象
-      const newStudent = {
-        id: 'student_' + Date.now(),
-        name: this.data.name,
-        grade: this.data.grade,
-        joinDate: this.data.joinDate,
-        teacher_id: openid,
-        createdAt: new Date().toISOString()
-      };
-
-      // 添加到学生列表
-      students.push(newStudent);
-
-      // 保存到本地存储
+      const newStudent = { id: result.studentId, student_id: result.studentId, teacher_id: result.teacherId,
+        name: result.name, grade: result.grade, joinDate: result.joinDate };
+      if (!students.some(s => String(s.id || s.student_id) === result.studentId)) students.push(newStudent);
       wx.setStorageSync('students', students);
-
-      const syncStudentToCloud = (teacherOpenId) => {
-        const db = wx.cloud.database({ env: 'cloudbase-4gafzdch60ad597b' });
-        return db.collection('students')
-          .doc(newStudent.id)
-          .set({
-            data: {
-              teacher_id: teacherOpenId,
-              student_id: newStudent.id,
-              ...newStudent
-            }
-          });
-      };
-      if (wx.cloud && !isCloudReadOnlyMode()) {
-        if (openid) {
-          syncStudentToCloud(openid)
-            .then(() => {
-              console.log('学生已写入云端:', newStudent.id);
-            })
-            .catch((cloudError) => {
-              console.error('写入云端学生失败:', cloudError);
-            });
-        } else {
-          wx.cloud.callFunction({
-            name: 'login',
-            data: {},
-            config: {
-              env: 'cloudbase-4gafzdch60ad597b'
-            }
-          }).then((res) => {
-            const freshOpenId =
-              (res && res.result && (res.result.openid || res.result.OPENID || res.result.openId)) || null;
-            if (!freshOpenId) {
-              console.warn('login 云函数未返回 openid，跳过云端写入:', res);
-              return null;
-            }
-            wx.setStorageSync('openid', freshOpenId);
-            const accountSession = establishAccountSession(freshOpenId);
-            // ★ openid 就绪，重试积压的同步任务
-            try {
-              const { retryPendingSyncs } = require('../../utils/cloud-sync.js');
-              retryPendingSyncs({ accountId: freshOpenId, accountSession });
-            } catch (e) { /* 非阻塞 */ }
-            return syncStudentToCloud(freshOpenId);
-          }).then((result) => {
-            if (result) {
-              console.log('学生已写入云端:', newStudent.id);
-            }
-          }).catch((cloudError) => {
-            console.error('写入云端学生失败:', cloudError);
-          });
-        }
-      } else {
-        console.warn('当前基础库不支持 wx.cloud，跳过云端写入');
-      }
-
-      // 显示成功提示
-      wx.showToast({
-        title: '添加成功',
-        icon: 'success',
-        duration: 1500
-      });
-
-      // 延迟返回上一页
-      setTimeout(() => {
-        wx.navigateBack({
-          delta: 1
-        });
-      }, 1500);
+      wx.showToast({ title: '添加成功', icon: 'success', duration: 1200 });
+      setTimeout(() => { if (isAccountSessionCurrent(accountSession)) wx.navigateBack({ delta: 1 }); }, 1200);
     } catch (error) {
-      console.error('添加学生失败:', error);
-      wx.showToast({
-        title: '添加失败，请重试',
-        icon: 'none',
-        duration: 1500
-      });
+      wx.showToast({ title: membershipBusiness.message(error), icon: 'none', duration: 2500 });
+    } finally {
+      this.setData({ isSubmitting: false });
     }
   },
 

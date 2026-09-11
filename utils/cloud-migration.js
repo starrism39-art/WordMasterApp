@@ -1,3 +1,4 @@
+const membershipBusiness = require('./membership-business-client');
 const DEFAULT_ENV = 'cloudbase-4gafzdch60ad597b';
 const DEFAULT_TEACHER_NAME = 'Default Teacher';
 const MAX_CONCURRENCY = 5;
@@ -1155,7 +1156,7 @@ const migrateLocalDataToCloud = async (options = {}) => {
 
     // ★ 委托 cloud-sync 统一写路径，确保文档 ID 与增量同步一致
 
-    // 1) students：保持原逻辑（无独立 sync 函数，但 doc ID 与 add-student.js 一致）
+    // 1) students：只核实正式已有档案；本地备份不能补建学生或覆盖身份。
     const studentDocs = students.map((student) => {
       const studentId = student && student.id !== undefined && student.id !== null
         ? String(student.id)
@@ -1180,7 +1181,7 @@ const migrateLocalDataToCloud = async (options = {}) => {
     }
     try {
       studentSynced = await runBatches(validStudentDocs, MAX_CONCURRENCY, async (doc) => {
-        return db.collection('students').doc(doc.docId).set({ data: doc.data });
+        return membershipBusiness.call('syncExistingStudent', { studentId: doc.docId });
       }, 'students');
     } catch (error) {
       studentFailed += validStudentDocs.length;

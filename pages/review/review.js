@@ -1,3 +1,4 @@
+const membershipBusiness = require('../../utils/membership-business-client');
 // pages/review/review.js
 const { generateWordsForBook } = require('../../data/wordbook-loader.js');
 const { mergeWordbooks, createWordMap, findWord } = require('../../data/wordbook-utils.js');
@@ -507,7 +508,8 @@ Page({
     });
   },
 
-  initializeReviewMode: function() {
+  initializeReviewMode: async function() {
+    if (!await membershipBusiness.authorizePage(this, 'review')) return;
     console.log('初始化单词复习模式');
     
     // 确保有学生和词书信息
@@ -1703,7 +1705,8 @@ Page({
   },
 
   // 下一批单词
-  nextBatch: function() {
+  nextBatch: async function() {
+    if (!await membershipBusiness.authorizePage(this, 'review')) return;
     console.log('下一批单词');
     
     try {
@@ -2350,6 +2353,7 @@ Page({
   },
 
   loadResolvedReviewWords: async function(wordIds) {
+    if (!await membershipBusiness.authorizePage(this, 'review')) return;
     const studentId = this.data.currentStudent?.id;
     const currentWordbook = this.data.currentWordbook || {};
     const wordbookId = currentWordbook.id;

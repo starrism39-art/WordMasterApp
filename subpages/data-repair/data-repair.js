@@ -1,3 +1,4 @@
+const membershipBusiness = require('../../utils/membership-business-client');
 const { isCloudReadOnlyMode } = require('../../utils/cloud-mode.js');
 
 Page({
@@ -253,7 +254,7 @@ Page({
 
         if (Object.keys(patch).length > 0) {
           patch.updatedAt = nowTs;
-          await db.collection('students').doc(docId).update({ data: patch });
+          await membershipBusiness.call('updateStudentDisplay', { studentId: String(student.student_id || student.id), documentId: docId, teacherName: cloudTeacherName || currentTeacherName });
           patched += 1;
         } else {
           skipped += 1;
