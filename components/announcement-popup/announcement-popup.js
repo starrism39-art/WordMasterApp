@@ -1,6 +1,7 @@
 'use strict';
 
 const normalizeHighlights = (announcement = {}, explicitHighlights = []) => {
+  announcement = announcement || {};
   const source = Array.isArray(explicitHighlights) && explicitHighlights.length
     ? explicitHighlights
     : (
@@ -22,13 +23,16 @@ const normalizeHighlights = (announcement = {}, explicitHighlights = []) => {
   }).filter((item) => item.title);
 };
 
-const normalizePopup = (announcement = {}, highlights = []) => ({
+const normalizePopup = (announcement = {}, highlights = []) => {
+  announcement = announcement || {};
+  return ({
   id: String(announcement._id || announcement.id || ''),
   eyebrow: String(announcement.popupLabel || '啃词更新啦'),
   title: String(announcement.popupTitle || announcement.title || ''),
   summary: String(announcement.popupSummary || announcement.summary || ''),
   highlights: normalizeHighlights(announcement, highlights)
-});
+  });
+};
 
 Component({
   properties: {
