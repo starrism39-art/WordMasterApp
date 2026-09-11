@@ -1,0 +1,51 @@
+'use strict';
+const {captureAccountSession,isAccountSessionCurrent} = require('./account-session');
+const {isCloudReadOnlyMode} = require('./cloud-mode');
+const {createPaymentService} = require('./membership-payment-service');
+const business = require('./membership-business-client');
+const ENV = 'cloudbase-4gafzdch60ad597b';
+async function call(action, request = {}) {
+  const session = captureAccountSession();
+  if (!session.accountId) throw Error('LOGIN_REQUIRED');
+  const response = await wx.cloud.callFunction({name:'membership_presentation',config:{env:ENV},data:{action,request}});
+  if (!isAccountSessionCurrent(session)) throw Error('ACCOUNT_CHANGED');
+  if (response?.result?.ok !== true || !response.result.result) throw Error('DISPLAY_UNAVAILABLE');
+  return response.result.result;
+}
+function assertDisplay(value) {
+  if (!value || !['free','active','expiring','transition','expired_single','expired_selection','expired_retained','long_term'].includes(value.displayState) ||
+      typeof value.canPurchase !== 'boolean' || typeof value.canRenew !== 'boolean' || typeof value.pending !== 'boolean' ||
+      typeof value.statusLabel !== 'string' || typeof value.entrySubtitle !== 'string' || !Array.isArray(value.retentionStudents)) throw Error('DISPLAY_UNAVAILABLE');
+  return value;
+}
+async function getDisplay() { return assertDisplay(await call('getDisplay')); }
+const locks = new Map();
+async function purchase(requestId) {
+  const session = captureAccountSession();
+  const revision = () => JSON.stringify(captureAccountSession());
+  const key = revision();
+  if (locks.has(key)) return locks.get(key);
+  const operation = (async () => {
+    if (isCloudReadOnlyMode()) throw Error('READ_ONLY');
+    const display = await getDisplay();
+    if (!isAccountSessionCurrent(session) || display.pending || !(display.canPurchase || display.canRenew)) throw Error('PURCHASE_DISABLED');
+    // Reuse the sealed payment orchestration. The adapter deliberately discards
+    // its product argument: selection, amount and duration belong to the server.
+    const service = createPaymentService({wxApi:wx,sessionRevision:revision,callServer:async(action,request) => {
+      if (action === 'createOrder') return call(action,{requestId:request.requestId});
+      return call(action,request);
+    }});
+    return service.purchase({requestId});
+  })();
+  locks.set(key,operation);
+  try { return await operation; } finally {locks.delete(key);}
+}
+async function retain(studentId,requestId) {
+  const session=captureAccountSession();
+  if (isCloudReadOnlyMode()) throw Error('READ_ONLY');
+  const display = await getDisplay();
+  if (!isAccountSessionCurrent(session)) throw Error('ACCOUNT_CHANGED');
+  if (!display.retentionAllowed || !display.retentionStudents.some(s=>s.id===studentId)) throw Error('RETENTION_DISABLED');
+  return business.call('selectRetainedStudent',{studentId,requestId});
+}
+module.exports = {call,getDisplay,purchase,retain,requestId:business.requestId,assertDisplay};

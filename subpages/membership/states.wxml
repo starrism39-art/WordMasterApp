@@ -1,0 +1,5 @@
+<template name="page-state">
+  <view wx:if="{{loading}}" class="panel state" aria-label="加载中"><view class="skeleton short"></view><view class="skeleton tall"></view><text class="label">正在加载</text></view>
+  <view wx:elif="{{error}}" class="panel state"><view>会员信息暂时无法获取</view><button class="secondary" bindtap="reload">重新加载</button></view>
+</template>
+<template name="support-link"><navigator class="service" url="/subpages/membership/support"><text>客服与支付问题</text><text class="arrow">›</text></navigator></template>

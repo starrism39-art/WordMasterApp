@@ -1,0 +1,22 @@
+page { background:#F4F6F8; color:#101B36; font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif; }
+.membership-page { padding:16px 16px calc(24px + env(safe-area-inset-bottom)); font-size:15px; line-height:1.6; }
+.page-title { font-size:22px; font-weight:600; margin:6px 0 20px; }
+.panel { background:#FFFFFF; border-radius:16px; padding:20px; margin-bottom:16px; box-shadow:0 6px 20px rgba(16,27,54,0.06); }
+.status-title { font-size:28px; line-height:1.3; font-weight:600; margin:16px 0 12px; }
+.label { color:#74819A; font-size:13px; }.muted {color:#74819A;}.detail-line {margin-top:12px;overflow-wrap:anywhere;}
+.badge {display:inline-block; background:#E7F8F1;color:#0E9F72;padding:3px 10px;border-radius:999px;font-size:12px;}
+.badge.warning {background:#FFF3E8;color:#F97316;}
+.notice {color:#74819A;font-size:13px;margin:16px 0;line-height:1.8;}
+.purchase-panel {background:#F2FBF7;}.price {font-size:36px;font-weight:600;line-height:1.4;}.duration {font-size:15px;font-weight:400;margin-left:8px;}
+.membership-page .primary,.membership-page .secondary {display:flex;align-items:center;justify-content:center;box-sizing:border-box;width:100%;min-height:48px;border-radius:12px;font-size:16px;font-weight:500;margin:16px 0 0;padding:10px 14px;line-height:1.5;}
+.membership-page .primary {background:#10B981;color:white;}.membership-page .primary[disabled] {background:#DDE5E5;color:#74819A;}.membership-page .primary-hover {background:#0E9F72;}
+.membership-page .secondary {min-height:44px;background:#FFFFFF;color:#101B36;border:1px solid #E5EAF0;}.primary::after,.secondary::after {border:0;}
+.services {background:white;border-radius:16px;padding:0 16px;margin-top:16px;}.service {display:flex;align-items:center;justify-content:space-between;min-height:52px;border-bottom:1px solid #E5EAF0;color:#101B36;}.service:last-child {border:0;}.arrow {color:#A7B0C1;}
+.state {padding:28px 20px;text-align:center;}.skeleton {height:20px;border-radius:8px;background:#E5EAF0;margin:16px 0;}.skeleton.short {width:60%;}.skeleton.tall {height:90px;}
+.pending {background:#FFF3E8;color:#9B4C0A;padding:16px;border-radius:12px;margin-bottom:16px;}.message {font-size:13px;color:#74819A;margin:12px 0;}
+.order-top {display:flex;justify-content:space-between;gap:12px;align-items:flex-start;}.order-title {font-size:16px;font-weight:600;}.order-amount {font-size:20px;margin:10px 0;}.order-meta {font-size:13px;color:#74819A;margin:5px 0;}
+.field {padding:12px 0;border-bottom:1px solid #E5EAF0;}.field:last-child {border:0;}.field-value {margin-top:5px;overflow-wrap:anywhere;}
+.section-title {font-size:18px;font-weight:600;}.rule {padding:16px 0;border-bottom:1px solid #E5EAF0;}.rule:first-child {padding-top:0;}.rule:last-child {border:0;padding-bottom:0;}
+.student {display:flex;align-items:center;gap:12px;min-height:72px;border-bottom:1px solid #E5EAF0;}.student:last-child {border:0;}.avatar {width:40px;height:40px;display:flex;align-items:center;justify-content:center;border-radius:12px;background:#E7F8F1;color:#0E9F72;}.student-info {flex:1;min-width:0;overflow-wrap:anywhere;}
+.retention-page {padding-bottom:calc(120px + env(safe-area-inset-bottom));}.fixed-action {position:fixed;bottom:0;left:0;right:0;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:#F4F6F8;z-index:2;}.membership-page .fixed-action .primary {margin:0;}
+.membership-page .question {text-align:left;display:block;width:100%;min-height:48px;background:white;border-bottom:1px solid #E5EAF0;font-size:15px;color:#101B36;border-radius:0;padding:12px 0;line-height:1.6;}.question::after {border:0;}.membership-page .question.selected {color:#0E9F72;}.membership-page .question:last-child {border:0;}

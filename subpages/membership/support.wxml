@@ -1,0 +1,7 @@
+<import src="states.wxml"/>
+<view class="membership-page"><view class="page-title">客服与支付问题</view><template is="page-state" data="{{loading,error}}"/>
+  <view class="panel"><view class="section-title">你遇到了什么问题？</view><button class="question {{selectedQuestion === '已付款但会员未生效' ? 'selected' : ''}}" data-question="已付款但会员未生效" bindtap="chooseQuestion">已付款但会员未生效</button><button class="question {{selectedQuestion === '订单状态未更新' ? 'selected' : ''}}" data-question="订单状态未更新" bindtap="chooseQuestion">订单状态未更新</button><button class="question {{selectedQuestion === '会员有效期疑问' ? 'selected' : ''}}" data-question="会员有效期疑问" bindtap="chooseQuestion">会员有效期疑问</button><button class="question {{selectedQuestion === '其他会员问题' ? 'selected' : ''}}" data-question="其他会员问题" bindtap="chooseQuestion">其他会员问题</button></view>
+  <view wx:if="{{selectedQuestion}}" class="notice">请准备订单页显示的订单号、支付时间和问题说明。支付结果确认期间，请先刷新订单状态，避免重复付款。</view>
+  <navigator class="secondary" url="/subpages/membership/orders">查看我的订单</navigator>
+  <block wx:if="{{!loading && !error && model}}"><button wx:if="{{model.supportAvailable}}" class="primary" bindtap="contact">{{model.support.label}}</button><view wx:else class="notice">客服方式正在完善，请稍后再试</view></block>
+</view>

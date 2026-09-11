@@ -1,0 +1,68 @@
+'use strict';
+const { id, strictKeys } = require('../membership-core/model');
+const { createCloudbaseRepository } = require('../membership-payment/repository');
+const { membershipModel, orderModel } = require('./model');
+const { APP_ID, configuration, publicConfig } = require('./config');
+function createPresentationRuntime({db, wxCloud, environment = {}, clock = Date.now}) {
+  const config = configuration(environment);
+  const repository = createCloudbaseRepository(db);
+  return async event => {
+    strictKeys(event,['action','request','userInfo','tcbContext']);
+    const who = wxCloud.getWXContext();
+    if (who?.APPID !== APP_ID || !['wx_client','wx_devtools'].includes(who.SOURCE || 'wx_client')) throw Error('IDENTITY_NOT_VERIFIED');
+    const teacherId = id(who.OPENID), request = event.request || {};
+    const allowed = {getDisplay:[],getOrders:['offset'],getOrderDetail:['orderId'],getPublicConfig:[],createOrder:['requestId'],parameters:['orderId','loginCode'],queryOrder:['orderId']};
+    if (!allowed[event.action]) throw Error('ACTION_NOT_ALLOWED');
+    strictKeys(request,allowed[event.action]);
+    if (event.action === 'getPublicConfig') return publicConfig(config);
+    // No platform calls, writes, or client product selection while release is closed.
+    if (['createOrder','parameters'].includes(event.action)) throw Error('FORMAL_PURCHASE_NOT_RELEASED');
+    const row = await repository.get('ledgers',teacherId);
+    if (row?.teacherId !== teacherId || row._stage5 || row.initialization?.state !== 'ready') throw Error('MEMBERSHIP_UNAVAILABLE');
+    // Validate live document ownership, but never call personal.open or a writing repository.
+    for (const student of row.students || []) {
+      if (student.teacherId !== teacherId) throw Error('STUDENT_OWNERSHIP_CONFLICT');
+      const ref = row.studentRefs?.[student.studentId];
+      if (!ref) throw Error('STUDENT_REFERENCE_REQUIRED');
+      const result = await db.collection('students').doc(ref).get();
+      const doc = Array.isArray(result.data) ? result.data[0] : result.data;
+      if (!doc || doc.deleted === true) student.deleted = true;
+      else if (doc.teacher_id !== teacherId || String(doc.student_id || doc.id) !== student.studentId || doc.name !== student.name) throw Error('STUDENT_OWNERSHIP_CONFLICT');
+    }
+    const now = clock();
+    const model = membershipModel(row,now,config);
+    async function orders(offset, limit) {
+      // Explicit deployment fact: formal orders have not been provisioned yet.
+      // Never convert a failed database request into an empty successful list.
+      if (!config.ordersReady) return [];
+      const result = await db.collection('membership_orders').where({teacherId,openId:teacherId,appId:APP_ID})
+        .orderBy('createdAt','desc').skip(offset).limit(limit).get();
+      return (result.data || []).map(o => { if (o.appId !== APP_ID) throw Error('ORDER_UNAVAILABLE');return orderModel(o,row,config,now); });
+    }
+    if (event.action === 'getDisplay') {
+      // Scan the owner's persisted orders: recovery never depends on a local order ID.
+      let offset=0, pending=false;
+      while (true) { const batch=await orders(offset,100);pending ||= batch.some(o=>o.pending);if(batch.length<100)break;offset+=100;if(offset>=10000)throw Error('ORDER_SCAN_LIMIT'); }
+      return {...model,pending,canPurchase:model.canPurchase&&!pending,canRenew:model.canRenew&&!pending};
+    }
+    if (event.action === 'getOrders') {
+      const offset = request.offset === undefined ? 0 : request.offset;
+      if (!Number.isSafeInteger(offset) || offset < 0 || offset > 10000) throw Error('INVALID_OFFSET');
+      const batch = await orders(offset,21);
+      return {orders:batch.slice(0,20),nextOffset:batch.length>20 ? offset+20 : null};
+    }
+    id(request.orderId);
+    if (!config.ordersReady) throw Error('ORDER_UNAVAILABLE');
+    const order = await repository.get('orders',request.orderId);
+    if (!order || order.orderId !== request.orderId || order.appId !== APP_ID) throw Error('ORDER_UNAVAILABLE');
+    const detail = orderModel(order,row,config,now);
+    if (event.action === 'queryOrder') {
+      // The sealed payment service consumes a machine contract, not page copy.
+      // A granted order without its authoritative ledger period stays pending.
+      return {orderId:order.orderId,paymentStatus:order.paymentStatus,
+        grantStatus:order.grantStatus === 'granted' && detail.pending ? 'pending' : order.grantStatus};
+    }
+    return {orderDetail:detail};
+  };
+}
+module.exports = {createPresentationRuntime};

@@ -1,0 +1,7 @@
+<import src="states.wxml"/>
+<view class="membership-page"><view class="page-title">我的订单</view><template is="page-state" data="{{loading,error}}"/>
+  <block wx:if="{{!loading && !error}}"><view wx:if="{{!orders.length}}" class="panel state"><view>暂无会员订单</view><view class="notice">你的会员订单会显示在这里</view></view>
+    <view wx:for="{{orders}}" wx:key="id" class="panel order-item" data-id="{{item.id}}" bindtap="openOrder" role="button"><view class="order-top"><view class="order-title">{{item.productText}}</view><text class="badge {{item.pending ? 'warning' : ''}}">{{item.statusText}}</text></view><view class="order-amount">{{item.amountText}}</view><view class="order-meta">支付时间：{{item.paymentTimeText}}</view><view class="order-meta">会员有效期：{{item.membershipPeriodText}}</view></view>
+    <button wx:if="{{nextOffset !== null}}" class="secondary" bindtap="moreOrders" loading="{{loadingMore}}" disabled="{{loadingMore}}">加载更多</button>
+  </block><view wx:if="{{message}}" class="message">{{message}}</view><view class="services"><template is="support-link"/></view>
+</view>

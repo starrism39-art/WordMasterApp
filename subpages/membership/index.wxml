@@ -1,0 +1,26 @@
+<import src="states.wxml"/>
+<view class="membership-page">
+  <view class="page-title">教师会员</view>
+  <template is="page-state" data="{{loading,error}}"/>
+  <block wx:if="{{!loading && !error && model}}">
+    <view wx:if="{{model.pending || localPending}}" class="pending"><view>正在确认支付结果</view><view class="label">支付结果可能存在短暂延迟</view><button class="secondary" bindtap="reload" disabled="{{paying}}">刷新状态</button></view>
+    <view class="panel">
+      <text class="badge {{model.attention ? 'warning' : ''}}">{{model.statusLabel}}</text>
+      <view class="status-title">{{model.title}}</view>
+      <view wx:if="{{model.expiryLabel}}" class="detail-line">{{model.expiryLabel}}</view>
+      <view wx:if="{{model.transitionText}}" class="detail-line">{{model.transitionText}}</view>
+      <view class="detail-line">{{model.summary}}</view>
+      <view wx:if="{{model.notice}}" class="notice">{{model.notice}}</view>
+      <navigator wx:if="{{model.needsRetentionSelection}}" class="secondary retain-link" url="/subpages/membership/retain-student">选择保留学生</navigator>
+    </view>
+    <view wx:if="{{model.showPurchase}}" class="panel purchase-panel">
+      <view><text class="price">{{model.priceText}}</text><text class="duration">/ {{model.durationText}}</text></view>
+      <view class="label">{{model.autoRenewText}}</view>
+      <view wx:if="{{model.renewalText}}" class="notice">{{model.renewalText}}</view>
+      <button class="primary purchase-button" hover-class="primary-hover" bindtap="buy" loading="{{paying}}" disabled="{{paying || localPending || model.pending || !(model.canPurchase || model.canRenew)}}">{{paying || localPending || model.pending ? '正在确认' : model.purchaseLabel}}</button>
+      <view wx:if="{{!model.canPurchase && !model.canRenew && !model.pending && !localPending}}" class="label detail-line">{{model.purchaseDisabledText}}</view>
+    </view>
+    <view class="services"><navigator class="service" url="/subpages/membership/orders"><text>我的订单</text><text class="arrow">›</text></navigator><navigator wx:if="{{model.showRules}}" class="service" url="/subpages/membership/rules"><text>会员规则</text><text class="arrow">›</text></navigator><template is="support-link"/></view>
+  </block>
+  <view wx:if="{{message}}" class="message">{{message}}</view>
+</view>

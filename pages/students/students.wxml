@@ -37,7 +37,7 @@
   </view>
   
   <!-- 功能菜单区域 -->
-  <navigator wx:if="{{isLoggedIn}}" class="card" url="/subpages/stage5-membership/index">Stage5 TEST 会员验收（仅测试白名单）</navigator>
+  <membership-entry wx:if="{{isLoggedIn}}" />
   <view class="feature-menu card">
     <view class="section-title">
       <text>功能菜单</text>

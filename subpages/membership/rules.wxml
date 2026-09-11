@@ -1,0 +1,2 @@
+<import src="states.wxml"/>
+<view class="membership-page"><view class="page-title">会员规则</view><template is="page-state" data="{{loading,error}}"/><view wx:if="{{!loading && !error && model}}" class="panel"><view wx:for="{{model.rules}}" wx:key="title" class="rule"><view class="section-title">{{item.title}}</view><view class="detail-line muted">{{item.text}}</view></view></view></view>

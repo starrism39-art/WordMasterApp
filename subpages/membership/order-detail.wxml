@@ -1,0 +1,7 @@
+<import src="states.wxml"/>
+<view class="membership-page"><view class="page-title">订单详情</view><template is="page-state" data="{{loading,error}}"/>
+  <block wx:if="{{!loading && !error && detail}}">
+    <view wx:if="{{detail.pending}}" class="pending"><view>正在确认支付结果</view><view class="label">支付结果可能存在短暂延迟</view><button class="secondary" bindtap="reload">刷新状态</button></view>
+    <view class="panel"><view class="field"><view class="label">商品</view><view class="field-value">{{detail.productText}}</view></view><view class="field"><view class="label">实付金额</view><view class="field-value">{{detail.amountText}}</view></view><view class="field"><view class="label">支付状态</view><view class="field-value">{{detail.statusText}}</view></view><view class="field"><view class="label">支付时间</view><view class="field-value">{{detail.paymentTimeText}}</view></view><view class="field"><view class="label">会员有效期</view><view class="field-value">{{detail.membershipPeriodText}}</view></view><view class="field"><view class="label">订单号</view><view class="field-value">{{detail.maskedOrderId}}</view></view></view>
+  </block><view class="services"><template is="support-link"/></view>
+</view>
