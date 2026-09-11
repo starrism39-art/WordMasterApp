@@ -1,0 +1,82 @@
+{
+  "functionName": "membership_business",
+  "deploymentCodeSha256": "c6d603a0587e87a4eedabd1453ec562f8bd238efc9abda723c97c05be2304b8c",
+  "comparison": "SHA256 after CRLF to LF normalization",
+  "runtimeFiles": [
+    {
+      "path": "cloudfunctions/membership-access/policy.js",
+      "sha256": "bb68caea246e5fbad9be2fc5236cf5c798f7272db3ad388b93bb9ba24d1f7be4"
+    },
+    {
+      "path": "cloudfunctions/membership-access/service.js",
+      "sha256": "b478ed3c95d142d6d1f573384c58fa5a2852d2173451d239d8d81ab1966bb1d9"
+    },
+    {
+      "path": "cloudfunctions/membership-business/initialization.js",
+      "sha256": "8aebde09a9ff60793d4aff4970d2f88dc0bd6c2bd3ebcd591ad0c7e421e0649b"
+    },
+    {
+      "path": "cloudfunctions/membership-business/legacy-candidates.json",
+      "sha256": "f10cba8fece2a9da7b8172d7ea2d0786df42f4969d7a58aef5959467fb6ccea3"
+    },
+    {
+      "path": "cloudfunctions/membership-business/personal-transition.js",
+      "sha256": "516a3a035b0469dd84f7eb26cd41595d295bcda14d17a4bd7e93e7153feadcd9"
+    },
+    {
+      "path": "cloudfunctions/membership-business/repository.js",
+      "sha256": "95e553d67a825fda1f001c3fc542dfafdcfdc8403f5deb8943bf94434eea1262"
+    },
+    {
+      "path": "cloudfunctions/membership-business/runtime.js",
+      "sha256": "eeece0f13a268aebf0565bcdd60e28340d11aaa7e3df38661d57d00dae240631"
+    },
+    {
+      "path": "cloudfunctions/membership-core/access.js",
+      "sha256": "d40176ecf79ffc5d75d1d0413518ced3c31be04222cf6d046ea2010d7d41239f"
+    },
+    {
+      "path": "cloudfunctions/membership-core/constants.js",
+      "sha256": "1bdc69b38776180176adb86125e172659c4551845cdb4b7c3873e813aa74c2da"
+    },
+    {
+      "path": "cloudfunctions/membership-core/ledger.js",
+      "sha256": "2dec26c89da042d8fb7f66c2e7257715a549b1d3be3c285fc5974da02a9c6817"
+    },
+    {
+      "path": "cloudfunctions/membership-core/model.js",
+      "sha256": "7e8d11c068df19592566a06880a06e096f4868556c9f954e34eee74be344e535"
+    },
+    {
+      "path": "cloudfunctions/membership-core/service.js",
+      "sha256": "2047230012fed096ed5c1a480efb924814f8bd2f8d393505232d030003a93105"
+    },
+    {
+      "path": "cloudfunctions/membership-core/time.js",
+      "sha256": "1c974b9da285dd03dc482ae1284e93b0649c93df0cb1aa65b7d40ba80d51e568"
+    },
+    {
+      "path": "cloudfunctions/membership-payment/crypto.js",
+      "sha256": "60b6de064557424d41b69a4b985048a60903e567d78bc9e9edeaf211d42b38c1"
+    },
+    {
+      "path": "cloudfunctions/membership-payment/protocol.js",
+      "sha256": "bc40e3af6c5826fdb1170587405da7fbbce0553f208b4dfd08414edd68d7f0db"
+    },
+    {
+      "path": "cloudfunctions/membership-payment/repository.js",
+      "sha256": "56f6254bce6391bd296f7ceb2c1a0c34de1af31050032bac006d67d215b39b10"
+    },
+    {
+      "path": "cloudfunctions/membership_business/index.js",
+      "sha256": "32bad6e7a5e8f58e674e357c534c6e3bfbb6d5a1dc2f4e4637dbdbd8ae1f62eb"
+    }
+  ],
+  "matchedBundledFiles": 28,
+  "nonRuntimeDifference": [
+    "cloudfunctions/membership-business/security-rules.js"
+  ],
+  "nonRuntimeExplanation": "security-rules.js is a separately applied control-plane rule artifact, not imported by the function; its exported rule exactly matches live CUSTOM permissions.",
+  "liveStudentsRuleMatches": true,
+  "cloudWritesDuringSeal": false
+}
