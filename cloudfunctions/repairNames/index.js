@@ -8,6 +8,59 @@ const db = cloud.database();
 
 const BATCH_LIMIT = 100;
 
+// Protected function configuration only. Missing/malformed configuration disables
+// repair. Deploy this entry for native mini-program invocation only, never HTTP.
+const REPAIR_COLLECTIONS = Object.freeze([
+  'word_mastery', 'learning_records', 'learning_progress', 'student_statistics'
+]);
+// Native invocation includes these two metadata fields. Accept their presence
+// but never read their contents for identity, collection selection or updates.
+// Authorization remains exclusively based on getWXContext and protected config.
+const REPAIR_REQUEST_FIELDS = Object.freeze([
+  'collection', 'skip', 'maxRecords', 'tcbContext', 'userInfo'
+]);
+function authorizeRepair(event) {
+  const caller = cloud.getWXContext();
+  let admins;
+  try { admins = JSON.parse(process.env.REPAIR_NAMES_ADMIN_OPENIDS || 'null'); }
+  catch (_) { throw new Error('ADMIN_REQUIRED'); }
+  if (!caller || caller.APPID !== 'wx930eccb9442dc8f3' ||
+      typeof caller.OPENID !== 'string' || !caller.OPENID ||
+      !Array.isArray(admins) || !admins.length ||
+      !admins.every(id => typeof id === 'string' && id.trim() === id && id.length > 0) ||
+      !admins.includes(caller.OPENID)) throw new Error('ADMIN_REQUIRED');
+  const input = event === undefined ? {} : event;
+  if (!input || typeof input !== 'object' || Array.isArray(input) ||
+      Object.keys(input).some(key => !REPAIR_REQUEST_FIELDS.includes(key))) {
+    const error = new Error('INVALID_REPAIR_REQUEST');
+    // Only reached after trusted administrator authentication. Bounded field
+    // labels aid transport diagnosis; never return values or trust metadata.
+    const isObject = input !== null && typeof input === 'object' && !Array.isArray(input);
+    error.requestShape = {
+      type: input === null ? 'null' : Array.isArray(input) ? 'array' : typeof input,
+      hasUserInfo: isObject && Object.prototype.hasOwnProperty.call(input, 'userInfo'),
+      unexpectedFieldCount: isObject
+        ? Object.keys(input).filter(key => !REPAIR_REQUEST_FIELDS.includes(key)).length : 0,
+      unexpectedFieldNames: isObject
+        ? Object.keys(input).filter(key => !REPAIR_REQUEST_FIELDS.includes(key)).slice(0, 8)
+          .map(key => /^[A-Za-z_$][A-Za-z0-9_$]{0,47}$/.test(key) &&
+            !/openid|token|secret|password|credential|key/i.test(key) &&
+            !/^o[A-Za-z0-9_-]{27}$/.test(key) ? key : '[redacted]') : []
+    };
+    throw error;
+  }
+  const collection = input.collection === undefined ? 'word_mastery' : input.collection;
+  if (typeof collection !== 'string' || !REPAIR_COLLECTIONS.includes(collection)) {
+    throw new Error('REPAIR_COLLECTION_NOT_ALLOWED');
+  }
+  for (const key of ['skip', 'maxRecords']) {
+    if (input[key] !== undefined && (!Number.isSafeInteger(input[key]) || input[key] < 0)) {
+      throw new Error('INVALID_REPAIR_REQUEST');
+    }
+  }
+  return collection;
+}
+
 // ===== 分页获取全量 =====
 async function fetchAll(collectionName, whereClause) {
   const all = [];
@@ -74,6 +127,12 @@ async function buildTeacherNameMap() {
 //   maxRecords: 单次最多处理多少条（默认 300，防止超时）
 //   skip: 跳过前 N 条（用于分批续跑）
 exports.main = async function(event, context) {
+  let authorizedCollection;
+  try { authorizedCollection = authorizeRepair(event); }
+  catch (error) {
+    return { success: false, error: error.message, results: {},
+      ...(error.requestShape ? { requestShape: error.requestShape } : {}) };
+  }
   const startTime = Date.now();
   const results = {};
   const MAX_PER_RUN = (event && event.maxRecords) || 50;
@@ -91,10 +150,7 @@ exports.main = async function(event, context) {
     console.log('老师映射:', Object.keys(teacherNameMap).length);
 
     // 确定要修的集合（默认只修 word_mastery，避免超时）
-    var collections = ['word_mastery'];
-    if (event && event.collection) {
-      collections = [event.collection];
-    }
+    var collections = [authorizedCollection];
 
     var totalFixed = 0;
     var nextInfo = {};
