@@ -3,6 +3,7 @@
   <view class="page-title">教师会员</view>
   <template is="page-state" data="{{loading,error}}"/>
   <block wx:if="{{!loading && !error && model}}">
+    <view wx:if="{{reminderText}}" class="notice membership-reminder" role="status">{{reminderText}}</view>
     <view wx:if="{{model.pending || localPending}}" class="pending"><view>正在确认支付结果</view><view class="label">支付结果可能存在短暂延迟</view><button class="secondary" bindtap="reload" disabled="{{paying}}">刷新状态</button></view>
     <view class="panel">
       <text class="badge {{model.attention ? 'warning' : ''}}">{{model.statusLabel}}</text>

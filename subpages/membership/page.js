@@ -1,9 +1,10 @@
 'use strict';
 const client = require('../../utils/membership-ui-client');
+const {takeReminder} = require('../../utils/membership-reminders');
 const {captureAccountSession,isAccountSessionCurrent} = require('../../utils/account-session');
 function makePage(kind) {
   return {
-    data:{loading:true,error:false,model:null,orders:[],detail:null,selectedId:'',submitting:false,paying:false,localPending:false,message:'',nextOffset:null,loadingMore:false,selectedQuestion:''},
+    data:{loading:true,error:false,model:null,orders:[],detail:null,selectedId:'',submitting:false,paying:false,localPending:false,message:'',nextOffset:null,loadingMore:false,selectedQuestion:'',reminderText:''},
     onLoad(options) { this._orderId=options?.id || '';this._sequence=0;this._visible=false; },
     onShow() {
       this._visible=true;
@@ -21,7 +22,7 @@ function makePage(kind) {
         this.setData({selectedId:'',localPending:false,message:'',submitting:false,paying:false,loadingMore:false});
       }
       this._session=session;
-      this.setData({loading:true,error:false,model:null,detail:null,orders:[],nextOffset:null});
+      this.setData({loading:true,error:false,model:null,detail:null,orders:[],nextOffset:null,reminderText:''});
       try {
         if (kind === 'orders') {
           const result=await client.call('getOrders');if(!current())return;
@@ -38,7 +39,8 @@ function makePage(kind) {
         } else {
           const model=await client.getDisplay();if(!current())return;
           const selectedId=model.retentionStudents.some(s=>s.id===this.data.selectedId) ? this.data.selectedId : '';
-          this.setData({model,loading:false,selectedId,localPending:model.pending});
+          this.setData({model,loading:false,selectedId,localPending:model.pending,
+            reminderText:kind === 'index' && !model.pending ? takeReminder(model,wx) : ''});
           if(model.pending)this.poll();
         }
       } catch {

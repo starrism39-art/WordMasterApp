@@ -3,6 +3,7 @@ const {captureAccountSession,isAccountSessionCurrent} = require('./account-sessi
 const {isCloudReadOnlyMode} = require('./cloud-mode');
 const {createPaymentService} = require('./membership-payment-service');
 const business = require('./membership-business-client');
+const {purchaseChannel,gateDisplay} = require('./membership-channel-gates');
 const ENV = 'cloudbase-4gafzdch60ad597b';
 async function call(action, request = {}) {
   const session = captureAccountSession();
@@ -18,9 +19,10 @@ function assertDisplay(value) {
       typeof value.statusLabel !== 'string' || typeof value.entrySubtitle !== 'string' || !Array.isArray(value.retentionStudents)) throw Error('DISPLAY_UNAVAILABLE');
   return value;
 }
-async function getDisplay() { return assertDisplay(await call('getDisplay')); }
+async function getDisplay() { return gateDisplay(assertDisplay(await call('getDisplay')),wx); }
 const locks = new Map();
 async function purchase(requestId) {
+  if (!purchaseChannel(wx)) throw Error('PURCHASE_CHANNEL_NOT_RELEASED');
   const session = captureAccountSession();
   const revision = () => JSON.stringify(captureAccountSession());
   const key = revision();
