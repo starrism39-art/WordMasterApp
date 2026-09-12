@@ -13,7 +13,7 @@ function formalProduct(input = FORMAL_PRODUCT) {
   const keys = Object.keys(input).sort();
   const expected = ['autoRenew','currency','durationMonths','mode','price','productId','productType'].sort();
   if (keys.length !== expected.length || keys.some((key,index) => key !== expected[index])) throw Error('INVALID_FORMAL_PRODUCT_CONFIG');
-  if (typeof input.productId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(input.productId) || /^TEST_/i.test(input.productId)) throw Error('INVALID_FORMAL_PRODUCT_ID');
+  if (input.productId !== FORMAL_PRODUCT.productId) throw Error('INVALID_FORMAL_PRODUCT_ID');
   if (input.mode !== 'short_series_goods' || input.productType !== ANNUAL_PRODUCT.productType || input.price !== ANNUAL_PRODUCT.price || input.currency !== ANNUAL_PRODUCT.currency ||
       input.durationMonths !== ANNUAL_PRODUCT.duration.months || input.autoRenew !== ANNUAL_PRODUCT.autoRenew) throw Error('FORMAL_PRODUCT_MISMATCH');
   return { platformReady: true, productId: input.productId };

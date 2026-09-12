@@ -1,2 +1,2 @@
 'use strict';
-exports.main=require('../membership-stage5/runtime').makeMain('payment_notify');
+exports.main=require('../membership-formal/notification-router').makeRouter();

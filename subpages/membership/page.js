@@ -74,11 +74,12 @@ function makePage(kind) {
     },
     async buy() {
       const m=this.data.model;
-      if(this.data.loading || this.data.error || this.data.paying || this.data.localPending || !m || m.pending || !(m.canPurchase || m.canRenew))return;
+      if(this.data.loading || this.data.error || this.data.paying || this.data.localPending || !m || m.pending || !m.showPurchase)return;
+      if(!(m.canPurchase || m.canRenew)){this.setData({message:'会员购买暂未开放'});return;}
       const session=captureAccountSession();this._purchaseRequest ||= client.requestId();
       this.setData({paying:true,localPending:true,message:'正在确认支付结果'});
       try {const result=await client.purchase(this._purchaseRequest);if(!isAccountSessionCurrent(session))return;
-        this.setData({message:result.status==='cancelled'?'已取消支付':result.status==='unsupported'?'当前设备暂不支持购买':'正在确认支付结果'});
+        this.setData({message:result.status==='prepared'?'订单已准备，会员购买暂未开放':result.status==='cancelled'?'已取消支付':result.status==='unsupported'?'当前设备暂不支持购买':'正在确认支付结果'});
       } catch {if(isAccountSessionCurrent(session))this.setData({message:'购买暂不可用，请重新加载会员信息'});}
       finally {if(isAccountSessionCurrent(session)){this.setData({paying:false});if(this._visible)await this.reload();}}
     },

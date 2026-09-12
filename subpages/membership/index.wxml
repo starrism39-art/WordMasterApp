@@ -18,7 +18,7 @@
       <view><text class="price">{{model.priceText}}</text><text class="duration">/ {{model.durationText}}</text></view>
       <view class="label">{{model.autoRenewText}}</view>
       <view wx:if="{{model.renewalText}}" class="notice">{{model.renewalText}}</view>
-      <button class="primary purchase-button" hover-class="primary-hover" bindtap="buy" loading="{{paying}}" disabled="{{paying || localPending || model.pending || !(model.canPurchase || model.canRenew)}}">{{paying || localPending || model.pending ? '正在确认' : model.purchaseLabel}}</button>
+      <button class="primary purchase-button" hover-class="primary-hover" bindtap="buy" loading="{{paying}}" disabled="{{paying || localPending || model.pending}}">{{paying || localPending || model.pending ? '正在确认' : model.purchaseLabel}}</button>
       <view wx:if="{{!model.canPurchase && !model.canRenew && !model.pending && !localPending}}" class="label detail-line">{{model.purchaseDisabledText}}</view>
     </view>
     <view class="services"><navigator class="service" url="/subpages/membership/orders"><text>我的订单</text><text class="arrow">›</text></navigator><navigator wx:if="{{model.showRules}}" class="service" url="/subpages/membership/rules"><text>会员规则</text><text class="arrow">›</text></navigator><template is="support-link"/></view>

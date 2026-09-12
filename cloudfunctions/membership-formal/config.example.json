@@ -1,0 +1,13 @@
+{
+  "appId": "wx930eccb9442dc8f3",
+  "cloudEnvId": "cloudbase-4gafzdch60ad597b",
+  "offerId": "1450631819",
+  "originalId": "gh_15fee9cefa8b",
+  "formalPurchaseEnabled": false,
+  "controlledPreparationEnabled": false,
+  "controlledPaymentEnabled": false,
+  "controlledTeachers": [],
+  "allowedPlatforms": ["android"],
+  "allowedProductId": "teacher_member_12m",
+  "ordersReady": true
+}

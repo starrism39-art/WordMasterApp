@@ -1,7 +1,7 @@
 'use strict';
 // Deliberately not imported by app/pages. Session revision must change on EVERY
 // login/logout, including A -> B -> A. Never cache an isVip flag here.
-function createPaymentService({ wxApi, callServer, sessionRevision }) {
+function createPaymentService({ wxApi, callServer, sessionRevision, requireInvocationPermission = false }) {
   return {
     async purchase({ productId, requestId }) {
       const revision = sessionRevision();
@@ -14,8 +14,10 @@ function createPaymentService({ wxApi, callServer, sessionRevision }) {
         if (!current()) return { status: 'account_changed' };
         const parameters = await callServer('parameters', { orderId: order.orderId, loginCode });
         if (!current()) return { status: 'account_changed' };
+        if (requireInvocationPermission && parameters.paymentInvocationAllowed !== true) return {status:'prepared',orderId:order.orderId};
+        const {paymentInvocationAllowed,...paymentParameters}=parameters;
         if (typeof wxApi.requestVirtualPayment !== 'function') return { status: 'unsupported', orderId: order.orderId };
-        const result = await new Promise(resolve => wxApi.requestVirtualPayment({ ...parameters, success: () => resolve('returned'), fail: error => resolve(/cancel/i.test(error.errMsg || '') ? 'cancelled' : 'failed') }));
+        const result = await new Promise(resolve => wxApi.requestVirtualPayment({ ...paymentParameters, success: () => resolve('returned'), fail: error => resolve(/cancel/i.test(error.errMsg || '') ? 'cancelled' : 'failed') }));
         if (!current()) return { status: 'account_changed' };
         try {
           const state = await callServer('queryOrder', { orderId: order.orderId });

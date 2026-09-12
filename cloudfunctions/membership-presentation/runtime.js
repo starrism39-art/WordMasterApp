@@ -3,6 +3,7 @@ const { id, strictKeys } = require('../membership-core/model');
 const { createCloudbaseRepository } = require('../membership-payment/repository');
 const { membershipModel, orderModel } = require('./model');
 const { APP_ID, configuration, publicConfig } = require('./config');
+const {createFormalRuntime}=require('../membership-formal/runtime');
 function createPresentationRuntime({db, wxCloud, environment = {}, clock = Date.now}) {
   const config = configuration(environment);
   const repository = createCloudbaseRepository(db);
@@ -11,12 +12,12 @@ function createPresentationRuntime({db, wxCloud, environment = {}, clock = Date.
     const who = wxCloud.getWXContext();
     if (who?.APPID !== APP_ID || !['wx_client','wx_devtools'].includes(who.SOURCE || 'wx_client')) throw Error('IDENTITY_NOT_VERIFIED');
     const teacherId = id(who.OPENID), request = event.request || {};
-    const allowed = {getDisplay:[],getOrders:['offset'],getOrderDetail:['orderId'],getPublicConfig:[],createOrder:['requestId'],parameters:['orderId','loginCode'],queryOrder:['orderId']};
+    const allowed = {getDisplay:['platform'],getOrders:['offset'],getOrderDetail:['orderId'],getPublicConfig:[],createOrder:['requestId','platform'],parameters:['orderId','loginCode','platform'],queryOrder:['orderId']};
     if (!allowed[event.action]) throw Error('ACTION_NOT_ALLOWED');
     strictKeys(request,allowed[event.action]);
     if (event.action === 'getPublicConfig') return publicConfig(config);
-    // No platform calls, writes, or client product selection while release is closed.
-    if (['createOrder','parameters'].includes(event.action)) throw Error('FORMAL_PURCHASE_NOT_RELEASED');
+    const formal=createFormalRuntime({db,wxCloud,environment,clock});
+    if (['createOrder','parameters','queryOrder'].includes(event.action)) return formal.orders(event);
     const row = await repository.get('ledgers',teacherId);
     if (row?.teacherId !== teacherId || row._stage5 || row.initialization?.state !== 'ready') throw Error('MEMBERSHIP_UNAVAILABLE');
     // Validate live document ownership, but never call personal.open or a writing repository.
@@ -30,11 +31,11 @@ function createPresentationRuntime({db, wxCloud, environment = {}, clock = Date.
       else if (doc.teacher_id !== teacherId || String(doc.student_id || doc.id) !== student.studentId || doc.name !== student.name) throw Error('STUDENT_OWNERSHIP_CONFLICT');
     }
     const now = clock();
-    const model = membershipModel(row,now,config);
+    const model = membershipModel(row,now,{...config,purchaseEnabled:formal.canPrepare(teacherId,request.platform)});
     async function orders(offset, limit) {
       // Explicit deployment fact: formal orders have not been provisioned yet.
       // Never convert a failed database request into an empty successful list.
-      if (!config.ordersReady) return [];
+      if (!config.ordersReady&&!formal.config.ordersReady) return [];
       const result = await db.collection('membership_orders').where({teacherId,openId:teacherId,appId:APP_ID})
         .orderBy('createdAt','desc').skip(offset).limit(limit).get();
       return (result.data || []).map(o => { if (o.appId !== APP_ID) throw Error('ORDER_UNAVAILABLE');return orderModel(o,row,config,now); });
@@ -52,16 +53,10 @@ function createPresentationRuntime({db, wxCloud, environment = {}, clock = Date.
       return {orders:batch.slice(0,20),nextOffset:batch.length>20 ? offset+20 : null};
     }
     id(request.orderId);
-    if (!config.ordersReady) throw Error('ORDER_UNAVAILABLE');
+    if (!config.ordersReady&&!formal.config.ordersReady) throw Error('ORDER_UNAVAILABLE');
     const order = await repository.get('orders',request.orderId);
     if (!order || order.orderId !== request.orderId || order.appId !== APP_ID) throw Error('ORDER_UNAVAILABLE');
     const detail = orderModel(order,row,config,now);
-    if (event.action === 'queryOrder') {
-      // The sealed payment service consumes a machine contract, not page copy.
-      // A granted order without its authoritative ledger period stays pending.
-      return {orderId:order.orderId,paymentStatus:order.paymentStatus,
-        grantStatus:order.grantStatus === 'granted' && detail.pending ? 'pending' : order.grantStatus};
-    }
     return {orderDetail:detail};
   };
 }

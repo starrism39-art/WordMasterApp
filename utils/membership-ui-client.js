@@ -19,7 +19,7 @@ function assertDisplay(value) {
       typeof value.statusLabel !== 'string' || typeof value.entrySubtitle !== 'string' || !Array.isArray(value.retentionStudents)) throw Error('DISPLAY_UNAVAILABLE');
   return value;
 }
-async function getDisplay() { return gateDisplay(assertDisplay(await call('getDisplay')),wx); }
+async function getDisplay() { return gateDisplay(assertDisplay(await call('getDisplay',{platform:purchaseChannel(wx)||'unsupported'})),wx); }
 const locks = new Map();
 async function purchase(requestId) {
   if (!purchaseChannel(wx)) throw Error('PURCHASE_CHANNEL_NOT_RELEASED');
@@ -33,8 +33,9 @@ async function purchase(requestId) {
     if (!isAccountSessionCurrent(session) || display.pending || !(display.canPurchase || display.canRenew)) throw Error('PURCHASE_DISABLED');
     // Reuse the sealed payment orchestration. The adapter deliberately discards
     // its product argument: selection, amount and duration belong to the server.
-    const service = createPaymentService({wxApi:wx,sessionRevision:revision,callServer:async(action,request) => {
-      if (action === 'createOrder') return call(action,{requestId:request.requestId});
+    const service = createPaymentService({wxApi:wx,sessionRevision:revision,requireInvocationPermission:true,callServer:async(action,request) => {
+      if (action === 'createOrder') return call(action,{requestId:request.requestId,platform:purchaseChannel(wx)||'unsupported'});
+      if (action === 'parameters') return call(action,{...request,platform:purchaseChannel(wx)||'unsupported'});
       return call(action,request);
     }});
     return service.purchase({requestId});
