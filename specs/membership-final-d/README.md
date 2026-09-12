@@ -1,6 +1,6 @@
 # Final-D：提醒、真实退款与目标渠道最终放行
 
-2026-09-12。当前 **READY_FOR_REAL_VALIDATION**：提醒与首发渠道门禁完成；真实退款仍须平台后台只读核实和用户单独授权，尚未执行。**不是 READY_FOR_ROLLOUT，不得据此开启购买或发布。**
+2026-09-12。最终 **READY_FOR_ROLLOUT**：提醒、首发渠道门禁、原 TEST 真实退款及手机/Windows 同账号恢复已完成验证。此状态仅表示可准备后续受控 rollout，不等于已经开启购买、rollout 或发布。正式399购买、62名历史老师及其五天缓冲均保持关闭。
 
 工作区 `D:\WordMasterApp-Membership-Final-D`，分支 `codex/membership-final-d-release-gates`，起点 `9367a23bcc35e79ccc9e6dbeacd5d7a6d3bbe322`。Goal 已创建执行，合同见 `GOAL.md`。冻结继承用户给定的 Stage2至Stage5 和 Final-A/B/C，不重新审计。
 
@@ -25,9 +25,20 @@
 
 [微信官方虚拟支付文档](https://developers.weixin.qq.com/miniprogram/dev/platform-capabilities/business-capabilities/virtual-payment.html) 于本轮读取，文档时间为2026-09-11：Android/鸿蒙/Windows走微信支付，iOS走Apple支付；iOS须配置小程序简称、设备iOS15及以上、微信8.0.68及以上、中国大陆App Store账号；最低1元，只支持现网env=0，不支持Apple沙箱。商品双端互通。后续独立iOS方案应使用受控TEST商品100分/12个月和账号白名单，不能复用0.01元价格假称1分实付，也不能猜测实际设备和账号资格。
 
-公众平台浏览器订单页访问被站点安全策略拒绝；未绕过、未改用其他浏览器或间接方式读取被阻止页面。官方公开文档与本应用CloudBase账本只读检查是两类独立证据。当前AppID的iOS能力/简称/账号渠道状态及该订单的平台退款资格仍须用户后台核实。
+公众平台浏览器订单页访问被站点安全策略拒绝；未绕过。用户已人工核实该笔订单并完成0.01元全额退款，实际到账与云端官方回调事实一致。当前AppID的iOS能力/简称/账号渠道状态仍未验证，iOS不进入首发购买范围。
 
-## 退款硬门禁预览（尚未授权执行）
+## 真实退款与两端最终验收
+
+- 原订单 `wmfe3c...67f1`：用户本人全额退款0.01元；平台退款成功时间为北京时间2026-09-12 14:30:39。云端 `refunded / revoked`，账本 revision=2，仅新增一条指向原payment的 `refund_adjustment / revoke_remaining`。
+- TEST投影 `expired / effectiveExpiresAt=null`，无负时长。原payment记录保留，已用区间截止退款时刻；account、ledger、grant一致；独立正式gift完整账本与退款前相同，其他不存在的来源不冒称有真实覆盖。
+- 自动退款在同一事务中保存订单退款事实、匹配factHash的payment event、定向撤销记录及账户重算，满足可审计要求；无需复制成人工 `membership_admin_audit`。Final-C人工运营操作的具名审计规则不变。
+- 真实安全补偿复查返回 `refunded / revoked`，无新增权益。真实 `stage5_admin confirmPaidAndGrant` 被 `STAGE5_ADMIN_REQUIRED` 拒绝；当前账号无管理员权限，也未新增付款复核证据。有效管理员越过前置检查后的退款终态保护仅由本地真实快照验证 `ORDER_NOT_REVIEWABLE`，不冒称该分支已在线执行。
+- **手机真机通过**：复用在线vivo V2307A / Android15 / 微信8.0.77会话，自动化系统信息确认platform=android，页面session账号与原退款订单一致。打开 `subpages/stage5-membership/index`，读取顶部 `Stage5 TEST · 受限验收`，真实点击“刷新会员状态”，得到expired、expiresAt=null、expiresText为空，页面无到期时间元素。真机截图接口返回不支持；证据为真实设备信息、页面元素及刷新数据，不冒充截图通过。
+- **Windows微信通过**：使用已登录“张张张123”的原生WeChatAppEx窗口，通过现有vConsole仅调用wx.navigateTo进入同一TEST页；实际点击“刷新会员状态”，观察恢复中到恢复完成，页面显示expired且无到期时间。保存实际Windows窗口截图；不是开发工具模拟器。
+- 两端结果一致。未点击购买、未创建订单、未再次支付/退款，未重跑冻结矩阵。普通正式会员页截图与TEST证据严格区分。
+- 已在本工作区被忽略的 `project.private.config.json` 设置TEST自定义启动条件；创建前该文件不存在，不纳入Git。两端验收复用现有会话完成，没有再调用预览服务。
+
+## 历史退款预览（退款前快照，已被上述最终结果取代）
 
 2026-09-12 14:08北京时间只读快照：
 
@@ -44,15 +55,15 @@
 | 平台入口 | 官方“虚拟支付 → 订单管理”；文档支持退款，但该笔目前是否仍可退款尚未读取确认 |
 | 回调 / 多域边界 | 原 `stage5_payment_notify` 处理真实加密退款通知；Final-C `membership_ops` 明确拒绝TEST订单，不把它混入正式订单域 |
 
-**下一步会执行真实微信平台退款，会改变这笔真实TEST订单和对应payment权益，需要用户确认。** 此句描述后续硬门禁，当前尚未发起该动作；先完成平台订单只读核实，再请求单独退款授权。不能将本次请求、只读核实或回复截图当成退款授权。
+退款前已集中向用户展示该订单影响并停止。随后由用户本人完成平台退款；助手没有代为发起退款。
 
-用户授权且实际退款后，只核对原请求要求的最终平台事实、订单终态、该payment重算、其他来源不变、无负时长、account、audit、已退款补偿/confirm不regrant、手机/电脑同账号读取一致。没有平台事实不伪造成功，不新建第二笔付款。
+实际退款后的定向验收结果见上文；没有新建第二笔付款。
 
 ## 部署、恢复与证据
 
 仅更新 `membership_presentation` Event云函数，目标 `cloudbase-4gafzdch60ad597b`；已观测Active并通过真实原生调用。配置前后相同；下载部署包25个源码文件与构建源逐一一致。部署前完整代码包及配置备份位于仓库外，配置使用Windows用户加密。
 
-恢复对象：本次前端改动可从起点或增量提交反向恢复；展示函数可重新部署 `D:\membership-backups\final-d-20260912\presentation-before.zip` 并保持原配置。本次没有新增会员数据或结构迁移。只读展示扩展字段兼容旧客户端，新客户端兼容旧展示响应无reminder字段。
+恢复对象：本次前端改动可从起点或增量提交反向恢复；展示函数可重新部署 `D:\membership-backups\final-d-20260912\presentation-before.zip` 并保持原配置。用户真实退款已由回调写入撤销记录，不能通过Git回退恢复付款或删除撤销记录。没有结构迁移。只读展示扩展字段兼容旧客户端，新客户端兼容旧展示响应无reminder字段。
 
 证据目录 `D:\membership-backups\final-d-20260912`：
 
@@ -62,9 +73,11 @@
 - `official-virtual-payment.md`：官方原文快照。
 - `refund-confirmation-preview.json`、`test-refund-preflight.json`：脱敏只读结果和假设退款计算，非退款事实。
 - `deployed-source-verification.json`：25个源码匹配；`deploy-presentation.json`、加密配置及前后zip保存部署与恢复证据。
+- `REAL-REFUND-RESULT.md`、`postrefund-summary-*.json`、`refund-integrity-check.json`、`refund-compensation-result.json`、`refund-admin-live-rejection.json`：真实退款及分层regrant证据。
+- `real-android-test-page.json`、`real-windows-test-page.json`、`real-windows-test-page.png`：本轮两端TEST页最终验证。
 
-本轮未改普通真实用户、未产生真实支付、未退款、未启用399、未rollout62人。`membership_business` 的enabledTeachers为空、allTeachersEnabled=false；Stage5购买关闭。未发现本次修改引入的未解决P0/P1；真实退款和iOS资格均不得冒充已验收。
+本轮未改普通真实用户、未产生新支付、未启用399、未rollout62人；仅用户本人完成原TEST退款，回调依据平台最终事实重算。`membership_business` 的enabledTeachers为空、allTeachersEnabled=false；Stage5购买关闭。未发现本次修改引入的未解决P0/P1；iOS资格仍不得冒充已验收。
 
 历史已付费名单和内部人员名单均为 **ROLLOUT_INPUT_PENDING**。DEFER：真实联系方式、九宫格、Windows独立实付、iOS账户资格和受控1元实付；后续必须在适用渠道放行前补证据。没有新增Final-E/F，不自动Git封板、rollout、Release RC或发布。
 
-当前唯一人工动作：在已登录公众平台只读查看上述0.01元订单，告知平台订单状态及是否显示退款入口；**暂不点击退款**。核实后再给该笔退款的单独确认步骤。
+下一步唯一建议：准备首批受控rollout名单及执行方案，另行审批后执行；本轮到READY_FOR_ROLLOUT即停止。
