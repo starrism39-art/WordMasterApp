@@ -300,7 +300,45 @@ async function run() {
     rawInFrontOf.phonetic || ''
   );
 
+  const legacyGeneratedWordTexts = [
+    'data', 'grade', 'date', 'other', 'waist', 'wildlife', 'yell', 'luckily',
+    'offline', 'wetland', 'projector', 'building', 'coordination', 'strict',
+    'style', 'suffer', 'sunset', 'surgery', 'swallow', 'symbol'
+  ].concat(Array.from({ length: 33 }, (_, index) => `legacyword-${index + 1}`));
+  const legacyGeneratedWords = legacyGeneratedWordTexts.map((word, index) => ({
+    id: `${word}_gen_${index}`,
+    word,
+    meaning: `旧记录释义${index}`
+  }));
+  const legacyGeneratedPage = createPage(wordViewPageDefinition, phraseBook);
+  const storageBeforeLegacyView = JSON.parse(JSON.stringify(storage));
+  await legacyGeneratedPage.loadResolvedWordObjects.call(legacyGeneratedPage, legacyGeneratedWords);
+  assert.deepStrictEqual(
+    legacyGeneratedPage.data.words.map((item) => item.word),
+    legacyGeneratedWords.map((item) => item.word),
+    '旧记录内部 _gen_ ID 不得作为 gen 后缀显示到词面'
+  );
+  assert.strictEqual(legacyGeneratedPage.data.words.length, 53, '53 词旧记录查看页不得减少单词数量');
+  assert.strictEqual(
+    new Set(legacyGeneratedPage.data.words.map((item) => item.id)).size,
+    53,
+    '53 词旧记录查看页的 wx:key=id 必须保持唯一'
+  );
+  const legacyGeneratedReentryPage = createPage(wordViewPageDefinition, phraseBook);
+  await legacyGeneratedReentryPage.loadResolvedWordObjects.call(legacyGeneratedReentryPage, legacyGeneratedWords);
+  assert.deepStrictEqual(
+    legacyGeneratedReentryPage.data.words.map((item) => item.word),
+    legacyGeneratedWordTexts,
+    '重复进入旧记录查看页时不得重新出现 gen 后缀或残留上次页面状态'
+  );
+  assert.deepStrictEqual(storage, storageBeforeLegacyView, '旧记录词面兼容不得修改学习、复习或同步数据');
+
   const recordsPage = createPage(recordsPageDefinition, phraseBook);
+  assert.strictEqual(
+    recordsPage.parseWordFromRecordId('waist_gen_0', phraseBook.id),
+    'waist',
+    '学习记录入口也必须移除旧版内部 _gen_ 标记'
+  );
   assert.strictEqual(
     recordsPage.parseWordFromRecordId(`${phraseBook.id}_real_in_front_of_999`, phraseBook.id),
     'in front of',
