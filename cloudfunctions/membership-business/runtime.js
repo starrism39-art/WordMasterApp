@@ -49,6 +49,13 @@ function createBusinessRuntime({db,wxCloud,environment,clock=Date.now}) {
     }});
     if(event.action==='status'){strictKeys(request,[]);return {enabled:enabled(teacherId)};}
     const isAdmin=config.administrators.includes(teacherId);
+    if(event.action==='captureLegacyEligibility'){
+      strictKeys(request,[]);
+      if(!isAdmin)throw Error('ADMIN_REQUIRED');
+      if(environment.MEMBERSHIP_LEGACY_CAPTURE!=='registration_quiesced'||config.allTeachersEnabled)throw Error('LEGACY_CAPTURE_RELEASE_GATE');
+      const {createLegacyEligibility,readTeachers}=require('./legacy-eligibility');
+      return createLegacyEligibility({repository,clock,getTeachers:()=>readTeachers(db)}).capture(teacherId);
+    }
     if(['previewIdentitySources','applyIdentitySources'].includes(event.action)){
       if(!isAdmin)throw Error('ADMIN_REQUIRED');
       if(event.action==='previewIdentitySources'){strictKeys(request,['teacherId']);return personal.previewOverride(id(request.teacherId));}

@@ -25,8 +25,22 @@ test('unenrolled teacher cannot access business or admin',async()=>{
  await assert.rejects(s.run({action:'authorizeLearning',request:{studentId:'s'}}),/BUSINESS_NOT_ENABLED/);
  await assert.rejects(s.run({action:'previewInitialization',request:{teacherId:'teacher'}}),/ADMIN_REQUIRED/);
 });
+
+test('snapshot endpoint requires native admin, explicit release gate, and no caller teacher list',async()=>{
+ const s=setup();
+ await assert.rejects(s.run({action:'captureLegacyEligibility'}),/ADMIN_REQUIRED/);
+ s.who.OPENID='admin';await assert.rejects(s.run({action:'captureLegacyEligibility'}),/RELEASE_GATE/);
+ s.environment.MEMBERSHIP_LEGACY_CAPTURE='registration_quiesced';
+ await assert.rejects(s.run({action:'captureLegacyEligibility',request:{teachers:['forged']}}),/UNEXPECTED_FIELDS/);
+ // Use real LocalSdk document transactions, replacing only enumeration.
+ const getCollection=s.db.collection.bind(s.db);
+ s.db.collection=name=>name==='teachers'?{orderBy:()=>({skip:()=>({limit:()=>({get:async()=>({data:[]})})})})}:getCollection(name);
+ const first=await s.run({action:'captureLegacyEligibility'});
+ assert.equal(first.count,0);assert.deepEqual(await s.run({action:'captureLegacyEligibility'}),first);
+});
 test('runtime admin preview/apply uses protected evidence and no client classification',async()=>{
  const s=setup();s.who.OPENID='admin';
+ await require('../../cloudfunctions/membership-business/legacy-eligibility').createLegacyEligibility({repository:require('../../cloudfunctions/membership-business/repository').createBusinessRepository(s.db),getTeachers:async()=>[],clock:()=>AT}).capture('admin');
  const e={verified:true,operator:'admin',reference:'LOCAL_ONLY'};
  s.db.rows.set('membership_migration_evidence/teacher',{teacherId:'teacher',registeredAt:AT,registrationEvidence:e,classificationEvidence:e,sources:[],studentRefs:[]});
  const p=await s.run({action:'previewInitialization',request:{teacherId:'teacher'}});
