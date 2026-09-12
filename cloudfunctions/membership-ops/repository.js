@@ -18,7 +18,7 @@ function createOpsRepository(db) {
 // Only membership projections are writable. Never initialize access, transition,
 // student references, migration facts, or legacy teacher/profile documents.
 function ledgerAdapter(base,clock) {
-  const complete=(row,teacherId)=>({...validate(row,teacherId)||{teacherId,revision:0,grants:[],access:null},audits:row?.audits||[],operations:row?.operations||{}});
+  const complete=(row,teacherId)=>structuredClone({...validate(row,teacherId)||{teacherId,revision:0,grants:[],access:null},audits:row?.audits||[],operations:row?.operations||{}});
   return {
     async read(teacherId){id(teacherId);return complete(await base.get('ledgers',teacherId),teacherId);},
     transaction(teacherId,operation){id(teacherId);return base.transaction(async tx=>{

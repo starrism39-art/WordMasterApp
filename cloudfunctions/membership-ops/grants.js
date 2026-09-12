@@ -70,7 +70,17 @@ function createGrantOperations({repository,clock,operator,previewKey,resolveTeac
       await resolveTeacher(id(r.teacherId));const at=clock(),candidate=entry(r,at),fingerprint=hash({...r,requestId:undefined});
       return ledger.transaction(r.teacherId,async(row,tx)=>{
         const key=`ops_${candidate.sourceId}`,old=row.operations[key];
-        if(old){if(old.hash!==fingerprint)throw Error('IDEMPOTENCY_CONFLICT');return old.result;}
+        if(old){
+          if(old.hash!==fingerprint)throw Error('IDEMPOTENCY_CONFLICT');
+          // Repair only this operation's already committed ledger audit. A replay
+          // must not grant again or invent a missing original audit.
+          const audit=row.audits.find(a=>a.auditId===key);
+          if(!audit)throw Error('OPS_AUDIT_REQUIRED');
+          const stored=await tx.get('audits',key);
+          if(stored&&canonical(stored)!==canonical(audit))throw Error('OPS_AUDIT_CONFLICT');
+          if(!stored)await tx.put('audits',key,audit);
+          return old.result;
+        }
         instant(input.previewAt);
         if(input.previewAt>at||at-input.previewAt>300000||input.revision!==row.revision||!equal(hmac(previewKey,canonical({request:r,revision:row.revision,previewAt:input.previewAt})),input.token))throw Error('PREVIEW_STALE_OR_MISSING');
         const {before,after}=project(row,candidate,at);

@@ -23,6 +23,15 @@ function fixture(patch={}){
   const create=(requestId='first')=>call('createOrder',{requestId,platform:'android'});
   return {...f,repo,runtime,environment,call,create,setActor:v=>{actor=v;}};
 }
+test('release master gate admits non-whitelisted Android buyer with fixed formal terms only',async()=>{
+  const f=fixture({formalPurchaseEnabled:true,controlledPreparationEnabled:false,controlledPaymentEnabled:false,controlledTeachers:[]});
+  const o=await f.create(),row=await f.repo.get('orders',o.orderId);
+  assert.equal(row.platformProductId,'teacher_member_12m');assert.equal(row.amount,39900);assert.equal(row.currency,'CNY');assert.equal(row.productSnapshot.duration.months,12);assert.equal(row.productSnapshot.autoRenew,false);
+  const p=await f.call('parameters',{orderId:o.orderId,loginCode:'local',platform:'android'});assert.equal(p.paymentInvocationAllowed,true);
+  for(const platform of ['ios','windows','ohos','harmony','unknown','',undefined])await assert.rejects(f.call('createOrder',{requestId:'blocked_'+platform,platform}),/FORMAL_PURCHASE_NOT_RELEASED/);
+  assert.equal([...f.sdk.rows.keys()].filter(k=>k.startsWith('membership_orders/')).length,1);
+});
+
 test('formal fixed product and preparation-only parameters cannot authorize payment',async()=>{
   const f=fixture(),o=await f.create(),row=await f.repo.get('orders',o.orderId);
   assert.equal(row.amount,39900);assert.equal(row.productSnapshot.duration.months,12);assert.equal(row.productSnapshot.autoRenew,false);assert.equal(row.productSnapshot.testOnly,false);assert.equal(row.purchaseDomain,'formal_android_v1');

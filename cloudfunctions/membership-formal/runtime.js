@@ -12,7 +12,7 @@ const {createFormalRepository}=require('./repository');
 function createFormalRuntime({db,wxCloud,environment={},clock=Date.now,api:injectedApi,repository:injectedRepository}){
   const config=configuration(environment),repository=injectedRepository||createFormalRepository(db,config,{clock});
   const credentials=credentialProviders(environment,{appId:config.appId,clock});
-  const api=injectedApi||createWechatApi({...credentials});
+  const api=injectedApi||require('./delivery').withConfirmedDelivery(createWechatApi({...credentials}),{clock});
   const identity=createTeacherIdentity({db,wxCloud,appId:config.appId});
   function engine(who,enabled=false){return createPaymentEngine({repository,api,clock,config:{...config,purchaseEnabled:enabled},getIdentity:async()=>who});}
   return {config,repository,

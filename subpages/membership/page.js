@@ -75,7 +75,7 @@ function makePage(kind) {
     async buy() {
       const m=this.data.model;
       if(this.data.loading || this.data.error || this.data.paying || this.data.localPending || !m || m.pending || !m.showPurchase)return;
-      if(!(m.canPurchase || m.canRenew)){this.setData({message:'会员购买暂未开放'});return;}
+      if(!(m.canPurchase || m.canRenew || m.canResumePayment)){this.setData({message:'会员购买暂未开放'});return;}
       const session=captureAccountSession();this._purchaseRequest ||= client.requestId();
       this.setData({paying:true,localPending:true,message:'正在确认支付结果'});
       try {const result=await client.purchase(this._purchaseRequest);if(!isAccountSessionCurrent(session))return;

@@ -1,7 +1,7 @@
 'use strict';
 const { evaluateAccess } = require('../membership-access/policy');
 const { projectLedger } = require('../membership-core/ledger');
-const { publicConfig } = require('./config');
+const { publicConfig, FORMAL_PRODUCT } = require('./config');
 const { reminderModel } = require('./reminders');
 const DAY = 86400000;
 function date(value) {
@@ -64,9 +64,14 @@ function orderModel(order, row, config, now) {
   const closed = ['closed','cancelled','payment_failed'].includes(order.paymentStatus);
   const period = projectLedger(row.teacherId,row.grants,now).periods.find(p => p.grantId === order.grantId);
   const confirmed = granted && !!period;
+  // An order prepared before payment is not evidence that WeChat is processing money.
+  // Keep it blocking a second purchase without driving the confirmation spinner.
+  const awaitingPayment = order.paymentStatus === 'awaiting_payment' && order.grantStatus === 'none' && !order.fact && !order.reviewRequired &&
+    order.platformProductId===FORMAL_PRODUCT.productId && order.productSnapshot.productId===FORMAL_PRODUCT.productId;
+  const purchaseBlocked = !refunded && !confirmed && !closed;
   return { id:order.orderId, productText:'教师会员 · ' + config.durationText, amountText:(order.amount / 100).toFixed(2) + '元',
-    statusText:refunded ? '已退款' : confirmed ? '支付成功' : closed ? '已关闭' : '正在确认',
-    pending:!refunded && !confirmed && !closed, paymentTimeText:date(order.fact?.paidAt) || '待确认',
+    statusText:refunded ? '已退款' : confirmed ? '支付成功' : closed ? '已关闭' : awaitingPayment ? '待付款（未确认扣款）' : '正在确认',
+    pending:purchaseBlocked && !awaitingPayment, awaitingPayment, purchaseBlocked, paymentTimeText:date(order.fact?.paidAt) || '待确认',
     membershipPeriodText:period ? date(period.startsAt) + ' — ' + date(period.endsAt) : refunded ? '已退款' : '待确认',
     maskedOrderId:order.orderId.length > 10 ? order.orderId.slice(0,6) + '••••' + order.orderId.slice(-4) : '••••' + order.orderId.slice(-4) };
 }

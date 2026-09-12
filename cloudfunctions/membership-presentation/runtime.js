@@ -42,9 +42,12 @@ function createPresentationRuntime({db, wxCloud, environment = {}, clock = Date.
     }
     if (event.action === 'getDisplay') {
       // Scan the owner's persisted orders: recovery never depends on a local order ID.
-      let offset=0, pending=false;
-      while (true) { const batch=await orders(offset,100);pending ||= batch.some(o=>o.pending);if(batch.length<100)break;offset+=100;if(offset>=10000)throw Error('ORDER_SCAN_LIMIT'); }
-      return {...model,pending,canPurchase:model.canPurchase&&!pending,canRenew:model.canRenew&&!pending};
+      let offset=0, pending=false, awaitingPayment=false, purchaseBlocked=false, blockedCount=0, resumeOrderId='';
+      while (true) { const batch=await orders(offset,100);pending ||= batch.some(o=>o.pending);awaitingPayment ||= batch.some(o=>o.awaitingPayment);purchaseBlocked ||= batch.some(o=>o.purchaseBlocked);for(const order of batch){if(order.purchaseBlocked)blockedCount++;if(order.awaitingPayment)resumeOrderId=order.id;}if(batch.length<100)break;offset+=100;if(offset>=10000)throw Error('ORDER_SCAN_LIMIT'); }
+      const canResumePayment=blockedCount===1 && awaitingPayment && !pending && formal.canPrepare(teacherId,request.platform);
+      return {...model,showPurchase:model.showPurchase&&(!['active','expiring'].includes(model.displayState)||formal.canPrepare(teacherId,request.platform)),pending,awaitingPayment,canPurchase:model.canPurchase&&!purchaseBlocked,canRenew:model.canRenew&&!purchaseBlocked,
+        canResumePayment,resumeOrderId:canResumePayment?resumeOrderId:'',purchaseLabel:canResumePayment?'继续支付':model.purchaseLabel,
+        purchaseDisabledText:canResumePayment?'将继续支付已有订单，不会创建新订单':awaitingPayment ? '已有待付款订单，请勿重复支付' : model.purchaseDisabledText};
     }
     if (event.action === 'getOrders') {
       const offset = request.offset === undefined ? 0 : request.offset;

@@ -30,11 +30,16 @@ async function purchase(requestId) {
   const operation = (async () => {
     if (isCloudReadOnlyMode()) throw Error('READ_ONLY');
     const display = await getDisplay();
-    if (!isAccountSessionCurrent(session) || display.pending || !(display.canPurchase || display.canRenew)) throw Error('PURCHASE_DISABLED');
+    if (!isAccountSessionCurrent(session) || display.pending || !(display.canPurchase || display.canRenew || display.canResumePayment)) throw Error('PURCHASE_DISABLED');
+    const resumeOrderId=display.canResumePayment ? display.resumeOrderId : '';
+    if (display.canResumePayment && (typeof resumeOrderId!=='string'||!resumeOrderId)) throw Error('RESUME_ORDER_REQUIRED');
+    if (display.awaitingPayment && !resumeOrderId) throw Error('EXISTING_ORDER_REQUIRED');
     // Reuse the sealed payment orchestration. The adapter deliberately discards
     // its product argument: selection, amount and duration belong to the server.
     const service = createPaymentService({wxApi:wx,sessionRevision:revision,requireInvocationPermission:true,callServer:async(action,request) => {
-      if (action === 'createOrder') return call(action,{requestId:request.requestId,platform:purchaseChannel(wx)||'unsupported'});
+      // The shared orchestrator receives the already persisted order; no create API
+      // is called when resuming. Its parameter endpoint rechecks trusted ownership.
+      if (action === 'createOrder') return resumeOrderId ? {orderId:resumeOrderId} : call(action,{requestId:request.requestId,platform:purchaseChannel(wx)||'unsupported'});
       if (action === 'parameters') return call(action,{...request,platform:purchaseChannel(wx)||'unsupported'});
       return call(action,request);
     }});

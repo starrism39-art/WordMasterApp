@@ -9,6 +9,6 @@ function purchaseChannel(wxApi) {
 }
 function gateDisplay(model, wxApi) {
   if (purchaseChannel(wxApi)) return model;
-  return {...model, showPurchase:false, canPurchase:false, canRenew:false};
+  return {...model, showPurchase:false, canPurchase:false, canRenew:false,canResumePayment:false,resumeOrderId:''};
 }
 module.exports = {purchaseChannel, gateDisplay};
