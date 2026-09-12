@@ -149,6 +149,9 @@ const extractDisplayWordFromReviewId = (wordId, wordbookId) => {
     .replace(/^real_/i, '')
     .replace(/_real_/gi, '_')
     .replace(/_\d+$/, '')
+    // 旧版数量兜底项使用 `<word>_gen_<index>` 作为仅供页面使用的 ID。
+    // `_gen` 是内部生成标记，不属于真实词面；须在转空格前移除。
+    .replace(/_gen$/i, '')
     .replace(/_/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
