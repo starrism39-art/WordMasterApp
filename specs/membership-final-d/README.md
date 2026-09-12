@@ -2,7 +2,7 @@
 
 2026-09-12。最终 **READY_FOR_ROLLOUT**：提醒、首发渠道门禁、原 TEST 真实退款及手机/Windows 同账号恢复已完成验证。此状态仅表示可准备后续受控 rollout，不等于已经开启购买、rollout 或发布。正式399购买、62名历史老师及其五天缓冲均保持关闭。
 
-工作区 `D:\WordMasterApp-Membership-Final-D`，分支 `codex/membership-final-d-release-gates`，起点 `9367a23bcc35e79ccc9e6dbeacd5d7a6d3bbe322`。Goal 已创建执行，合同见 `GOAL.md`。冻结继承用户给定的 Stage2至Stage5 和 Final-A/B/C，不重新审计。
+工作区 `D:\WordMasterApp-Membership-Final-D`，分支 `codex/membership-final-d-release-gates`，起点 `9367a23bcc35e79ccc9e6dbeacd5d7a6d3bbe322`。冻结继承用户给定的 Stage2至Stage5 和 Final-A/B/C，不重新审计。Git封板范围与检查见 [GIT-SEAL.md](GIT-SEAL.md)；执行用Goal文件仅保留本机。
 
 ## 提醒与验证
 
@@ -28,6 +28,8 @@
 公众平台浏览器订单页访问被站点安全策略拒绝；未绕过。用户已人工核实该笔订单并完成0.01元全额退款，实际到账与云端官方回调事实一致。当前AppID的iOS能力/简称/账号渠道状态仍未验证，iOS不进入首发购买范围。
 
 ## 真实退款与两端最终验收
+
+本节真实支付与退款证据仅覆盖已验证的 **Android / TEST_teacher_12m_a / 0.01元** 路径，不代表正式399元实付退款、iOS退款或所有渠道退款通过。Windows证据仅为退款后的同账号权益恢复，不是Windows实付或独立退款验收。
 
 - 原订单 `wmfe3c...67f1`：用户本人全额退款0.01元；平台退款成功时间为北京时间2026-09-12 14:30:39。云端 `refunded / revoked`，账本 revision=2，仅新增一条指向原payment的 `refund_adjustment / revoke_remaining`。
 - TEST投影 `expired / effectiveExpiresAt=null`，无负时长。原payment记录保留，已用区间截止退款时刻；account、ledger、grant一致；独立正式gift完整账本与退款前相同，其他不存在的来源不冒称有真实覆盖。
