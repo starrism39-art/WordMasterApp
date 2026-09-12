@@ -32,6 +32,9 @@ test('personal five-day boundary permits all legacy students then requires fixed
  s.state.now++;await s.personal.open('t');
  assert.equal(s.db.rows.get('membership_ledgers/t').initialization.classification,'free');
  assert.equal((await s.access('t').authorizeLearning({studentId:'s2'})).reasonCode,'MEMBER_EXPIRED_NEEDS_RETAINED_STUDENT');
+ await s.access('t').selectRetainedStudent({requestId:'retain',studentId:'s1'});
+ assert.equal((await s.access('t').authorizeLearning({studentId:'s1'})).allowed,true);
+ assert.equal((await s.access('t').authorizeLearning({studentId:'s2'})).allowed,false);
  for(const [key,value] of original)assert.deepEqual(s.db.rows.get(key),value);
 });
 test('new native teacher has no buffer and first open never resets lifetime slot',async()=>{
@@ -39,6 +42,24 @@ test('new native teacher has no buffer and first open never resets lifetime slot
  await s.access('new').addStudent({requestId:'first',name:'N'});s.state.now+=10*DAY;await s.personal.open('new');
  assert.equal(s.db.rows.get('teacher_student_access/new').freeSlotConsumed,true);
 });
+
+for(const kind of ['historical','long-term','gift'])test(kind+' evidence before first open cannot block personal timer; existing grants also cannot bypass it',async()=>{
+ const s=setup();s.seed('t','s1');s.seed('t','s2');s.proof(kind,'preexisting_'+kind);
+ assert.equal((await s.personal.open('t')).transitionStartedAt,AT);
+ const p=await s.personal.previewOverride('t');
+ await s.personal.applyOverride(Object.fromEntries(['teacherId','revision','factsHash','previewAt','token'].map(k=>[k,p[k]])),'admin');
+ const row=s.db.rows.get('membership_ledgers/t');
+ assert.equal(row.initialization.classification,kind);
+ const grants=structuredClone(row.grants);
+ // Model an administrative initialization that has never opened the feature.
+ row.transitionStartedAt=null;row.access.transitionStartedAt=null;row.access.transitionStartsAt=null;row.access.transitionEndsAt=null;
+ s.state.now+=DAY;
+ assert.equal((await s.personal.open('t')).transitionStartedAt,AT+DAY);
+ assert.deepEqual(s.db.rows.get('membership_ledgers/t').grants,grants);
+ s.state.now+=DAY;assert.equal((await s.personal.open('t')).transitionStartedAt,AT+DAY);
+ assert.equal((await s.access('t').authorizeLearning({studentId:'s2'})).allowed,true);
+});
+
 for(const kind of ['historical','gift','long-term'])test(kind+' overrides candidate through protected preview and an idempotent source grant',async()=>{
  const s=setup();s.seed('t','s1');await s.personal.open('t');s.proof(kind,'source_'+kind);
  const p=await s.personal.previewOverride('t');const {teacherId,revision,factsHash,previewAt,token}=p;

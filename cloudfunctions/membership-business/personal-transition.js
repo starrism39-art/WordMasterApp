@@ -22,7 +22,7 @@ function bindStudents(teacherId,docs){
  }
  return {students,studentRefs:refs,studentAliases:aliases};
 }
-function createPersonalTransition({repository,getStudents,isLegacy=isLegacyCandidate,clock=Date.now,previewKey}){
+function createPersonalTransition({repository,getStudents,isLegacy,clock=Date.now,previewKey}){
  const base=repository.base;
  const summary=row=>({classification:row.initialization.classification,transitionStartedAt:row.transitionStartedAt??null,
   transitionEndsAt:row.access?.transitionEndsAt??null,policy:row.initialization.policy||'existing',membershipStatus:row.account?.status});
@@ -46,7 +46,22 @@ function createPersonalTransition({repository,getStudents,isLegacy=isLegacyCandi
   return base.transaction(async tx=>{
    const old=await tx.get('ledgers',teacherId);
    if(old?._stage5||old&&old.teacherId!==teacherId)throw Error('FORMAL_LEDGER_MISMATCH');
+   const proof=await tx.get('evidence',teacherId);
+   if(proof&&(proof.teacherId!==teacherId||proof._stage5))throw Error('FORMAL_EVIDENCE_MISMATCH');
+   const legacy=isLegacy?await isLegacy(teacherId):await require('./legacy-eligibility').eligible(tx,teacherId);
+   function start(row){
+    if(!legacy||row.transitionStartedAt!=null)return false;
+    const at=row.access.transitionStartedAt??row.access.transitionStartsAt??clock();
+    row.transitionStartedAt=at;
+    Object.assign(row.access,{transitionStartedAt:at,transitionStartsAt:at,transitionEndsAt:at+5*DAY,
+     transitionStudentIds:row.students.filter(s=>!s.deleted).map(s=>s.studentId)});
+    return true;
+   }
    if(old?.initialization?.state==='ready'){
+    if(start(old)){
+     const a=audit(old,'membership_first_new_version_open',POLICY,{classification:old.initialization.classification,transitionStartedAt:old.transitionStartedAt});
+     await write(tx,old);await tx.put('audits',a.auditId,a);
+    }
     if(old.initialization.classification==='legacy_free_candidate'&&clock()>=old.access.transitionEndsAt){
      const pending=await tx.get('evidence',teacherId);
      if(pending?.review===true||pending?.sources?.length)return {...summary(old),classification:'review',identityOverridePending:true};
@@ -57,8 +72,7 @@ function createPersonalTransition({repository,getStudents,isLegacy=isLegacyCandi
     return summary(old);
    }
    if(old?.grants?.length||old?.access)throw Error('EXISTING_LEDGER_REVIEW_REQUIRED');
-   const proof=await tx.get('evidence',teacherId);
-   if(proof?.review===true||proof?.sources?.length)throw Error('PROTECTED_IDENTITY_INITIALIZATION_REQUIRED');
+   if(!legacy&&(proof?.review===true||proof?.sources?.length))throw Error('PROTECTED_IDENTITY_INITIALIZATION_REQUIRED');
    const checked=[];
    for(const doc of docs){
     const current=await tx.get('students',id(doc._id));
@@ -66,14 +80,14 @@ function createPersonalTransition({repository,getStudents,isLegacy=isLegacyCandi
     if(!current||canonical(current)!==canonical(expected))throw Error('STUDENT_SNAPSHOT_CHANGED');
     checked.push({...current,_id:doc._id});
    }
-   const at=clock(),legacy=isLegacy(teacherId),bound=bindStudents(teacherId,checked);
+   const at=clock(),bound=bindStudents(teacherId,checked);
    const access=initializeAccess({teacherId,students:bound.students,grants:[],registeredAt:at,launchAt:at,now:at,
     reliablePriorConsumption:bound.students.length>0||(proof?.consumed===true&&proof?.consumptionEvidence?.verified===true&&!!proof?.consumptionEvidence?.operator&&!!proof?.consumptionEvidence?.reference)});
    if(legacy)Object.assign(access,{transitionStartedAt:at,transitionStartsAt:at,transitionEndsAt:at+5*DAY,
     transitionStudentIds:bound.students.filter(s=>!s.deleted).map(s=>s.studentId)});
    const row={teacherId,revision:old?.revision||0,grants:[],access,...bound,audits:old?.audits||[],operations:old?.operations||{},
     transitionStartedAt:legacy?at:null,initialization:{state:'ready',classification:legacy?'legacy_free_candidate':'free',policy:POLICY,at,
-     originClassification:legacy?'legacy_free_candidate':'free',source:legacy?'approved_legacy_roster':'new_native_teacher'}};
+     originClassification:legacy?'legacy_free_candidate':'free',source:legacy?'sealed_legacy_eligibility':'new_native_teacher'}};
    const a=audit(row,'membership_first_new_version_open',POLICY,{classification:row.initialization.classification,transitionStartedAt:row.transitionStartedAt});
    await write(tx,row);await tx.put('audits',a.auditId,a);
    return summary(row);
