@@ -223,18 +223,39 @@ const deepClone = (value) => JSON.parse(JSON.stringify(value));
     studyDate: '2025-03-01T10:00:00+08:00',
     learnedWordIds: ['legacy-w1']
   };
+  const recoverPartialRecord = async () => ({
+    source: 'historical_compatibility_recovery',
+    words: [{
+      wordId: 'legacy-w1',
+      word: 'legacy',
+      meaning: '遗留内容',
+      phonetic: ''
+    }],
+    requestedCount: 1,
+    recoveredCount: 1,
+    failedCount: 0,
+    unresolvedWordIds: [],
+    historicallyAccurate: false
+  });
   await assert.rejects(
-    prepareRecordExport({ recordId: partialRecord.id, records: [partialRecord], format: 'xlsx' }),
+    prepareRecordExport({
+      recordId: partialRecord.id,
+      records: [partialRecord],
+      format: 'xlsx',
+      recoverCompatibleWords: recoverPartialRecord
+    }),
     (error) => error.code === 'PARTIAL_EXPORT_CONFIRMATION_REQUIRED'
+      && String(error.userMessage).includes('当前可恢复的单词内容')
   );
   const partial = await prepareRecordExport({
     recordId: partialRecord.id,
     records: [partialRecord],
     format: 'xlsx',
-    allowPartial: true
+    allowPartial: true,
+    recoverCompatibleWords: recoverPartialRecord
   });
   assert.strictEqual(partial.isPartial, true);
-  assert.strictEqual(partial.wordsSnapshot[0].meaning, '');
+  assert.strictEqual(partial.wordsSnapshot[0].meaning, '遗留内容');
   assert.strictEqual(partial.wordsSnapshot[0].phonetic, '');
 
   const legacyTextRecords = [
@@ -253,11 +274,26 @@ const deepClone = (value) => JSON.parse(JSON.stringify(value));
       learnedWordTexts: ['legacyword']
     }
   ];
+  const recoverLegacyText = async (record) => ({
+    source: 'historical_compatibility_recovery',
+    words: (record.learnedWordTexts || []).map((word) => ({
+      wordId: '',
+      word,
+      meaning: '',
+      phonetic: ''
+    })),
+    requestedCount: (record.learnedWordTexts || []).length,
+    recoveredCount: (record.learnedWordTexts || []).length,
+    failedCount: 0,
+    unresolvedWordIds: [],
+    historicallyAccurate: false
+  });
   await assert.rejects(
     prepareMergedRecordExport({
       recordIds: legacyTextRecords.map((record) => record.id),
       records: legacyTextRecords,
-      format: EXPORT_FORMATS.XLSX
+      format: EXPORT_FORMATS.XLSX,
+      recoverCompatibleWords: recoverLegacyText
     }),
     (error) => error.code === 'PARTIAL_EXPORT_CONFIRMATION_REQUIRED'
       && String(error.userMessage).includes('单词文本去重')
@@ -266,7 +302,8 @@ const deepClone = (value) => JSON.parse(JSON.stringify(value));
     recordIds: legacyTextRecords.map((record) => record.id),
     records: legacyTextRecords,
     format: EXPORT_FORMATS.XLSX,
-    allowPartial: true
+    allowPartial: true,
+    recoverCompatibleWords: recoverLegacyText
   });
   assert.strictEqual(partialMerged.wordsSnapshot.length, 1);
   assert.strictEqual(partialMerged.isPartial, true);

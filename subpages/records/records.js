@@ -15,7 +15,10 @@ const {
   resolveCurrentStudent,
   resolveCurrentWordbook
 } = require('../../utils/learning-context.js');
-const { extractDisplayWordFromReviewId } = require('../../utils/review-word-resolver.js');
+const {
+  extractDisplayWordFromReviewId,
+  resolveLegacyRecordWords
+} = require('../../utils/review-word-resolver.js');
 const {
   buildMergedRecordExportChoice,
   buildOriginalRecordChoices,
@@ -1010,7 +1013,7 @@ Page({
         wx.showModal({
           title: '历史兼容记录',
           content: error.userMessage
-            || '该记录属于历史兼容记录，部分历史字段不可保证。导出只包含能够证明的历史字段，是否继续？',
+            || '该记录缺少完整历史词条快照。\n本次导出将使用当前可恢复的单词内容，部分释义或音标可能与当时记录存在差异。',
           confirmText: '继续导出',
           success: (res) => {
             if (res.confirm) this.executeRecordExport(options, true);
@@ -1148,250 +1151,88 @@ Page({
     }
   },
 
-  // 从原始记录中提取单词
+  // 从原始记录中提取单词：完整快照优先；旧稳定 ID 统一走共享兼容 resolver。
   extractWordsFromOriginalRecord: function(record, words, wordSet) {
     try {
       console.log('从原始记录中提取单词:', record);
 
-      // 新链路优先：直接使用学习时保存的完整单词快照，避免ID反解析造成错位。
       const detailedWords =
-        (Array.isArray(record.studyWordsDetailed) && record.studyWordsDetailed) ||
-        (Array.isArray(record.learnedWordsDetailed) && record.learnedWordsDetailed) ||
+        (Array.isArray(record.wordsSnapshot) && record.wordsSnapshot.length > 0 && record.wordsSnapshot) ||
+        (Array.isArray(record.studyWordsDetailed) && record.studyWordsDetailed.length > 0 && record.studyWordsDetailed) ||
+        (Array.isArray(record.learnedWordsDetailed) && record.learnedWordsDetailed.length > 0 && record.learnedWordsDetailed) ||
         [];
 
       if (detailedWords.length > 0) {
         const beforeCount = words.length;
-        let detailedWordAdded = false;
-        const detailedSeen = new Set();
         detailedWords.forEach((item, index) => {
-          if (!item || typeof item !== 'object') {
-            return;
-          }
-
-          const sourceWordId = String(item.sourceWordId || item.id || item.word || '').trim();
+          if (!item || typeof item !== 'object') return;
+          const sourceWordId = String(item.wordId || item.sourceWordId || item.id || '').trim();
           const displayWord = String(item.word || '').replace(/\s+/g, ' ').trim();
-          if (!displayWord) {
-            return;
-          }
+          if (!displayWord) return;
 
-          const dedupeKey = sourceWordId || displayWord.toLowerCase();
-          if (!dedupeKey || detailedSeen.has(dedupeKey)) {
-            return;
-          }
-          detailedSeen.add(dedupeKey);
-
-          const wordObj = {
+          const finalKey = displayWord.toLowerCase();
+          if (wordSet.has(finalKey)) return;
+          wordSet.add(finalKey);
+          words.push({
             id: sourceWordId || `${displayWord.toLowerCase().replace(/\s+/g, '_')}_${index}`,
-            sourceWordId: sourceWordId,
+            sourceWordId,
+            wordId: sourceWordId,
             word: displayWord,
             phonetic: String(item.phonetic || '').trim(),
-            meaning: String(item.meaning || item.translation || '未知释义').trim() || '未知释义'
-          };
-
-          const normalizedWord = String(displayWord).toLowerCase();
-          const mappedWord = wordMap[normalizedWord] || (normalizedWord.length >= 3 ? findWord(displayWord, wordMap) : null);
-          if (mappedWord) {
-            wordObj.word = mappedWord.word || wordObj.word;
-            wordObj.phonetic = mappedWord.phonetic || wordObj.phonetic;
-            wordObj.meaning = mappedWord.meaning || mappedWord.translation || wordObj.meaning;
-          }
-
-          const finalKey = String(wordObj.word || '').toLowerCase().replace(/\s+/g, ' ').trim();
-          if (!finalKey || wordSet.has(finalKey)) {
-            return;
-          }
-
-          wordSet.add(finalKey);
-          words.push(wordObj);
-          detailedWordAdded = true;
+            meaning: String(item.meaning || item.translation || '未知释义').trim() || '未知释义',
+            masteryStatus: item.masteryStatus || null
+          });
         });
-
-        if (detailedWordAdded) {
-          console.log('使用studyWordsDetailed提取单词成功，新增数量:', words.length - beforeCount);
+        if (words.length > beforeCount) {
+          console.log('使用历史完整词条快照提取单词成功，新增数量:', words.length - beforeCount);
           return;
         }
       }
-      
-      // 优先使用掌握/未掌握快照（通常比历史learnedWordIds更准确）
-      let wordIds = [];
-      const beforeExtractCount = words.length;
-      let unresolvedIdCount = 0;
-      let numericOnlyIdCount = 0;
 
-      const snapshotWordIds = [];
-      if (Array.isArray(record.masteredWordIds)) {
-        snapshotWordIds.push(...record.masteredWordIds);
-      }
-      if (Array.isArray(record.notMasteredWordIds)) {
-        snapshotWordIds.push(...record.notMasteredWordIds);
-      }
-
-      if (snapshotWordIds.length > 0) {
-        const seen = new Set();
-        wordIds = snapshotWordIds.filter((id) => {
-          const key = String(id || '').trim();
-          if (!key || seen.has(key)) {
-            return false;
-          }
-          seen.add(key);
-          return true;
+      const compatibilityRecovery = resolveLegacyRecordWords(record, {
+        words: mergedWords,
+        wordMap,
+        findWord,
+        lookUpPhrase
+      });
+      compatibilityRecovery.words.forEach((item, index) => {
+        const finalKey = String(item.word || '').toLowerCase().replace(/\s+/g, ' ').trim();
+        if (!finalKey || wordSet.has(finalKey)) return;
+        wordSet.add(finalKey);
+        words.push({
+          ...item,
+          id: item.id || `${finalKey.replace(/\s+/g, '_')}_compat_${index}`,
+          meaning: item.meaning || '未知释义'
         });
-        console.log('使用masteredWordIds/notMasteredWordIds:', wordIds);
-      }
-      
-      if (wordIds.length === 0 && record.learnedWordIds && Array.isArray(record.learnedWordIds)) {
-        console.log('使用learnedWordIds:', record.learnedWordIds);
-        wordIds = record.learnedWordIds;
-      } else if (wordIds.length === 0 && record.studyWords && Array.isArray(record.studyWords)) {
-        console.log('使用studyWords:', record.studyWords);
-        wordIds = record.studyWords;
-      } else if (wordIds.length === 0 && record.words && Array.isArray(record.words)) {
-        console.log('使用words:', record.words);
-        wordIds = record.words;
-      } else if (wordIds.length === 0 && record.wordIds && Array.isArray(record.wordIds)) {
-        console.log('使用wordIds:', record.wordIds);
-        wordIds = record.wordIds;
-      }
-      
-      console.log('提取的单词ID:', wordIds);
-      
-      // 处理每个单词ID
-      const normalizedFinalWordSet = new Set();
-      wordIds.forEach((wordId, index) => {
-        try {
-          const sourceWordId = typeof wordId === 'object' && wordId !== null ? (wordId.id || wordId.word || JSON.stringify(wordId)) : String(wordId);
-          const sourceWordIdText = String(sourceWordId || '').trim();
-
-          // 旧版纯数字ID无法可靠反解析，留给后续词书兜底/默认提示处理。
-          if (this.isNumericWordId(sourceWordIdText)) {
-            numericOnlyIdCount += 1;
-            unresolvedIdCount += 1;
-            return;
-          }
-
-          let processedWord = this.parseWordFromRecordId(wordId, record.wordbookId);
-
-          // 历史数据纠偏：若解析结果过短，尝试从原始ID反向恢复真实单词
-          if (typeof processedWord === 'string' && processedWord.length <= 2) {
-            const sourceText = String(sourceWordId || '');
-            const tokenCandidates = (sourceText.match(/[a-zA-Z][a-zA-Z'\-]*/g) || []).reverse();
-            const genericTokens = new Set([
-              'real', 'word', 'words', 'book', 'wordbook', 'grade',
-              'first', 'second', 'third', 'fourth', 'fifth', 'sixth',
-              'seventh', 'eighth', 'ninth', 'new', 'standard', 'complete'
-            ]);
-
-            for (let i = 0; i < tokenCandidates.length; i++) {
-              const token = String(tokenCandidates[i]).trim();
-              if (token.length < 3 || genericTokens.has(token.toLowerCase())) {
-                continue;
-              }
-
-              const directMatch = wordMap[token.toLowerCase()];
-              const fuzzyMatch = directMatch || findWord(token, wordMap);
-              if (fuzzyMatch && fuzzyMatch.word) {
-                processedWord = String(fuzzyMatch.word).trim();
-                break;
-              }
-
-              // 即使词典未命中，也优先保留更合理的英文候选
-              processedWord = token;
-              break;
-            }
-          }
-          
-          // 如果是字符串，处理可能的wordbookId_word格式
-          if (typeof processedWord === 'string' && processedWord) {
-            processedWord = processedWord.replace(/\s+/g, ' ').trim();
-
-            // 过滤明显异常的超长ID残留词；真实短语（词典可查到）保留完整
-            const tokenCount = processedWord.split(/\s+/).filter(Boolean).length;
-            const isValidPhrase = tokenCount >= 4 && wordMap[processedWord.toLowerCase()];
-            if (processedWord.length > 24 || (tokenCount >= 4 && !isValidPhrase)) {
-              const sourceTokens = String(sourceWordId || '').match(/[a-zA-Z][a-zA-Z'\-]*/g) || [];
-              if (sourceTokens.length > 0) {
-                processedWord = String(sourceTokens[sourceTokens.length - 1] || '').trim();
-              }
-            }
-
-            if (!processedWord) {
-              unresolvedIdCount += 1;
-              return;
-            }
-
-            // ★ 短语词典查词：单字原样，短语查 wordMap 获取标准文本
-            processedWord = lookUpPhrase(processedWord, wordMap);
-            
-            // 去重
-            if (!wordSet.has(processedWord) && processedWord) {
-              wordSet.add(processedWord);
-              
-              // 创建单词对象
-              const wordObj = {
-                id: `${processedWord.toLowerCase().replace(/\s+/g, '_')}_${index}`,
-                sourceWordId: sourceWordId,
-                word: processedWord,
-                phonetic: '',
-                meaning: '未知释义'
-              };
-              
-              // 尝试从单词映射表中获取详细信息
-              const normalizedWord = String(processedWord).toLowerCase();
-              let mappedWord = wordMap[normalizedWord];
-
-              // 历史兼容：部分旧记录将 Miss 记成 ms，优先纠偏回 miss
-              if (!mappedWord && normalizedWord === 'ms' && wordMap['miss']) {
-                mappedWord = wordMap['miss'];
-              }
-
-              // 短词禁用模糊匹配，避免将 ms 误匹配到“情况”等无关释义
-              if (!mappedWord && normalizedWord.length >= 3) {
-                mappedWord = findWord(processedWord, wordMap);
-              }
-
-              if (mappedWord) {
-                wordObj.word = mappedWord.word || processedWord;
-                wordObj.phonetic = mappedWord.phonetic || '';
-                wordObj.meaning = mappedWord.meaning || mappedWord.translation || '未知释义';
-              }
-
-              const finalKey = String(wordObj.word || '').toLowerCase().replace(/\s+/g, ' ').trim();
-              if (!finalKey || normalizedFinalWordSet.has(finalKey)) {
-                return;
-              }
-              normalizedFinalWordSet.add(finalKey);
-              
-              words.push(wordObj);
-              console.log('添加单词:', wordObj);
-            }
-          }
-        } catch (wordError) {
-          console.error('处理单个单词失败:', wordError);
-          unresolvedIdCount += 1;
-        }
       });
 
-      const extractedCount = words.length - beforeExtractCount;
-      const hasWordIds = Array.isArray(wordIds) && wordIds.length > 0;
-      const allIdsUnresolved = hasWordIds && unresolvedIdCount >= wordIds.length;
-      const allNumericOnlyIds = hasWordIds && numericOnlyIdCount >= wordIds.length;
+      if (compatibilityRecovery.recoveredCount > 0) {
+        console.log(
+          '使用历史兼容共享 resolver 提取单词:',
+          compatibilityRecovery.recoveredCount,
+          '失败:',
+          compatibilityRecovery.failedCount
+        );
+        return;
+      }
 
-      // 旧版记录兜底：无法恢复明细时，优先词书生成占位词，其次给默认提示词，绝不抛错或丢弃记录。
-      if (!hasWordIds || extractedCount === 0 || allIdsUnresolved || allNumericOnlyIds) {
-        const fallbackCount = Math.max(Number(record.totalWords || 0), hasWordIds ? wordIds.length : 0, 1);
+      // 有词条身份但无法可靠恢复时，只显示明确占位提示；不再伪造随机词条。
+      if (compatibilityRecovery.requestedCount > 0) {
+        console.warn('历史词条身份无法可靠恢复:', compatibilityRecovery.unresolvedWordIds);
+        this.appendLegacyRecordPlaceholderWord(record, words, wordSet);
+        return;
+      }
 
-        if (record.wordbookId) {
-          console.log('明细解析不足，回退到词书占位生成，词书ID:', record.wordbookId, '数量:', fallbackCount);
-          this.generateWordsFromWordbook({
-            ...record,
-            totalWords: fallbackCount
-          }, words, wordSet);
-        }
-
-        if (words.length === beforeExtractCount) {
-          console.log('词书占位生成失败，写入默认提示词');
-          this.appendLegacyRecordPlaceholderWord(record, words, wordSet);
-        }
+      // 仅数量型旧记录沿用原查看页兜底；导出层仍按 D 级阻止。
+      const fallbackCount = Math.max(Number(record.totalWords || 0), 1);
+      if (record.wordbookId) {
+        this.generateWordsFromWordbook({
+          ...record,
+          totalWords: fallbackCount
+        }, words, wordSet);
+      }
+      if (words.length === 0) {
+        this.appendLegacyRecordPlaceholderWord(record, words, wordSet);
       }
     } catch (error) {
       console.error('从原始记录提取单词失败:', error);

@@ -412,7 +412,8 @@ const buildResolvedExportResult = ({
   state,
   currentStudent,
   historicalVersionAccessed = false,
-  resolutionError = ''
+  resolutionError = '',
+  compatibilityRecovery = null
 }) => {
   const missingFields = collectSnapshotMissingFields(normalizedRecord.recordId, snapshot);
   const complete = state === EXPORT_RESOLUTION_STATES.COMPLETE && missingFields.length === 0;
@@ -435,6 +436,9 @@ const buildResolvedExportResult = ({
     canGeneratePartialExport: finalState === EXPORT_RESOLUTION_STATES.COMPLETE
       || finalState === EXPORT_RESOLUTION_STATES.PARTIAL,
     historicalVersionAccessed,
+    compatibilityRecovery: compatibilityRecovery
+      ? Object.freeze({ ...compatibilityRecovery })
+      : null,
     resolutionError: normalizeText(resolutionError),
     userMessage
   });
@@ -467,9 +471,36 @@ const resolveRecordExportSnapshot = async (record = {}, options = {}) => {
   }
 
   if (level === COMPATIBILITY_LEVELS.C) {
+    let recoveredSnapshot = normalizedRecord.snapshot;
+    let compatibilityRecovery = null;
+    let resolutionError = '';
+    if (typeof options.recoverCompatibleWords === 'function') {
+      try {
+        compatibilityRecovery = await options.recoverCompatibleWords(record);
+        const recoveredWords = compatibilityRecovery && Array.isArray(compatibilityRecovery.words)
+          ? compatibilityRecovery.words.filter((word) => normalizeText(word && word.word))
+          : [];
+        if (recoveredWords.length > 0) {
+          recoveredSnapshot = buildRecordSnapshotFields({
+            recordKind: normalizedRecord.recordKind,
+            completedAt: normalizedRecord.snapshot.completedAt,
+            student: normalizedRecord.snapshot.studentSnapshot,
+            wordbook: normalizedRecord.snapshot.wordbookSnapshot,
+            words: recoveredWords
+          });
+        }
+      } catch (error) {
+        resolutionError = error && (error.code || error.message)
+          ? (error.code || error.message)
+          : 'COMPATIBILITY_RECOVERY_FAILED';
+      }
+    }
     return buildResolvedExportResult({
       ...baseResult,
-      state: EXPORT_RESOLUTION_STATES.PARTIAL
+      snapshot: recoveredSnapshot,
+      state: EXPORT_RESOLUTION_STATES.PARTIAL,
+      compatibilityRecovery,
+      resolutionError
     });
   }
 

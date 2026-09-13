@@ -62,6 +62,7 @@ const tests = [
   'test/student-edit.test.js',
   'test/record-export-contract.test.js',
   'test/record-export-stage2b.test.js',
+  'test/historical-record-export-recovery.test.js',
   'test/record-local-export.test.js',
   'test/records-export-interaction.test.js',
   'test/pdf-header-layout.test.js',

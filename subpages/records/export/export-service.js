@@ -13,6 +13,7 @@ const {
   filterWordsForExport,
   mergeWordSnapshotsForExport
 } = require('../../../utils/local-record-export.js');
+const { resolveLegacyRecordWords } = require('../../../utils/review-word-resolver.js');
 const { generateLocalExportPdf } = require('./pdf-generator.js');
 const { generateLocalExportXlsx } = require('./xlsx-generator.js');
 
@@ -22,6 +23,56 @@ const FONT_PATHS = Object.freeze({
 });
 
 let fontCache = null;
+let compatibilityWordLookupCache = null;
+
+const HISTORICAL_COMPATIBILITY_MESSAGE = '该记录缺少完整历史词条快照。\n本次导出将使用当前可恢复的单词内容，部分释义或音标可能与当时记录存在差异。';
+const UNRECOVERABLE_CONTENT_MESSAGE = '该历史记录无法恢复有效单词内容，暂时无法导出';
+
+const getCompatibilityWordLookup = () => {
+  if (compatibilityWordLookupCache) return compatibilityWordLookupCache;
+  const {
+    mergeWordbooks,
+    createWordMap,
+    findWord,
+    lookUpPhrase
+  } = require('../../../data/wordbook-utils.js');
+  const words = mergeWordbooks();
+  compatibilityWordLookupCache = Object.freeze({
+    words,
+    wordMap: createWordMap(words),
+    findWord,
+    lookUpPhrase
+  });
+  return compatibilityWordLookupCache;
+};
+
+const recoverCompatibleRecordWords = (record) => (
+  resolveLegacyRecordWords(record, getCompatibilityWordLookup())
+);
+
+const hasNonEmptyWord = (word) => !!String(word && word.word || '').trim();
+
+const assertHasExportableContent = (snapshot) => {
+  const words = snapshot && Array.isArray(snapshot.wordsSnapshot)
+    ? snapshot.wordsSnapshot
+    : [];
+  if (!words.some(hasNonEmptyWord)) {
+    throw createExportError('UNRECOVERABLE_EXPORT_CONTENT', UNRECOVERABLE_CONTENT_MESSAGE);
+  }
+};
+
+const buildCompatibilityMessage = (resolutions) => {
+  const list = (Array.isArray(resolutions) ? resolutions : [resolutions]).filter(Boolean);
+  const reports = list
+    .map((resolution) => resolution.compatibilityRecovery)
+    .filter(Boolean);
+  const recoveredCount = reports.reduce((sum, report) => sum + Number(report.recoveredCount || 0), 0);
+  const failedCount = reports.reduce((sum, report) => sum + Number(report.failedCount || 0), 0);
+  if (failedCount > 0) {
+    return `${HISTORICAL_COMPATIBILITY_MESSAGE}\n已恢复${recoveredCount}词，${failedCount}词无法恢复且不会导出。`;
+  }
+  return HISTORICAL_COMPATIBILITY_MESSAGE;
+};
 
 const normalizeBytes = (value) => {
   if (value instanceof Uint8Array) return value;
@@ -76,7 +127,7 @@ const throwIfResolutionBlocked = (resolution) => {
 const createPartialExportError = (resolution, userMessage) => {
   const error = createExportError(
     'PARTIAL_EXPORT_CONFIRMATION_REQUIRED',
-    userMessage || '该记录属于历史兼容记录，部分历史字段不可保证'
+    userMessage || buildCompatibilityMessage(resolution)
   );
   error.resolution = resolution;
   return error;
@@ -89,15 +140,18 @@ const prepareRecordExport = async ({
   format,
   currentStudent,
   allowPartial = false,
-  loadHistoricalWordbook
+  loadHistoricalWordbook,
+  recoverCompatibleWords = recoverCompatibleRecordWords
 } = {}) => {
   const rawRecord = findOriginalRecordById(recordId, records);
   const resolution = await resolveRecordExportSnapshot(rawRecord, {
     currentStudent,
-    loadHistoricalWordbook
+    loadHistoricalWordbook,
+    recoverCompatibleWords
   });
 
   throwIfResolutionBlocked(resolution);
+  assertHasExportableContent(resolution.snapshot);
   if (resolution.state === EXPORT_RESOLUTION_STATES.PARTIAL && !allowPartial) {
     throw createPartialExportError(resolution);
   }
@@ -144,7 +198,8 @@ const prepareMergedRecordExport = async ({
   format,
   currentStudent,
   allowPartial = false,
-  loadHistoricalWordbook
+  loadHistoricalWordbook,
+  recoverCompatibleWords = recoverCompatibleRecordWords
 } = {}) => {
   const normalizedIds = (Array.isArray(recordIds) ? recordIds : [])
     .map((recordId) => String(recordId || '').trim())
@@ -160,9 +215,11 @@ const prepareMergedRecordExport = async ({
     const rawRecord = findOriginalRecordById(recordId, records);
     const resolution = await resolveRecordExportSnapshot(rawRecord, {
       currentStudent,
-      loadHistoricalWordbook
+      loadHistoricalWordbook,
+      recoverCompatibleWords
     });
     throwIfResolutionBlocked(resolution);
+    assertHasExportableContent(resolution.snapshot);
     return { recordId, rawRecord, resolution, index };
   }));
   resolvedEntries.sort((left, right) => (
@@ -189,9 +246,12 @@ const prepareMergedRecordExport = async ({
     entry.resolution.state === EXPORT_RESOLUTION_STATES.PARTIAL
   ));
   if (partialResolution && !allowPartial) {
+    const compatibilityMessage = buildCompatibilityMessage(
+      resolvedEntries.map((entry) => entry.resolution)
+    );
     const userMessage = mergedWords.usedFallbackWordText
-      ? '该合并历史兼容记录部分词条缺少稳定 wordId，将仅按可证明的单词文本去重，且部分历史字段不可保证。是否继续？'
-      : '该合并记录包含历史兼容记录，部分历史字段不可保证。是否继续？';
+      ? `${compatibilityMessage}\n部分词条缺少稳定 wordId，将仅按可证明的单词文本去重。`
+      : compatibilityMessage;
     throw createPartialExportError(partialResolution.resolution, userMessage);
   }
 
@@ -286,11 +346,16 @@ const generateAndOpenRecordExport = async (options = {}, dependencies = {}) => {
 
 module.exports = {
   FONT_PATHS,
+  HISTORICAL_COMPATIBILITY_MESSAGE,
+  UNRECOVERABLE_CONTENT_MESSAGE,
+  assertHasExportableContent,
+  buildCompatibilityMessage,
   generateAndOpenRecordExport,
   getBlockedMessage,
   loadFonts,
   openDocument,
   prepareMergedRecordExport,
   prepareRecordExport,
+  recoverCompatibleRecordWords,
   toExactArrayBuffer
 };

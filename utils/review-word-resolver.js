@@ -80,6 +80,172 @@ const normalizeWordKey = (value) => String(value || '')
 
 const normalizeWordIdPart = (value) => normalizeWordKey(value).replace(/\s+/g, '_');
 
+const LEGACY_RECORD_RECOVERY_SOURCE = 'historical_compatibility_recovery';
+
+const normalizeRecordWordId = (value) => String(
+  value && typeof value === 'object'
+    ? (value.wordId || value.sourceWordId || value.id || '')
+    : (value || '')
+).trim();
+
+const normalizeRecordWordText = (value) => String(
+  value && typeof value === 'object' ? (value.word || '') : (value || '')
+).replace(/\s+/g, ' ').trim();
+
+const getLegacyRecordWordInputs = (record = {}) => {
+  const statusInputs = [];
+  if (Array.isArray(record.masteredWordIds)) statusInputs.push(...record.masteredWordIds);
+  if (Array.isArray(record.notMasteredWordIds)) statusInputs.push(...record.notMasteredWordIds);
+
+  let candidates = statusInputs;
+  let plainStringsAreWords = false;
+  if (candidates.length === 0 && Array.isArray(record.learnedWordIds) && record.learnedWordIds.length > 0) {
+    candidates = record.learnedWordIds;
+  } else if (candidates.length === 0 && Array.isArray(record.studyWords) && record.studyWords.length > 0) {
+    candidates = record.studyWords;
+  } else if (candidates.length === 0 && Array.isArray(record.wordIds) && record.wordIds.length > 0) {
+    candidates = record.wordIds;
+  } else if (candidates.length === 0 && Array.isArray(record.words) && record.words.length > 0) {
+    candidates = record.words;
+    plainStringsAreWords = true;
+  } else if (candidates.length === 0 && Array.isArray(record.learnedWordTexts) && record.learnedWordTexts.length > 0) {
+    candidates = record.learnedWordTexts;
+    plainStringsAreWords = true;
+  }
+  const seen = new Set();
+
+  return candidates.reduce((result, value) => {
+    const wordId = plainStringsAreWords && (!value || typeof value !== 'object')
+      ? ''
+      : normalizeRecordWordId(value);
+    const word = value && typeof value === 'object'
+      ? normalizeRecordWordText(value)
+      : (plainStringsAreWords ? normalizeRecordWordText(value) : '');
+    const identity = wordId ? `id:${wordId}` : (word ? `word:${word.toLowerCase()}` : '');
+    if (!identity || seen.has(identity)) return result;
+    seen.add(identity);
+    result.push({ raw: value, wordId, word });
+    return result;
+  }, []);
+};
+
+const buildLegacyMasteryStatusMap = (record = {}) => {
+  const statusMap = Object.create(null);
+  const assign = (values, status) => {
+    (Array.isArray(values) ? values : []).forEach((value) => {
+      const wordId = normalizeRecordWordId(value);
+      if (wordId) statusMap[wordId] = status;
+    });
+  };
+  assign(record.masteredWordIds, 'mastered');
+  assign(record.notMasteredWordIds, 'notMastered');
+  return statusMap;
+};
+
+const buildCurrentWordById = (words) => {
+  const byId = Object.create(null);
+  const add = (id, entry) => {
+    const key = String(id || '').trim();
+    if (!key || !entry) return;
+    if (!byId[key]) byId[key] = entry;
+    const lowerKey = key.toLowerCase();
+    if (!byId[lowerKey]) byId[lowerKey] = entry;
+  };
+  (Array.isArray(words) ? words : []).forEach((entry) => {
+    if (!entry || typeof entry !== 'object') return;
+    add(entry.wordId, entry);
+    add(entry.sourceWordId, entry);
+    add(entry.id, entry);
+  });
+  return byId;
+};
+
+const hasReliableEmbeddedWord = (wordId, wordbookId, extractedWord) => {
+  const sourceId = String(wordId || '').trim();
+  const bookId = String(wordbookId || '').trim();
+  const word = String(extractedWord || '').trim();
+  if (!sourceId || !word || /^\d+$/.test(sourceId)) return false;
+  if (!/^[a-zA-Z][a-zA-Z\s'\-.,/]*$/.test(word)) return false;
+
+  const sourceLower = stripStableWordOccurrenceSuffix(sourceId).toLowerCase();
+  const bookPrefixes = [bookId, normalizeWordIdPart(bookId)]
+    .filter(Boolean)
+    .map((value) => `${String(value).toLowerCase()}_`);
+  return bookPrefixes.some((prefix) => sourceLower.startsWith(prefix))
+    && /(^|_)real_/.test(sourceLower.slice(bookPrefixes.find((prefix) => sourceLower.startsWith(prefix)).length));
+};
+
+// 仅用于缺少完整历史快照/精确版本、但仍保存稳定词条身份的兼容记录。
+// 调用方显式传入当前可查看词书映射，保证“查看明细”和“导出”使用同一恢复算法。
+const resolveLegacyRecordWords = (record = {}, options = {}) => {
+  const inputs = getLegacyRecordWordInputs(record);
+  const wordMap = options.wordMap && typeof options.wordMap === 'object'
+    ? options.wordMap
+    : Object.create(null);
+  const findWord = typeof options.findWord === 'function' ? options.findWord : () => null;
+  const lookUpPhrase = typeof options.lookUpPhrase === 'function'
+    ? options.lookUpPhrase
+    : (word) => word;
+  const currentWordById = buildCurrentWordById(options.words);
+  const masteryStatusMap = buildLegacyMasteryStatusMap(record);
+  const recoveredWords = [];
+  const unresolvedWordIds = [];
+
+  inputs.forEach((input, index) => {
+    const wordId = input.wordId;
+    if (wordId && /^\d+$/.test(wordId)) {
+      unresolvedWordIds.push(wordId);
+      return;
+    }
+
+    const exactEntry = wordId
+      ? (currentWordById[wordId] || currentWordById[wordId.toLowerCase()])
+      : null;
+    let displayWord = input.word || (exactEntry && exactEntry.word) || '';
+    if (!displayWord && wordId) {
+      displayWord = extractDisplayWordFromReviewId(wordId, record.wordbookId);
+    }
+    displayWord = String(lookUpPhrase(displayWord, wordMap) || '').replace(/\s+/g, ' ').trim();
+
+    const normalizedWord = displayWord.toLowerCase();
+    let mappedEntry = exactEntry || wordMap[normalizedWord];
+    if (!mappedEntry && normalizedWord === 'ms' && wordMap.miss) mappedEntry = wordMap.miss;
+    if (!mappedEntry && normalizedWord.length >= 3) mappedEntry = findWord(displayWord, wordMap);
+
+    const reliableWord = mappedEntry && mappedEntry.word
+      ? String(mappedEntry.word).replace(/\s+/g, ' ').trim()
+      : (input.word || hasReliableEmbeddedWord(wordId, record.wordbookId, displayWord) ? displayWord : '');
+    if (!reliableWord) {
+      unresolvedWordIds.push(wordId || input.word || `index:${index}`);
+      return;
+    }
+
+    const meaningInfo = getReviewWordMeaning(mappedEntry);
+    recoveredWords.push(Object.freeze({
+      id: wordId,
+      sourceWordId: wordId,
+      wordId,
+      word: reliableWord,
+      meaning: meaningInfo.meaning,
+      translation: meaningInfo.meaning,
+      phonetic: getReviewWordPhonetic(mappedEntry),
+      masteryStatus: wordId ? (masteryStatusMap[wordId] || null) : null,
+      compatibilitySource: LEGACY_RECORD_RECOVERY_SOURCE
+    }));
+  });
+
+  return Object.freeze({
+    source: LEGACY_RECORD_RECOVERY_SOURCE,
+    words: Object.freeze(recoveredWords),
+    requestedCount: inputs.length,
+    recoveredCount: recoveredWords.length,
+    failedCount: unresolvedWordIds.length,
+    unresolvedWordIds: Object.freeze(unresolvedWordIds),
+    usesCurrentRecoverableContent: true,
+    historicallyAccurate: false
+  });
+};
+
 const buildReviewWordLookup = (words, wordbookId, options = {}) => {
   const sourceWords = Array.isArray(words) ? words : [];
   const normalizedWordbookId = String(wordbookId || '').trim();
@@ -311,11 +477,14 @@ const loadReviewWordbookWords = async (wordbook) => {
 };
 
 module.exports = {
+  LEGACY_RECORD_RECOVERY_SOURCE,
   buildReviewWordLookup,
   extractDisplayWordFromReviewId,
+  getLegacyRecordWordInputs,
   getReviewWordMeaning,
   isRealChineseMeaning,
   loadReviewWordbookWords,
+  resolveLegacyRecordWords,
   resolveReviewWordEntry,
   resolveReviewWordObject
 };

@@ -256,7 +256,7 @@ const dataEvent = (key, value) => ({ currentTarget: { dataset: { [key]: value } 
     if (!options.allowPartial) {
       const error = new Error('PARTIAL_EXPORT_CONFIRMATION_REQUIRED');
       error.code = 'PARTIAL_EXPORT_CONFIRMATION_REQUIRED';
-      error.userMessage = '该记录属于历史兼容记录，部分历史字段不可保证';
+      error.userMessage = '该记录缺少完整历史词条快照。\n本次导出将使用当前可恢复的单词内容，部分释义或音标可能与当时记录存在差异。';
       throw error;
     }
     return { filePath: 'partial.xlsx' };
@@ -268,7 +268,8 @@ const dataEvent = (key, value) => ({ currentTarget: { dataset: { [key]: value } 
     scope: 'all',
     format: 'xlsx'
   });
-  assert(modalOptions && String(modalOptions.content).includes('部分历史字段不可保证'));
+  assert(modalOptions && String(modalOptions.content).includes('当前可恢复的单词内容'));
+  assert(String(modalOptions.content).includes('可能与当时记录存在差异'));
   modalOptions.success({ confirm: true });
   await new Promise((resolve) => setImmediate(resolve));
   assert.strictEqual(partialAttempt, 2);
