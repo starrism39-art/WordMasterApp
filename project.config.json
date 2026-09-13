@@ -107,6 +107,34 @@
         "type": "file"
       },
       {
+        "value": "LICENSE",
+        "type": "file"
+      },
+      {
+        "value": "jsconfig.json",
+        "type": "file"
+      },
+      {
+        "value": "css/style.css",
+        "type": "file"
+      },
+      {
+        "value": "css/animation.css",
+        "type": "file"
+      },
+      {
+        "value": "pages/login/login.js.bak",
+        "type": "file"
+      },
+      {
+        "value": "images/README.md",
+        "type": "file"
+      },
+      {
+        "value": "utils/## GitHub Copilot Chat.md",
+        "type": "file"
+      },
+      {
         "value": "query_word.js",
         "type": "file"
       },
@@ -188,6 +216,10 @@
       },
       {
         "value": "portfolio",
+        "type": "folder"
+      },
+      {
+        "value": "scripts",
         "type": "folder"
       },
       {
