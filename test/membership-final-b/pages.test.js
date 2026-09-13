@@ -8,9 +8,9 @@ const {makePage}=require('../../subpages/membership/page');
 function setup(kind='index') {
  let account='teacher',model=models().free,failed=false;const calls=[];
  global.getApp=()=>({globalData:{cloudReadOnly:false}});
- global.wx={getStorageSync:()=>account,onNetworkStatusChange(){},offNetworkStatusChange(){},navigateTo(){},login:({success})=>success({code:'local_code'}),requestVirtualPayment:({fail})=>fail({errMsg:'cancel'}),cloud:{callFunction:async options=>{
+ global.wx={getStorageSync:()=>account,getDeviceInfo:()=>({platform:'android'}),onNetworkStatusChange(){},offNetworkStatusChange(){},navigateTo(){},login:({success})=>success({code:'local_code'}),requestVirtualPayment:({fail})=>fail({errMsg:'cancel'}),cloud:{callFunction:async options=>{
    calls.push(options);if(failed)throw Error('offline');const a=options.data.action;
-   let result=a==='getDisplay'?model:a==='getPublicConfig'?publicConfig(DEFAULTS):a==='getOrders'?{orders:[],nextOffset:null}:a==='getOrderDetail'?{orderDetail:orderModel(order(),row('active'),DEFAULTS,NOW)}:a==='createOrder'?{orderId:'local_order'}:a==='parameters'?{}:a==='queryOrder'?{paymentStatus:'awaiting_payment',grantStatus:'pending'}:{studentId:'one'};
+   let result=a==='getDisplay'?model:a==='getPublicConfig'?publicConfig(DEFAULTS):a==='getOrders'?{orders:[],nextOffset:null}:a==='getOrderDetail'?{orderDetail:orderModel(order(),row('active'),DEFAULTS,NOW)}:a==='createOrder'?{orderId:'local_order'}:a==='parameters'?{paymentInvocationAllowed:true}:a==='queryOrder'?{paymentStatus:'awaiting_payment',grantStatus:'pending'}:{studentId:'one'};
    return {result:{ok:true,result}};
  }}};
  const page=makePage(kind);page.data=structuredClone(page.data);page.setData=value=>Object.assign(page.data,value);page.onLoad({id:'order'});page._visible=true;page.poll=()=>{};
@@ -37,7 +37,7 @@ test('same-tick duplicate retention causes one service mutation',async()=>{
 });
 test('cancelled payment reuses sealed orchestration; no client price/product/duration, no grant assertion',async()=>{
  const s=setup();s.setModel({...models().free,canPurchase:true});await s.page.reload();
- await Promise.all([s.page.buy(),s.page.buy()]);const creates=s.calls.filter(c=>c.data.action==='createOrder');assert.equal(creates.length,1);assert.deepEqual(Object.keys(creates[0].data.request),['requestId']);assert.equal(s.page.data.model.displayState,'free');assert.equal(s.page.data.message,'已取消支付');
+ await Promise.all([s.page.buy(),s.page.buy()]);const creates=s.calls.filter(c=>c.data.action==='createOrder');assert.equal(creates.length,1);assert.deepEqual(Object.keys(creates[0].data.request),['requestId','platform']);assert.equal(creates[0].data.request.platform,'android');assert.equal(s.page.data.model.displayState,'free');assert.equal(s.page.data.message,'已取消支付');
 });
 test('success callback does not grant membership; server pending restored after reentry',async()=>{
  const s=setup();s.setModel({...models().free,canPurchase:true});await s.page.reload();

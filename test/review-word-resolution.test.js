@@ -128,6 +128,19 @@ global.getApp = () => ({
   off: () => {}
 });
 
+const membershipBusinessPath = require.resolve('../utils/membership-business-client.js');
+require.cache[membershipBusinessPath] = {
+  id: membershipBusinessPath,
+  filename: membershipBusinessPath,
+  loaded: true,
+  exports: {
+    authorizePage: async () => true,
+    call: async () => ({}),
+    requestId: () => 'review-word-resolution-test',
+    message: error => error && error.message || ''
+  }
+};
+
 const loadPageDefinition = (modulePath) => {
   let definition = null;
   global.Page = (value) => {

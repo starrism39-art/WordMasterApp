@@ -6,6 +6,7 @@ let pageDefinition = null;
 const storage = {};
 const app = { globalData: {} };
 const cloudOps = [];
+const functionCalls = [];
 const toastTitles = [];
 let navigateBackCount = 0;
 const originalSetTimeout = global.setTimeout;
@@ -73,9 +74,21 @@ global.wx = {
         collection: makeCollection
       };
     },
-    callFunction: async ({ name }) => {
-      assert.strictEqual(name, 'syncTombstoneAuthority');
-      return { result: { success: true, tombstones: [] } };
+    callFunction: async ({ name, config, data }) => {
+      assert.strictEqual(name, 'membership_business');
+      assert.strictEqual(config && config.env, 'cloudbase-4gafzdch60ad597b');
+      functionCalls.push({ name, data });
+      return {
+        result: {
+          ok: true,
+          result: {
+            studentId: data.request.studentId,
+            name: data.request.name,
+            grade: data.request.grade,
+            joinDate: data.request.joinDate
+          }
+        }
+      };
     }
   },
   getStorageSync(key) {
@@ -170,20 +183,24 @@ async function run() {
   assert.strictEqual(storage.selectedStudent.grade, '高二');
   assert.strictEqual(app.globalData.currentStudent.name, '李雷');
 
-  const primaryUpdate = cloudOps.find(op => op.collection === 'students' && op.id === 'student456');
-  assert(primaryUpdate, 'student edit must update the cloud students document');
+  const profileCall = functionCalls.find(call => call.data && call.data.action === 'correctProfile');
+  assert(profileCall, 'student edit must use the server-authoritative correction service');
   assert.deepStrictEqual(
     {
-      name: primaryUpdate.data.name,
-      grade: primaryUpdate.data.grade,
-      teacher_id: primaryUpdate.data.teacher_id,
-      student_id: primaryUpdate.data.student_id
+      studentId: profileCall.data.request.studentId,
+      name: profileCall.data.request.name,
+      grade: profileCall.data.request.grade,
+      joinDate: profileCall.data.request.joinDate,
+      reason: profileCall.data.request.reason,
+      intent: profileCall.data.request.intent
     },
     {
+      studentId: 'student456',
       name: '李雷',
       grade: '高二',
-      teacher_id: 'teacher-openid',
-      student_id: 'student456'
+      joinDate: '2026-01-02',
+      reason: 'Teacher submitted profile correction',
+      intent: 'correction'
     }
   );
 
@@ -196,9 +213,9 @@ async function run() {
   assert(toastTitles.includes('保存成功'));
   assert.strictEqual(navigateBackCount, 1);
   assert.strictEqual(
-    cloudOps.filter(op => op.collection === 'students' && op.type === 'set').length,
+    cloudOps.filter(op => op.collection === 'students').length,
     0,
-    'existing cloud student should be updated without creating a replacement document'
+    'client must not write the server-authoritative students collection directly'
   );
 
   global.setTimeout = originalSetTimeout;
