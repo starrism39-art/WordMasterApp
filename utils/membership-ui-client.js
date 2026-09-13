@@ -4,6 +4,7 @@ const {isCloudReadOnlyMode} = require('./cloud-mode');
 const {createPaymentService} = require('./membership-payment-service');
 const business = require('./membership-business-client');
 const {purchaseChannel,gateDisplay} = require('./membership-channel-gates');
+const {createIosProbe}=require('./membership-ios-probe');
 const ENV = 'cloudbase-4gafzdch60ad597b';
 async function call(action, request = {}) {
   const session = captureAccountSession();
@@ -36,14 +37,16 @@ async function purchase(requestId) {
     if (display.awaitingPayment && !resumeOrderId) throw Error('EXISTING_ORDER_REQUIRED');
     // Reuse the sealed payment orchestration. The adapter deliberately discards
     // its product argument: selection, amount and duration belong to the server.
-    const service = createPaymentService({wxApi:wx,sessionRevision:revision,requireInvocationPermission:true,callServer:async(action,request) => {
+    const probe=purchaseChannel(wx)==='ios'?createIosProbe(wx):null;
+    const service = createPaymentService({wxApi:probe?probe.api:wx,sessionRevision:revision,requireInvocationPermission:true,callServer:async(action,request) => {
       // The shared orchestrator receives the already persisted order; no create API
       // is called when resuming. Its parameter endpoint rechecks trusted ownership.
       if (action === 'createOrder') return resumeOrderId ? {orderId:resumeOrderId} : call(action,{requestId:request.requestId,platform:purchaseChannel(wx)||'unsupported'});
       if (action === 'parameters') return call(action,{...request,platform:purchaseChannel(wx)||'unsupported'});
       return call(action,request);
     }});
-    return service.purchase({requestId});
+    const result=await service.purchase({requestId});
+    return probe?.result()&&isAccountSessionCurrent(session)?{...result,platformError:probe.result()}:result;
   })();
   locks.set(key,operation);
   try { return await operation; } finally {locks.delete(key);}

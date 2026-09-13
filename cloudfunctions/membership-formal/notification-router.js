@@ -4,6 +4,8 @@ const {credentialProviders}=require('../membership-payment/runtime');
 const {httpRequest,makeMain}=require('../membership-stage5/runtime');
 const {createFormalRuntime}=require('./runtime');
 const {APP_ID,ENV_ID}=require('../membership-presentation/config');
+const {resolveBusinessOrder}=require('./ios-attempts');
+const {hash}=require('../membership-payment/crypto');
 // Keep the existing official URL and sealed TEST runtime. Route only after
 // authentication; a raw client product/domain field is never a routing input.
 function createNotificationRouter({formal,legacy,environment}){
@@ -15,7 +17,15 @@ function createNotificationRouter({formal,legacy,environment}){
       const fact=decryptNotification(request,{...formal.config,...credentialProviders(environment).notification()});
       const orderId=fact.OutTradeNo||fact.MchOrderId;
       if(typeof orderId!=='string')return {statusCode:503,body:'retry'};
-      const order=await formal.repository.get('orders',orderId);
+      const order=await resolveBusinessOrder(formal.repository,orderId);
+      if(order?.iosAttempts){
+        // Archive the authenticated ciphertext for exact idempotency replay.
+        // No plaintext buyer data, keys or session material is stored here.
+        const key='ios_callback_'+hash(request.body);
+        await formal.repository.transaction(async tx=>{
+          if(!await tx.get('audits',key))await tx.put('audits',key,{kind:'ios_authenticated_callback',orderId:order.orderId,teacherId:order.teacherId,attemptId:orderId,eventType:fact.Event,request,receivedAt:Date.now()});
+        });
+      }
       return order?formal.notification(request):legacy(event);
     }catch{return {statusCode:503,body:'retry'};}
   };

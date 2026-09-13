@@ -42,7 +42,7 @@ function createWechatApi({ getAccessToken, getAppKey, getAppSecret, fetchImpl = 
     },
     query(order) { return post('/xpay/query_order', { openid: order.openId, env: order.env, order_id: order.orderId }, order.env, true); },
     async delivered(order) {
-      const result = await post('/xpay/notify_provide_goods', { order_id: order.orderId, env: order.env }, order.env, false);
+      const result = await post('/xpay/notify_provide_goods', { order_id: order.orderId, env: order.env }, order.env, order.channel === 'apple_iap');
       check(result === null || result.errcode === 0, 'DELIVERY_NOT_CONFIRMED');
     }
   };

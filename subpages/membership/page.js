@@ -2,6 +2,7 @@
 const client = require('../../utils/membership-ui-client');
 const {takeReminder} = require('../../utils/membership-reminders');
 const {captureAccountSession,isAccountSessionCurrent} = require('../../utils/account-session');
+const {showIosFailure}=require('../../utils/membership-ios-probe');
 function makePage(kind) {
   return {
     data:{loading:true,error:false,model:null,orders:[],detail:null,selectedId:'',submitting:false,paying:false,localPending:false,message:'',nextOffset:null,loadingMore:false,selectedQuestion:'',reminderText:''},
@@ -79,6 +80,7 @@ function makePage(kind) {
       const session=captureAccountSession();this._purchaseRequest ||= client.requestId();
       this.setData({paying:true,localPending:true,message:'正在确认支付结果'});
       try {const result=await client.purchase(this._purchaseRequest);if(!isAccountSessionCurrent(session))return;
+        if(result.platformError)showIosFailure(wx,result.platformError);
         this.setData({message:result.status==='prepared'?'订单已准备，会员购买暂未开放':result.status==='cancelled'?'已取消支付':result.status==='unsupported'?'当前设备暂不支持购买':'正在确认支付结果'});
       } catch {if(isAccountSessionCurrent(session))this.setData({message:'购买暂不可用，请重新加载会员信息'});}
       finally {if(isAccountSessionCurrent(session)){this.setData({paying:false});if(this._visible)await this.reload();}}
