@@ -1,11 +1,12 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const {fixture,BASE,encrypt,cryptoConfig,APP_ID,hmac}=require('./fixtures');
-const {configuration,mayPrepare}=require('../../cloudfunctions/membership-formal/policy');
+const {configuration,mayPrepare,mayPay}=require('../../cloudfunctions/membership-formal/policy');
 const {gateDisplay,purchaseChannel}=require('../../utils/membership-channel-gates');
 const {addMonths}=require('../../cloudfunctions/membership-core/time');
 const {models}=require('../membership-final-b/fixtures');
 const gate={iosTeacher:'teacher',iosPreparationEnabled:true,iosPlatformReady:true,iosExpiresAt:BASE+3600000};
+const productionGate={formalPurchaseEnabled:true,controlledPreparationEnabled:false,controlledPaymentEnabled:false,controlledTeachers:[],allowedPlatforms:['android','ios'],iosTeacher:'',iosPreparationEnabled:true,iosPaymentEnabled:true,iosPlatformReady:true,iosExpiresAt:0,iosAttemptRetriesEnabled:true};
 const ios=(f,id='ios_first')=>f.call('createOrder',{requestId:id,platform:'ios'});
 const parameters=(f,o,platform='ios')=>f.call('parameters',{orderId:o.orderId,loginCode:'local',platform});
 const notice=async(f,o)=>encrypt(await f.event(o.orderId),{...cryptoConfig,appId:APP_ID});
@@ -15,6 +16,17 @@ test('iOS default denied even with Android master release and Android whitelist'
     const f=fixture(patch),before=structuredClone(f.sdk.rows);
     await assert.rejects(ios(f),/FORMAL_PURCHASE_NOT_RELEASED/);assert.deepEqual(f.sdk.rows,before);
   }
+});
+test('production iOS gate admits ordinary buyers only with the explicit platform and readiness switches',async()=>{
+  const f=fixture(productionGate);
+  const o=await ios(f),row=await f.repo.get('orders',o.orderId);
+  assert.equal(row.teacherId,'teacher');assert.equal(row.channel,'apple_iap');assert.equal(row.amount,39900);
+  assert.equal(row.productSnapshot.duration.months,12);assert.equal(row.productSnapshot.autoRenew,false);assert.equal(mayPay(f.runtime.config,'teacher','ios',BASE),true);
+  for(const patch of [{iosPreparationEnabled:false,iosPaymentEnabled:false}]){
+    const closed=fixture({...productionGate,...patch});await assert.rejects(ios(closed),/FORMAL_PURCHASE_NOT_RELEASED/);assert.equal(closed.sdk.starts,0);
+  }
+  for(const patch of [{iosPlatformReady:false},{allowedPlatforms:['android']}])assert.throws(()=>fixture({...productionGate,...patch}),/FORMAL_INVALID_IOS_GATE/);
+  for(const platforms of [['ios'],['android','ios','android'],['android','windows']])assert.throws(()=>fixture({...productionGate,allowedPlatforms:platforms}),/FORMAL_PLATFORM_NOT_RELEASED/);
 });
 test('iOS requires one trusted teacher, platform readiness and a live time window',async()=>{
   for(const patch of [{iosTeacher:'other'},{iosExpiresAt:BASE},{iosExpiresAt:BASE-1}]){
@@ -84,6 +96,15 @@ test('iOS presentation grants only the controlled display flag and reads transit
   const iosModel=await display({action:'getDisplay',request:{platform:'ios'}}),androidModel=await display({action:'getDisplay',request:{platform:'android'}});
   assert.equal(iosModel.iosPurchaseAllowed,true);assert.equal(iosModel.canPurchase,true);assert.equal(iosModel.displayState,'transition');
   assert.equal(iosModel.entrySubtitle,androidModel.entrySubtitle);assert.equal(db.writes,0);
+});
+test('production presentation exposes ordinary Android and iOS purchase without changing identity data',async()=>{
+  const {ReadDb,row,NOW}=require('../membership-final-b/fixtures');
+  const {createPresentationRuntime}=require('../../cloudfunctions/membership-presentation/runtime');
+  const db=new ReadDb(row('free')),f=fixture(productionGate);
+  const display=createPresentationRuntime({db,wxCloud:{getWXContext:()=>({APPID:APP_ID,OPENID:'teacher',SOURCE:'wx_client'})},environment:f.environment,clock:()=>NOW});
+  const android=await display({action:'getDisplay',request:{platform:'android'}}),iosModel=await display({action:'getDisplay',request:{platform:'ios'}}),windows=await display({action:'getDisplay',request:{platform:'windows'}});
+  for(const model of [android,iosModel]){assert.equal(model.canPurchase,true);assert.equal(model.priceText,'399元');assert.equal(model.durationText,'12个月');assert.equal(model.autoRenewText,'不自动续费');}
+  assert.equal(iosModel.iosPurchaseAllowed,true);assert.equal(windows.canPurchase,false);assert.equal(db.writes,0);
 });
 test('Apple formal parameters use the sealed signing adapter unchanged',async()=>{
   const {createWechatApi}=require('../../cloudfunctions/membership-payment/wechat-api');
