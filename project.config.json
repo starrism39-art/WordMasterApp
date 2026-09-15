@@ -276,6 +276,7 @@
     "postcss": false,
     "preloadBackgroundData": false,
     "minified": true,
+    "ignoreUploadUnusedFiles": true,
     "newFeature": true,
     "coverView": true,
     "nodeModules": false,

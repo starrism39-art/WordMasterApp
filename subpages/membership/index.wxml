@@ -1,5 +1,6 @@
 <import src="states.wxml"/>
 <view class="membership-page">
+  <view wx:if="{{paymentDiagnosticEnabled}}" class="notice">P0 iOS诊断版：当前 status=1 订单禁止再次点击支付。<button class="secondary" bindtap="copyPaymentDiagnostics">复制支付诊断</button></view>
   <view class="page-title">教师会员</view>
   <template is="page-state" data="{{loading,error}}"/>
   <block wx:if="{{!loading && !error && model}}">

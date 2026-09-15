@@ -3,18 +3,21 @@ const client = require('../../utils/membership-ui-client');
 const {takeReminder} = require('../../utils/membership-reminders');
 const {captureAccountSession,isAccountSessionCurrent} = require('../../utils/account-session');
 const {showIosFailure}=require('../../utils/membership-ios-probe');
+const diagnostic=require('../../utils/membership-payment-diagnostic');
 function makePage(kind) {
   return {
-    data:{loading:true,error:false,model:null,orders:[],detail:null,selectedId:'',submitting:false,paying:false,localPending:false,message:'',nextOffset:null,loadingMore:false,selectedQuestion:'',reminderText:''},
-    onLoad(options) { this._orderId=options?.id || '';this._sequence=0;this._visible=false; },
+    data:{loading:true,error:false,model:null,orders:[],detail:null,selectedId:'',submitting:false,paying:false,localPending:false,message:'',nextOffset:null,loadingMore:false,selectedQuestion:'',reminderText:'',paymentDiagnosticEnabled:false},
+    onLoad(options) { this._orderId=options?.id || '';this._sequence=0;this._visible=false;this.setData({paymentDiagnosticEnabled:diagnostic.enabled(wx)}); },
     onShow() {
       this._visible=true;
-      if (!this._network) {this._network = state=>{if(state.isConnected && this._visible && !this.data.submitting && !this.data.paying)this.reload();};wx.onNetworkStatusChange(this._network);}
-      this.reload();
+      diagnostic.current(wx)?.event('PAGE_SHOW',{pageKind:kind});
+      if (!this._network) {this._network = state=>{if(state.isConnected && this._visible && !this.data.submitting && !this.data.paying)this.reload('network');};wx.onNetworkStatusChange(this._network);}
+      this.reload('onShow');
     },
-    onHide() {this._visible=false;this._sequence++;clearTimeout(this._timer);},
+    onHide() {diagnostic.current(wx)?.event('PAGE_HIDE',{pageKind:kind});this._visible=false;this._sequence++;clearTimeout(this._timer);},
     onUnload() {this.onHide();if(this._network)wx.offNetworkStatusChange(this._network);},
-    async reload() {
+    async reload(reason='manual') {
+      const trace=diagnostic.current(wx);trace?.event('PAGE_RELOAD_BEGIN',{pageKind:kind,reason:typeof reason==='string'?reason:'manual'});
       clearTimeout(this._timer);
       const seq=++this._sequence,session=captureAccountSession();
       const current=()=>this._visible && seq===this._sequence && isAccountSessionCurrent(session);
@@ -46,9 +49,11 @@ function makePage(kind) {
         }
       } catch {
         if(current())this.setData({loading:false,error:true,model:null,detail:null,orders:[]});
+      } finally {
+        trace?.event('PAGE_RELOAD_END',{pageKind:kind,current:current(),error:this.data.error,loading:this.data.loading});
       }
     },
-    poll() {if(this._visible)this._timer=setTimeout(()=>this.reload(),8000);},
+    poll() {if(this._visible)this._timer=setTimeout(()=>this.reload('poll'),8000);},
     async moreOrders() {
       if(this.data.loadingMore || this.data.nextOffset===null || this.data.error)return;
       const session=captureAccountSession(),seq=this._sequence;
@@ -58,7 +63,8 @@ function makePage(kind) {
       } catch {if(this._visible && isAccountSessionCurrent(session))this.setData({message:'订单暂时无法获取，请重试'});}
       finally {if(this._visible && isAccountSessionCurrent(session))this.setData({loadingMore:false});}
     },
-    openOrder(event) {wx.navigateTo({url:'/subpages/membership/order-detail?id='+encodeURIComponent(event.currentTarget.dataset.id)});},
+    openOrder(event) {diagnostic.current(wx)?.event('ORDER_DETAIL_OPEN',{businessOrderId:event.currentTarget.dataset.id});wx.navigateTo({url:'/subpages/membership/order-detail?id='+encodeURIComponent(event.currentTarget.dataset.id)});},
+    copyPaymentDiagnostics(){diagnostic.copy(wx);},
     chooseStudent(event) {
       if(this.data.loading || this.data.error || this.data.submitting || !this.data.model?.retentionAllowed)return;
       const value=event.detail.value;
@@ -75,15 +81,16 @@ function makePage(kind) {
     },
     async buy() {
       const m=this.data.model;
-      if(this.data.loading || this.data.error || this.data.paying || this.data.localPending || !m || m.pending || !m.showPurchase)return;
-      if(!(m.canPurchase || m.canRenew || m.canResumePayment)){this.setData({message:'会员购买暂未开放'});return;}
+      const trace=diagnostic.start(wx,{pageKind:kind,businessOrderId:m?.resumeOrderId||'',platform:'ios',membershipState:m?.displayState,buttonLabel:m?.purchaseLabel});
+      if(this.data.loading || this.data.error || this.data.paying || this.data.localPending || !m || m.pending || !m.showPurchase){trace?.event('PAYMENT_CLICK_RETURN',{reason:'PAGE_GUARD',loading:this.data.loading,error:this.data.error,paying:this.data.paying,localPending:this.data.localPending,pending:m?.pending,showPurchase:m?.showPurchase});return;}
+      if(!(m.canPurchase || m.canRenew || m.canResumePayment)){trace?.event('PAYMENT_CLICK_RETURN',{reason:'PURCHASE_DISABLED'});this.setData({message:'会员购买暂未开放'});return;}
       const session=captureAccountSession();this._purchaseRequest ||= client.requestId();
       this.setData({paying:true,localPending:true,message:'正在确认支付结果'});
-      try {const result=await client.purchase(this._purchaseRequest);if(!isAccountSessionCurrent(session))return;
-        if(result.platformError)showIosFailure(wx,result.platformError);
+      try {const result=await client.purchase(this._purchaseRequest,trace);trace?.event('PAYMENT_CLIENT_RETURN',{status:result.status,hasPlatformError:!!result.platformError});if(!isAccountSessionCurrent(session))return;
+        if(result.platformError){if(trace)await trace.flush();else showIosFailure(wx,result.platformError);}
         this.setData({message:result.status==='prepared'?'订单已准备，会员购买暂未开放':result.status==='cancelled'?'已取消支付':result.status==='unsupported'?'当前设备暂不支持购买':'正在确认支付结果'});
-      } catch {if(isAccountSessionCurrent(session))this.setData({message:'购买暂不可用，请重新加载会员信息'});}
-      finally {if(isAccountSessionCurrent(session)){this.setData({paying:false});if(this._visible)await this.reload();}}
+      } catch(error) {trace?.event('PAYMENT_PAGE_CATCH',trace.result(error));if(isAccountSessionCurrent(session))this.setData({message:'购买暂不可用，请重新加载会员信息'});}
+      finally {trace?.event('PAYMENT_FINALLY_BEGIN',{sessionCurrent:isAccountSessionCurrent(session),visible:this._visible});if(trace)await trace.flush();if(isAccountSessionCurrent(session)){this.setData({paying:false});if(this._visible)await this.reload('buy.finally');}trace?.event('PAYMENT_FINALLY_END');}
     },
     chooseQuestion(event) {this.setData({selectedQuestion:event.currentTarget.dataset.question});},
     contact() {
